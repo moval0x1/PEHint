@@ -18,7 +18,12 @@ public:
     ~MainWindow();
 
 private slots:
+    // Custom added
+    int Main(int argc, char* argv[]);
+
     void on_action_PEHint_triggered();
+
+    void on_action_Exit_triggered();
 
 private:
     Ui::MainWindow *ui;

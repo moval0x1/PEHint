@@ -10,14 +10,14 @@ Here, I'm documenting my plans and the process of developing the tool.
 
 ### 1. **Planning and Design Phase**
    - [ ] **Define Key Features**:
-     - [ ] Parsing and displaying PE file structure (headers, sections, imports, exports, etc.).
+     - [x] Parsing and displaying PE file structure (headers, sections, imports, exports, etc.).
      - [ ] Highlighting suspicious PE anomalies (like strange sections, invalid headers).
      - [ ] Integration with other tools or libraries (e.g., VirusTotal API for quick OSINT).
      - [ ] Optional: Provide an option to generate reports based on the PE analysis.
    - [ ] **Select Technology Stack**:
      - [x] C++ as the programming language.
      - [x] Use Qt as the GUI framework.
-     - [ ] Select or implement libraries for PE file parsing (consider `LIEF` or `pe-parse`, or write your own parser in C++).
+     - [x] Select or implement libraries for PE file parsing (consider `LIEF` or `pe-parse`, or write your own parser in C++).
    - [ ] **Design User Interface (UI)**:
      - [ ] Sketch the UI with essential features like file loading, structure display, and report generation.
      - [ ] Plan for advanced features like binary search, section extraction, and export list filtering.
@@ -74,3 +74,7 @@ Here, I'm documenting my plans and the process of developing the tool.
    - [ ] **Final Release**:
      - [ ] Release the stable version along with documentation and teaching materials.
 
+## References
+- https://0xrick.github.io/win-internals/pe1/
+- https://learn.microsoft.com/en-us/windows/win32/api/winnt/
+- https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/
