@@ -10,17 +10,22 @@
 #include "winntdef.h"
 #include "PEFILE_CUSTOM_STRUCTS.h"
 #include <string>
+#include <QLoggingCategory>
+#include <QStandardItemModel>
+#include <QTreeWidget>
+#include <QString>
 
 class PE32FILE
 {
 public:
-    PE32FILE(char* _NAME, FILE* Ppefile);
+    PE32FILE(const char* NAME, FILE* Ppefile);
 
     void PrintInfo();
 
 private:
-    char* NAME;
-    FILE* Ppefile;
+    std::string _fileName;
+    FILE* _peFile;
+
     int _import_directory_count, _import_directory_size;
     int _basreloc_directory_count;
 

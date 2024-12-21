@@ -14,13 +14,13 @@
 class PE64FILE
 {
 public:
-    PE64FILE(char* _NAME, FILE* Ppefile);
+    PE64FILE(const char* NAME, FILE* Ppefile);
 
     void PrintInfo();
 
 private:
-    char* NAME;
-    FILE* Ppefile;
+    std::string _fileName;
+    FILE* _peFile;
     int _import_directory_count, _import_directory_size;
     int _basreloc_directory_count;
 

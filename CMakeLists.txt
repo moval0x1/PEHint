@@ -12,69 +12,65 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
+# Specify where to look for .ui files
+set(CMAKE_AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 
+# Add include directories for headers
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/headers)
+
+# Add include directories for src
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Source files
+set(SRC_FILES
+    src/main.cpp
+    src/mainwindow.cpp
+    src/PEFILE.cpp
+    src/PE32FILE.cpp
+    src/PE64FILE.cpp
+)
+
+# Header files
+set(HEADER_FILES
+    headers/mainwindow.h
+    headers/winntdef.h
+    headers/PEFILE_CUSTOM_STRUCTS.h
+    headers/PE64FILE.h
+    headers/PEFILE.h
+    headers/PE32FILE.h
+)
+
+# UI files
+set(UI_FILES
+    ui/mainwindow.ui
+    ui/resource.qrc
+)
+
+# Combine all sources
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
-        mainwindow.ui
-    )
+    ${SRC_FILES}
+    ${HEADER_FILES}
+    ${UI_FILES}
+)
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(PEHint
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        resource.qrc
-        winntdef.h
-        PEFILE_CUSTOM_STRUCTS.h
-        PE64FILE.h
-        PEFILE.cpp
-        PEFILE.h
-        PE32FILE.h
-        PE32FILE.cpp
-        PE64FILE.cpp
     )
-# Define target properties for Android with Qt 6 as:
-#    set_property(TARGET PEHint APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
-# For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
-else()
-    if(ANDROID)
-        add_library(PEHint SHARED
-            ${PROJECT_SOURCES}
-        )
-# Define properties for Android with Qt 5 after find_package() calls as:
-#    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
-    else()
-        add_executable(PEHint
-            ${PROJECT_SOURCES}
-        )
+
+    target_link_libraries(PEHint PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+
+    include(GNUInstallDirs)
+    install(TARGETS PEHint
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+    if(QT_VERSION_MAJOR EQUAL 6)
+        qt_finalize_executable(PEHint)
     endif()
-endif()
-
-target_link_libraries(PEHint PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
-
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
-if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.PEHint)
-endif()
-set_target_properties(PEHint PROPERTIES
-    ${BUNDLE_ID_OPTION}
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-)
-
-include(GNUInstallDirs)
-install(TARGETS PEHint
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(PEHint)
+else()
+    message(FATAL_ERROR "This project requires Qt version 6 or higher.")
 endif()

@@ -1,58 +1,54 @@
 /*
 
-    Header from: https://github.com/0xRick/PE-Parser/blob/main/PE-Parser/PE32FILE.cpp
+    Header from: https://github.com/0xRick/PE-Parser/blob/main/PE-Parser/PE64FILE.cpp
 
 */
 
-#include "PE32FILE.h"
+#include "PE64FILE.h"
 
 // CONSTRUCTOR
-PE32FILE::PE32FILE(char* _NAME, FILE* _Ppefile) {
-
-    NAME = _NAME;
-    Ppefile = _Ppefile;
-
+PE64FILE::PE64FILE(const char* NAME, FILE* Ppefile)
+    : _fileName(NAME), _peFile(Ppefile)
+{
     ParseFile();
-
 }
 
 // ADDRESS RESOLVERS
-int PE32FILE::locate(DWORD VA) {
+int PE64FILE::locate(DWORD VA) {
 
     int index;
 
     for (int i = 0; i < PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS; i++) {
         if (VA >= PEFILE_SECTION_HEADERS[i].VirtualAddress
-            && VA < (PEFILE_SECTION_HEADERS[i].VirtualAddress + PEFILE_SECTION_HEADERS[i].Misc.VirtualSize)) {
+            && VA < (PEFILE_SECTION_HEADERS[i].VirtualAddress + PEFILE_SECTION_HEADERS[i].Misc.VirtualSize)){
             index = i;
             break;
         }
     }
     return index;
-
 }
 
-DWORD PE32FILE::resolve(DWORD VA, int index) {
+DWORD PE64FILE::resolve(DWORD VA, int index) {
 
     return (VA - PEFILE_SECTION_HEADERS[index].VirtualAddress) + PEFILE_SECTION_HEADERS[index].PointerToRawData;
 
 }
 
 // PARSERS
-void PE32FILE::ParseDOSHeader() {
+void PE64FILE::ParseDOSHeader() {
 
-    fseek(Ppefile, 0, SEEK_SET);
-    fread(&PEFILE_DOS_HEADER, sizeof(___IMAGE_DOS_HEADER), 1, Ppefile);
+    fseek(_peFile, 0, SEEK_SET);
+    fread(&PEFILE_DOS_HEADER, sizeof(___IMAGE_DOS_HEADER), 1, _peFile);
 
     PEFILE_DOS_HEADER_EMAGIC = PEFILE_DOS_HEADER.e_magic;
     PEFILE_DOS_HEADER_LFANEW = PEFILE_DOS_HEADER.e_lfanew;
 
 }
 
-void PE32FILE::ParseNTHeaders() {
+void PE64FILE::ParseNTHeaders() {
 
-    fseek(Ppefile, PEFILE_DOS_HEADER.e_lfanew, SEEK_SET);
-    fread(&PEFILE_NT_HEADERS, sizeof(PEFILE_NT_HEADERS), 1, Ppefile);
+    fseek(_peFile, PEFILE_DOS_HEADER.e_lfanew, SEEK_SET);
+    fread(&PEFILE_NT_HEADERS, sizeof(PEFILE_NT_HEADERS), 1, _peFile);
 
     PEFILE_NT_HEADERS_SIGNATURE = PEFILE_NT_HEADERS.Signature;
 
@@ -90,18 +86,18 @@ void PE32FILE::ParseNTHeaders() {
 
 }
 
-void PE32FILE::ParseSectionHeaders() {
+void PE64FILE::ParseSectionHeaders() {
 
     PEFILE_SECTION_HEADERS = new ___IMAGE_SECTION_HEADER[PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS];
     for (int i = 0; i < PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS; i++) {
         int offset = (PEFILE_DOS_HEADER.e_lfanew + sizeof(PEFILE_NT_HEADERS)) + (i * ___IMAGE_SIZEOF_SECTION_HEADER);
-        fseek(Ppefile, offset, SEEK_SET);
-        fread(&PEFILE_SECTION_HEADERS[i], ___IMAGE_SIZEOF_SECTION_HEADER, 1, Ppefile);
+        fseek(_peFile, offset, SEEK_SET);
+        fread(&PEFILE_SECTION_HEADERS[i], ___IMAGE_SIZEOF_SECTION_HEADER, 1, _peFile);
     }
 
 }
 
-void PE32FILE::ParseImportDirectory() {
+void PE64FILE::ParseImportDirectory() {
 
     DWORD _import_directory_address = resolve(PEFILE_IMPORT_DIRECTORY.VirtualAddress, locate(PEFILE_IMPORT_DIRECTORY.VirtualAddress));
     _import_directory_count = 0;
@@ -109,8 +105,8 @@ void PE32FILE::ParseImportDirectory() {
     while (true) {
         ___IMAGE_IMPORT_DESCRIPTOR tmp;
         int offset = (_import_directory_count * sizeof(___IMAGE_IMPORT_DESCRIPTOR)) + _import_directory_address;
-        fseek(Ppefile, offset, SEEK_SET);
-        fread(&tmp, sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, Ppefile);
+        fseek(_peFile, offset, SEEK_SET);
+        fread(&tmp, sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
 
         if (tmp.Name == 0x00000000 && tmp.FirstThunk == 0x00000000) {
             _import_directory_count -= 1;
@@ -125,13 +121,13 @@ void PE32FILE::ParseImportDirectory() {
 
     for (int i = 0; i < _import_directory_count; i++) {
         int offset = (i * sizeof(___IMAGE_IMPORT_DESCRIPTOR)) + _import_directory_address;
-        fseek(Ppefile, offset, SEEK_SET);
-        fread(&PEFILE_IMPORT_TABLE[i], sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, Ppefile);
+        fseek(_peFile, offset, SEEK_SET);
+        fread(&PEFILE_IMPORT_TABLE[i], sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
     }
 
 }
 
-void PE32FILE::ParseBaseReloc() {
+void PE64FILE::ParseBaseReloc() {
 
     DWORD _basereloc_directory_address = resolve(PEFILE_BASERELOC_DIRECTORY.VirtualAddress, locate(PEFILE_BASERELOC_DIRECTORY.VirtualAddress));
     _basreloc_directory_count = 0;
@@ -142,8 +138,8 @@ void PE32FILE::ParseBaseReloc() {
 
         int offset = (_basereloc_size_counter + _basereloc_directory_address);
 
-        fseek(Ppefile, offset, SEEK_SET);
-        fread(&tmp, sizeof(___IMAGE_BASE_RELOCATION), 1, Ppefile);
+        fseek(_peFile, offset, SEEK_SET);
+        fread(&tmp, sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
 
         if (tmp.VirtualAddress == 0x00000000 &&
             tmp.SizeOfBlock == 0x00000000) {
@@ -160,18 +156,18 @@ void PE32FILE::ParseBaseReloc() {
 
     for (int i = 0; i < _basreloc_directory_count; i++) {
         int offset = _basereloc_directory_address + _basereloc_size_counter;
-        fseek(Ppefile, offset, SEEK_SET);
-        fread(&PEFILE_BASERELOC_TABLE[i], sizeof(___IMAGE_BASE_RELOCATION), 1, Ppefile);
+        fseek(_peFile, offset, SEEK_SET);
+        fread(&PEFILE_BASERELOC_TABLE[i], sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
         _basereloc_size_counter += PEFILE_BASERELOC_TABLE[i].SizeOfBlock;
     }
 
 }
 
-void PE32FILE::ParseRichHeader() {
+void PE64FILE::ParseRichHeader() {
 
     char* dataPtr = new char[PEFILE_DOS_HEADER_LFANEW];
-    fseek(Ppefile, 0, SEEK_SET);
-    fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, Ppefile);
+    fseek(_peFile, 0, SEEK_SET);
+    fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile);
 
     int index_ = 0;
 
@@ -250,14 +246,14 @@ void PE32FILE::ParseRichHeader() {
 }
 
 // PRINT INFO
-void PE32FILE::PrintFileInfo() {
+void PE64FILE::PrintFileInfo() {
 
-    printf(" FILE: %s\n", NAME);
-    printf(" TYPE: 0x%X (PE32)\n", PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC);
+    printf(" FILE: %s\n", _fileName);
+    printf(" TYPE: 0x%X (PE32+)\n", PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC);
 
 }
 
-void PE32FILE::PrintDOSHeaderInfo() {
+void PE64FILE::PrintDOSHeaderInfo() {
 
     printf(" DOS HEADER:\n");
     printf(" -----------\n\n");
@@ -267,12 +263,12 @@ void PE32FILE::PrintDOSHeaderInfo() {
 
 }
 
-void PE32FILE::PrintRichHeaderInfo() {
+void PE64FILE::PrintRichHeaderInfo() {
 
     printf(" RICH HEADER:\n");
     printf(" ------------\n\n");
 
-    for (int i = 0; i < PEFILE_RICH_HEADER_INFO.entries; i++){
+    for (int i = 0; i < PEFILE_RICH_HEADER_INFO.entries; i++) {
         printf(" 0x%X 0x%X 0x%X: %d.%d.%d\n",
                PEFILE_RICH_HEADER.entries[i].buildID,
                PEFILE_RICH_HEADER.entries[i].prodID,
@@ -284,7 +280,7 @@ void PE32FILE::PrintRichHeaderInfo() {
 
 }
 
-void PE32FILE::PrintNTHeadersInfo() {
+void PE64FILE::PrintNTHeadersInfo() {
 
     printf(" NT HEADERS:\n");
     printf(" -----------\n\n");
@@ -372,7 +368,7 @@ void PE32FILE::PrintNTHeadersInfo() {
 
 }
 
-void PE32FILE::PrintSectionHeadersInfo() {
+void PE64FILE::PrintSectionHeadersInfo() {
 
     printf(" SECTION HEADERS:\n");
     printf(" ----------------\n\n");
@@ -388,7 +384,7 @@ void PE32FILE::PrintSectionHeadersInfo() {
 
 }
 
-void PE32FILE::PrintImportTableInfo() {
+void PE64FILE::PrintImportTableInfo() {
 
     printf(" IMPORT TABLE:\n");
     printf(" ----------------\n\n");
@@ -399,8 +395,8 @@ void PE32FILE::PrintImportTableInfo() {
 
         while (true) {
             char tmp;
-            fseek(Ppefile, (NameAddr + NameSize), SEEK_SET);
-            fread(&tmp, sizeof(char), 1, Ppefile);
+            fseek(_peFile, (NameAddr + NameSize), SEEK_SET);
+            fread(&tmp, sizeof(char), 1, _peFile);
 
             if (tmp == 0x00) {
                 break;
@@ -410,8 +406,8 @@ void PE32FILE::PrintImportTableInfo() {
         }
 
         char* Name = new char[NameSize + 2];
-        fseek(Ppefile, NameAddr, SEEK_SET);
-        fread(Name, (NameSize * sizeof(char)) + 1, 1, Ppefile);
+        fseek(_peFile, NameAddr, SEEK_SET);
+        fread(Name, (NameSize * sizeof(char)) + 1, 1, _peFile);
         printf("   * %s:\n", Name);
         delete[] Name;
 
@@ -432,20 +428,20 @@ void PE32FILE::PrintImportTableInfo() {
 
         while (true) {
 
-            ILT_ENTRY_32 entry;
+            ILT_ENTRY_64 entry;
 
-            fseek(Ppefile, (ILTAddr + (entrycounter * sizeof(DWORD))), SEEK_SET);
-            fread(&entry, sizeof(ILT_ENTRY_32), 1, Ppefile);
+            fseek(_peFile, (ILTAddr + (entrycounter * sizeof(QWORD))), SEEK_SET);
+            fread(&entry, sizeof(ILT_ENTRY_64), 1, _peFile);
 
-            BYTE flag = entry.FIELD_1.ORDINAL_NAME_FLAG;
+            BYTE flag = entry.ORDINAL_NAME_FLAG;
             DWORD HintRVA = 0x0;
             WORD ordinal = 0x0;
 
             if (flag == 0x0) {
-                HintRVA = entry.FIELD_1.HINT_NAME_TABE;
+                HintRVA = entry.FIELD_2.HINT_NAME_TABE;
             }
             else if (flag == 0x01) {
-                ordinal = entry.FIELD_1.ORDINAL;
+                ordinal = entry.FIELD_2.ORDINAL;
             }
 
             if (flag == 0x0 && HintRVA == 0x0 && ordinal == 0x0) {
@@ -458,8 +454,8 @@ void PE32FILE::PrintImportTableInfo() {
                 ___IMAGE_IMPORT_BY_NAME hint;
 
                 DWORD HintAddr = resolve(HintRVA, locate(HintRVA));
-                fseek(Ppefile, HintAddr, SEEK_SET);
-                fread(&hint, sizeof(___IMAGE_IMPORT_BY_NAME), 1, Ppefile);
+                fseek(_peFile, HintAddr, SEEK_SET);
+                fread(&hint, sizeof(___IMAGE_IMPORT_BY_NAME), 1, _peFile);
                 printf("         Name: %s\n", hint.Name);
                 printf("         Hint RVA: 0x%X\n", HintRVA);
                 printf("         Hint: 0x%X\n", hint.Hint);
@@ -477,7 +473,7 @@ void PE32FILE::PrintImportTableInfo() {
 
 }
 
-void PE32FILE::PrintBaseRelocationsInfo() {
+void PE64FILE::PrintBaseRelocationsInfo() {
 
     printf(" BASE RELOCATIONS TABLE:\n");
     printf(" -----------------------\n");
@@ -506,8 +502,8 @@ void PE32FILE::PrintBaseRelocationsInfo() {
 
             int offset = (BASE_RELOC_ADDR + szCounter + (i * sizeof(WORD)));
 
-            fseek(Ppefile, offset, SEEK_SET);
-            fread(&entry, sizeof(WORD), 1, Ppefile);
+            fseek(_peFile, offset, SEEK_SET);
+            fread(&entry, sizeof(WORD), 1, _peFile);
 
             printf("\n       * Value: 0x%X\n", entry);
             printf("         Relocation Type: 0x%X\n", entry.TYPE);
@@ -521,7 +517,7 @@ void PE32FILE::PrintBaseRelocationsInfo() {
 }
 
 // MAIN
-void PE32FILE::ParseFile() {
+void PE64FILE::ParseFile() {
 
     // PARSE DOS HEADER
     ParseDOSHeader();
@@ -543,7 +539,7 @@ void PE32FILE::ParseFile() {
 
 }
 
-void PE32FILE::PrintInfo() {
+void PE64FILE::PrintInfo() {
 
     printf("\n\n");
 
