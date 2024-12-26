@@ -15,16 +15,19 @@ cache:
 # Clone the repository
 clone_folder: c:\projects\pehint
 
-# Before build: install dependencies
+# Before build: set up environment
 before_build:
   # Add Qt bin folder to PATH
   - set PATH=%QT_DIR%\bin;%PATH%
-  # Set the generator to Visual Studio 2022
-  - set CMAKE_GENERATOR="Visual Studio 17 2022"
+  # Specify CMake prefix path
+  - set CMAKE_PREFIX_PATH=%QT_DIR%
+  # Debug output for paths
+  - echo PATH=%PATH%
+  - echo CMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH%
 
 # Build script
 build_script:
-  - cmake -B build -DCMAKE_PREFIX_PATH=%QT_DIR% -A x64
+  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -A x64
   - cmake --build build --config Release
 
 # Artifacts: include the final executable for download
