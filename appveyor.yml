@@ -1,12 +1,32 @@
 # AppVeyor configuration for PEHint project
 
+version: '{branch}.{build}'
+skip_tags: true
+
 # Set the environment to Windows
-image: Visual Studio 2022
+image: Visual Studio 2019
 
 # Define the build matrix
 environment:
   matrix:
     - QT_DIR: C:\Qt\6.8.0\msvc2022_64
+
+image:
+- Visual Studio 2019
+     
+platform:
+  - x64
+  - x86
+  
+configuration:
+  - Release
+
+branches:
+  only:
+    - update-layout-structure
+
+build:
+  verbosity: detailed
 
 # Define the build cache to speed up subsequent builds
 cache:
