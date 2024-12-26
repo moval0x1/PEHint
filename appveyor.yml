@@ -19,24 +19,24 @@ branches:
 build:
   verbosity: detailed
 
-# Install and detect Qt
+# Install and detect Qt for MSVC
 install:
   - ps: |
       $qtDirs = Get-ChildItem -Directory C:\Qt | Where-Object { $_.Name -match '6.*' }
       if ($qtDirs.Count -eq 0) {
-          Write-Host "No Qt 6.x installation found. Installing Qt 6.7.2..."
+          Write-Host "No Qt 6.x installation found. Installing Qt 6.7.2 for MSVC..."
           $qtInstallerUrl = "https://download.qt.io/official_releases/online_installers/qt-unified-windows-x64-online.exe"
           $qtInstallerPath = "$env:TEMP\qt-unified-windows-x64-online.exe"
           Invoke-WebRequest -Uri $qtInstallerUrl -OutFile $qtInstallerPath
           Start-Process -Wait -FilePath $qtInstallerPath -ArgumentList "--silent", "--platform minimal", "--root C:\Qt", "--modules qt.qt6.670.win64_msvc2019_64"
       } else {
           $qtVersion = $qtDirs[-1].FullName
-          $qtConfigPath = Get-ChildItem -Recurse -Filter "Qt6Config.cmake" "$qtVersion" | Select-Object -First 1
+          $qtConfigPath = Get-ChildItem -Recurse -Filter "Qt6Config.cmake" "$qtVersion\msvc*" | Select-Object -First 1
           if ($qtConfigPath -and $qtConfigPath.DirectoryName) {
-              Write-Host "Using Qt installation at: $($qtConfigPath.DirectoryName)"
+              Write-Host "Using Qt MSVC installation at: $($qtConfigPath.DirectoryName)"
               [Environment]::SetEnvironmentVariable("QT_DIR", $qtConfigPath.DirectoryName, "Process")
           } else {
-              Write-Host "Could not find Qt6Config.cmake in $qtVersion"
+              Write-Host "Could not find Qt6Config.cmake for MSVC in $qtVersion"
               exit 1
           }
       }
@@ -50,7 +50,7 @@ before_build:
   - echo QT_DIR="%QT_DIR%"
   - dir "%QT_DIR%"
   - set CMAKE_PREFIX_PATH=%QT_DIR%
-  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -G "Visual Studio 16 2019" -A x64
+  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -G "Visual Studio 16 2019" -A x64 -DQT_DEBUG_FIND_PACKAGE=ON
 
 # Build script
 build_script:
