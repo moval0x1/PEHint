@@ -18,36 +18,44 @@ install:
   - echo QT_INSTALL_DIR=%QT_INSTALL_DIR%
   - echo QT_VERSION=%QT_VERSION%
 
-  # Check if Qt is already installed, download and install if not
+  # Check and install Qt if not present
   - cmd: |
-      set QT_INSTALL_DIR=C:\Qt
-      if not exist %QT_INSTALL_DIR%\%QT_VERSION% (
+      echo Checking if Qt is already installed...
+      IF NOT EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
+        echo "Qt not found at %QT_INSTALL_DIR%\%QT_VERSION%. Starting installation..."
         curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
         qt-installer.exe --script qt-install-script.qs
-      ) else (
-        echo "Qt already installed."
+        IF %ERRORLEVEL% NEQ 0 (
+          echo "Qt installation failed. Exiting..."
+          exit /b %ERRORLEVEL%
+        )
+      ) ELSE (
+        echo "Qt already installed at %QT_INSTALL_DIR%\%QT_VERSION%."
       )
 
-  # Verify the Qt installation
+  # Verify Qt installation
   - cmd: |
-      if exist C:\Qt\6.5.2 (
-        echo "Qt installation verified at C:\Qt\6.5.2."
-      ) else (
-        echo "Qt installation failed. Check previous steps."
-        exit 1
+      echo Verifying Qt installation...
+      IF EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
+        echo "Qt installation verified at %QT_INSTALL_DIR%\%QT_VERSION%."
+      ) ELSE (
+        echo "Qt installation missing. Exiting with error."
+        exit /b 1
       )
 
 build_script:
   # Create build directory and configure project
   - cmd: mkdir build
   - cmd: cd build
-  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\6.5.2\msvc2019_64 ..
+  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\%QT_VERSION%\msvc2019_64 ..
   - cmd: cmake --build . --config Release
 
 test_script:
+  # Run tests
   - cmd: cd build
   - cmd: ctest --output-on-failure
 
 artifacts:
+  # Collect compiled executables
   - path: build\Release\*.exe
     name: PEHint Executables
