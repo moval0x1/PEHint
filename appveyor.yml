@@ -19,32 +19,32 @@ install:
   - echo QT_INSTALL_DIR=%QT_INSTALL_DIR%
   - echo QT_VERSION=%QT_VERSION%
 
-  # Create the QT_INSTALL_DIR if it doesn't exist
+  # Ensure QT_INSTALL_DIR exists without causing errors
   - cmd: |
       echo Ensuring that %QT_INSTALL_DIR% exists...
-      mkdir "%QT_INSTALL_DIR%" || echo "Directory already exists."
+      if not exist "%QT_INSTALL_DIR%" mkdir "%QT_INSTALL_DIR%"
 
   # Check if Qt is installed
   - cmd: |
       echo Checking if Qt %QT_VERSION% is installed...
-      IF NOT EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
+      if not exist "%QT_INSTALL_DIR%\%QT_VERSION%" (
         echo "Qt not found. Starting installation..."
         curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
         qt-installer.exe --script qt-install-script.qs
-        IF %ERRORLEVEL% NEQ 0 (
+        if %ERRORLEVEL% neq 0 (
           echo "Qt installation failed. Exiting..."
           exit /b %ERRORLEVEL%
         )
-      ) ELSE (
+      ) else (
         echo "Qt %QT_VERSION% is already installed."
       )
 
   # Verify Qt installation
   - cmd: |
       echo Verifying Qt installation...
-      IF EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
+      if exist "%QT_INSTALL_DIR%\%QT_VERSION%" (
         echo "Qt installation verified successfully."
-      ) ELSE (
+      ) else (
         echo "Qt installation missing. Exiting with error."
         exit /b 1
       )
