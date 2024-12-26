@@ -9,6 +9,8 @@
 
 #include "winntdef.h"
 #include "PEFILE_CUSTOM_STRUCTS.h"
+#include <orderedmap.h>
+
 #include <string>
 #include <QLoggingCategory>
 #include <QStandardItemModel>
@@ -26,8 +28,8 @@ public:
 
 
     // PRINT INFO
-    QMap<QString, QString> PrintFileInfo();
-    QMap<QString, QString> PrintDOSHeaderInfo();
+    OrderedMap PrintFileInfo();
+    OrderedMap PrintDOSHeaderInfo();
     void PrintRichHeaderInfo();
     void PrintNTHeadersInfo();
     void PrintSectionHeadersInfo();
@@ -45,8 +47,46 @@ private:
     ___IMAGE_NT_HEADERS32   PEFILE_NT_HEADERS;
 
     // DOS HEADER
+
+    // WORD   e_magic;
+    // WORD   e_cblp;
+    // WORD   e_cp;
+    // WORD   e_crlc;
+    // WORD   e_cparhdr;
+    // WORD   e_minalloc;
+    // WORD   e_maxalloc;
+    // WORD   e_ss;
+    // WORD   e_sp;
+    // WORD   e_csum;
+    // WORD   e_ip;
+    // WORD   e_cs;
+    // WORD   e_lfarlc;
+    // WORD   e_ovno;
+    // WORD   e_res[4];
+    // WORD   e_oemid;
+    // WORD   e_oeminfo;
+    // WORD   e_res2[10];
+    // LONG   e_lfanew;
+
     DWORD PEFILE_DOS_HEADER_EMAGIC;
-    LONG  PEFILE_DOS_HEADER_LFANEW;
+    WORD PEFILE_DOS_HEADER_ECBLP;
+    WORD PEFILE_DOS_HEADER_ECP;
+    WORD PEFILE_DOS_HEADER_ECRLC;
+    WORD PEFILE_DOS_HEADER_ECPARHDR;
+    WORD PEFILE_DOS_HEADER_EMINALLOC;
+    WORD PEFILE_DOS_HEADER_EMAXALLOC;
+    WORD PEFILE_DOS_HEADER_ESS;
+    WORD PEFILE_DOS_HEADER_ESP;
+    WORD PEFILE_DOS_HEADER_ECSUM;
+    WORD PEFILE_DOS_HEADER_EIP;
+    WORD PEFILE_DOS_HEADER_ECS;
+    WORD PEFILE_DOS_HEADER_ELFARLC;
+    WORD PEFILE_DOS_HEADER_EOVNO;
+    WORD PEFILE_DOS_HEADER_ERES[4];
+    WORD PEFILE_DOS_HEADER_EOEMID;
+    WORD PEFILE_DOS_HEADER_EOEMINFO;
+    WORD PEFILE_DOS_HEADER_ERES2[10];
+    LONG PEFILE_DOS_HEADER_ELFANEW;
 
     // RICH HEADER
     RICH_HEADER_INFO PEFILE_RICH_HEADER_INFO;

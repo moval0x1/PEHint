@@ -1,10 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-
 #include "PEFILE.h"
 
-QMap<QString, QString> mapInfo;
-QString fileName;
+const QString peHintVersion = "v0.1";
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), _tree(new QTreeWidget(this)), _table(new QTableWidget(this))
@@ -19,6 +17,10 @@ MainWindow::MainWindow(QWidget *parent)
     this->setWindowIcon(icon);
 
     startUI();
+
+    connect(_tree, &QTreeWidget::itemClicked, this, &MainWindow::onTreeItemClicked);
+
+    this->setWindowTitle(QString("PEHint %1").arg(peHintVersion));
 
 }
 
@@ -78,7 +80,8 @@ void MainWindow::on_action_Open_triggered()
     int arc = INITPARSE(peFile);
 
     // Get only the fileName from the binary
-    fileName = peFile.fileName().split('/').last();
+    _fileName = peFile.fileName().split('/').last();
+    this->setWindowTitle(QString("PEHint %1 - %2").arg(peHintVersion).arg(peFile.fileName()));
 
     if (arc == 1) {
         exit(1);
@@ -88,10 +91,11 @@ void MainWindow::on_action_Open_triggered()
         PE32FILE pe32(&peFile);
         pe32.PrintInfo();
 
-        mapInfo = pe32.PrintFileInfo();
-        MainWindow::setupUI();
+        _fileInfo = pe32.PrintFileInfo();
+        _dosHeader = pe32.PrintDOSHeaderInfo();
 
-        populateTable(mapInfo);
+        MainWindow::setupUI();
+        MainWindow::populateTable(_fileInfo);
 
     }
     else if (arc == 64) {
@@ -108,20 +112,40 @@ void MainWindow::onHeaderClicked(int section) {
     _table->clearContents();
     _table->setHorizontalHeaderLabels({"Property", "Value"});  // Restore headers
 
-    if (section == 0) {
-        populateTable(mapInfo);
-    }else if (section == 1) {
-        populateTable(mapInfo);
+    // if (section == 0) {
+    //     MainWindow::populateTable(_fileInfo);
+    // }else if (section == 1) {
+    //     MainWindow::populateTable(_fileInfo);
+    // }
+    MainWindow::populateTable(_fileInfo);
+}
+
+void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column) {
+    // Clear the table before updating
+    _table->clearContents();
+    if (item->text(0) == "DOS HEADER") {
+        MainWindow::populateTable(_dosHeader);
+    } else if (item->text(0) == "RICH HEADER") {
+        _table->setRowCount(2);
+        _table->setItem(0, 0, new QTableWidgetItem("Entropy"));
+        _table->setItem(0, 1, new QTableWidgetItem("7.609"));
+    }
+}
+
+void MainWindow::onTableItemClicked(QTableWidgetItem *item) {
+    if (item) {
+        QString text = item->text();
+        qInfo() << "Clicked item text:" << text;
     }
 }
 
 void MainWindow::setupUI() {
 
-    baseUI();
+    MainWindow::baseUI();
 
     // Setup tree and table contents
-    setupTree(_tree);
-    setupTable(_table);
+    MainWindow::setupTree(_tree);
+    MainWindow::setupTable(_table);
 
     // Set the splitter as the central widget of the main window
     //setCentralWidget(splitter);
@@ -138,7 +162,7 @@ void MainWindow::baseUI()
     splitter->addWidget(_tree);
     splitter->addWidget(_table);
 
-    // Optional: Set initial sizes for splitter widgets
+    // Set initial sizes for splitter widgets
     splitter->setStretchFactor(0, 1); // Tree gets more focus
     splitter->setStretchFactor(1, 2); // Table takes up more space
 
@@ -149,33 +173,31 @@ void MainWindow::baseUI()
 
 void MainWindow::startUI()
 {
-    baseUI();
+    MainWindow::baseUI();
 
     // Configure the tree widget
     _tree->setHeaderLabel("");
     _tree->clear();
 }
 
-void MainWindow::populateTable(const QMap<QString, QString> &mapInfo)
+void MainWindow::populateTable(const OrderedMap& orderedMap)
 {
-    // Set the row count to match the number of entries in the map
-    _table->setRowCount(mapInfo.size());
+    const auto& keys = orderedMap.orderedKeys();
 
-    // Iterate through the map and populate the table
+    _table->setRowCount(keys.size());
+
     int row = 0;
-    for (auto it = mapInfo.begin(); it != mapInfo.end(); ++it, ++row) {
-        // Set key in the first column
-        _table->setItem(row, 0, new QTableWidgetItem(it.key()));
-
-        // Set value in the second column
-        _table->setItem(row, 1, new QTableWidgetItem(it.value()));
+    for (const QString& key : keys) {
+        _table->setItem(row, 0, new QTableWidgetItem(key));
+        _table->setItem(row, 1, new QTableWidgetItem(orderedMap.value(key)));
+        ++row;
     }
 }
 
 void MainWindow::setupTree(QTreeWidget *tree) {
 
     tree->header()->setSectionsClickable(true);
-    tree->setHeaderLabel(fileName);
+    tree->setHeaderLabel(_fileName);
 
     // Add items to the tree
     QTreeWidgetItem *fileItem = new QTreeWidgetItem(tree);
@@ -191,7 +213,7 @@ void MainWindow::setupTree(QTreeWidget *tree) {
     QTreeWidgetItem *ntHeader = new QTreeWidgetItem(tree);
     ntHeader->setText(0, "SECTION HEADERS");
 
-    tree->expandAll();  // Optional: expand all nodes
+    tree->expandAll();  // expand all nodes
 
     // Connect header sectionClicked signal
     connect(tree->header(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
@@ -207,12 +229,12 @@ void MainWindow::setupTable(QTableWidget *table) {
     table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
 
-    // Optional: Set the row height dynamically to fit content
+    // Set the row height dynamically to fit content
     table->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 
-    // Optional: Allow horizontal header resizing by the user if needed
+    // Allow horizontal header resizing by the user if needed
     table->horizontalHeader()->setStretchLastSection(false); // Disable stretching
 
-    // Connect header signal to onHeaderClicked
-    connect(table->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
+    // Connect the itemClicked signal to the onTableItemClicked slot
+    connect(_table, &QTableWidget::itemClicked, this, &MainWindow::onTableItemClicked);
 }

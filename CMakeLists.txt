@@ -25,6 +25,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SRC_FILES
     src/main.cpp
     src/mainwindow.cpp
+    src/orderedmap.cpp
     src/PEFILE.cpp
     src/PE32FILE.cpp
     src/PE64FILE.cpp
@@ -34,6 +35,7 @@ set(SRC_FILES
 set(HEADER_FILES
     headers/mainwindow.h
     headers/winntdef.h
+    headers/orderedmap.h
     headers/PEFILE_CUSTOM_STRUCTS.h
     headers/PE64FILE.h
     headers/PEFILE.h

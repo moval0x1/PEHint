@@ -6,12 +6,14 @@
 #include <QFileDialog>
 #include <QTreeWidget>
 #include <QTableWidget>
+#include <QListWidgetItem>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QHeaderView>
 
 #include <iostream>
 #include <fstream>
+#include <orderedmap.h>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -31,8 +33,7 @@ public:
     void setupTree(QTreeWidget *tree);
     void setupUI();
     void startUI();
-    void populateTable(const QMap<QString, QString>& mapInfo);
-
+    void populateTable(const OrderedMap& orderedMap);
     void baseUI();
 
 private slots:
@@ -41,12 +42,19 @@ private slots:
     void on_action_Exit_triggered();
     void on_action_Open_triggered();
     void onHeaderClicked(int section);
-
+    void onTreeItemClicked(QTreeWidgetItem *item, int column);
+    void onTableItemClicked(QTableWidgetItem *item);
 
 private:
     Ui::MainWindow *ui;
 
     QTreeWidget *_tree;
     QTableWidget *_table;
+
+    QString _fileName;
+
+    OrderedMap _fileInfo;
+    OrderedMap _dosHeader;
+
 };
 #endif // MAINWINDOW_H

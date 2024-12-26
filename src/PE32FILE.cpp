@@ -53,7 +53,31 @@ void PE32FILE::ParseDOSHeader() {
     }
 
     PEFILE_DOS_HEADER_EMAGIC = PEFILE_DOS_HEADER.e_magic;
-    PEFILE_DOS_HEADER_LFANEW = PEFILE_DOS_HEADER.e_lfanew;
+    PEFILE_DOS_HEADER_ECBLP = PEFILE_DOS_HEADER.e_cblp;
+    PEFILE_DOS_HEADER_ECP = PEFILE_DOS_HEADER.e_cp;
+    PEFILE_DOS_HEADER_ECRLC = PEFILE_DOS_HEADER.e_crlc;
+    PEFILE_DOS_HEADER_ECPARHDR = PEFILE_DOS_HEADER.e_cparhdr;
+    PEFILE_DOS_HEADER_EMINALLOC = PEFILE_DOS_HEADER.e_minalloc;
+    PEFILE_DOS_HEADER_EMAXALLOC = PEFILE_DOS_HEADER.e_maxalloc;
+    PEFILE_DOS_HEADER_ESS = PEFILE_DOS_HEADER.e_ss;
+    PEFILE_DOS_HEADER_ESP = PEFILE_DOS_HEADER.e_sp;
+    PEFILE_DOS_HEADER_EIP = PEFILE_DOS_HEADER.e_ip;
+    PEFILE_DOS_HEADER_ECS = PEFILE_DOS_HEADER.e_cs;
+    PEFILE_DOS_HEADER_ELFARLC = PEFILE_DOS_HEADER.e_lfarlc;
+    PEFILE_DOS_HEADER_EOVNO = PEFILE_DOS_HEADER.e_ovno;
+
+    for (int i = 0; i < 4; ++i) {
+        PEFILE_DOS_HEADER_ERES[i] = PEFILE_DOS_HEADER.e_res[i];
+    }
+
+    PEFILE_DOS_HEADER_EOEMID = PEFILE_DOS_HEADER.e_oemid;
+    PEFILE_DOS_HEADER_EOEMINFO = PEFILE_DOS_HEADER.e_oeminfo;
+
+    for (int i = 0; i < 10; ++i) {
+        PEFILE_DOS_HEADER_ERES2[i] = PEFILE_DOS_HEADER.e_res2[i];
+    }
+
+    PEFILE_DOS_HEADER_ELFANEW = PEFILE_DOS_HEADER.e_lfanew;
 
 }
 
@@ -260,10 +284,10 @@ void PE32FILE::ParseBaseReloc() {
 
 void PE32FILE::ParseRichHeader() {
 
-    char* dataPtr = new char[PEFILE_DOS_HEADER_LFANEW];
+    char* dataPtr = new char[PEFILE_DOS_HEADER_ELFANEW];
 
     // fseek(_peFile, 0, SEEK_SET);
-    // fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile);
+    // fread(dataPtr, PEFILE_DOS_HEADER_ELFANEW, 1, _peFile);
 
     // Seek to the beginning of the file (equivalent to fseek(_peFile, 0, SEEK_SET))
     if (!_peFile->seek(0)) {
@@ -271,15 +295,15 @@ void PE32FILE::ParseRichHeader() {
         return;
     }
 
-    // Read data (equivalent to fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile))
-    if (_peFile->read(dataPtr, PEFILE_DOS_HEADER_LFANEW) != PEFILE_DOS_HEADER_LFANEW) {
+    // Read data (equivalent to fread(dataPtr, PEFILE_DOS_HEADER_ELFANEW, 1, _peFile))
+    if (_peFile->read(dataPtr, PEFILE_DOS_HEADER_ELFANEW) != PEFILE_DOS_HEADER_ELFANEW) {
         QMessageBox::critical(nullptr, "File Error", "Failed to read data from the file.");
         return;
     }
 
     int index_ = 0;
 
-    for (int i = 0; i <= PEFILE_DOS_HEADER_LFANEW; i++) {
+    for (int i = 0; i <= PEFILE_DOS_HEADER_ELFANEW; i++) {
         if (dataPtr[i] == 0x52 && dataPtr[i + 1] == 0x69) {
             index_ = i;
             break;
@@ -354,9 +378,9 @@ void PE32FILE::ParseRichHeader() {
 }
 
 // PRINT INFO
-QMap<QString, QString> PE32FILE::PrintFileInfo() {
+OrderedMap PE32FILE::PrintFileInfo() {
 
-    QMap<QString, QString> map;
+    OrderedMap oMap;
 
     // Display in the console
     // qInfo() << QString("FILE: -> %1").arg(QString::fromStdString(_fileName));
@@ -365,27 +389,83 @@ QMap<QString, QString> PE32FILE::PrintFileInfo() {
     QStringList parts = _peFile->fileName().split('/');
     QString exeName = parts.last();
 
-    map["Name"] = exeName;
-    map["Type"] = QString("0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16).toUpper();
+    // map["FileName"] = exeName;
+    // map["FileType"] = QString("0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16);
 
-    return map;
+    oMap.insert("FileName", exeName);
+    oMap.insert("FileType", QString("0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16));
+
+    return oMap;
 
 }
 
-QMap<QString, QString> PE32FILE::PrintDOSHeaderInfo() {
+OrderedMap PE32FILE::PrintDOSHeaderInfo() {
 
-    QMap<QString, QString> map;
+    OrderedMap oMap;
 
     // printf(" DOS HEADER:\n");
     // printf(" -----------\n\n");
 
     // printf(" Magic: 0x%X\n", PEFILE_DOS_HEADER_EMAGIC);
-    // printf(" File address of new exe header: 0x%X\n", PEFILE_DOS_HEADER_LFANEW);
+    // printf(" File address of new exe header: 0x%X\n", PEFILE_DOS_HEADER_ELFANEW);
 
-    map["Magic"] = QString("0x%1").arg(PEFILE_DOS_HEADER_EMAGIC, 0, 16).toUpper();
-    map["Elfanew"] = QString("0x%1").arg(PEFILE_DOS_HEADER_LFANEW, 0, 16).toUpper();
+    // map["e_magic"] = QString("0x%1").arg(PEFILE_DOS_HEADER_EMAGIC, 0, 16);
+    // map["e_lfanew"] = QString("0x%1").arg(PEFILE_DOS_HEADER_ELFANEW, 0, 16);
 
-    return map;
+    // WORD   e_magic;
+    // WORD   e_cblp;
+    // WORD   e_cp;
+    // WORD   e_crlc;
+    // WORD   e_cparhdr;
+    // WORD   e_minalloc;
+    // WORD   e_maxalloc;
+    // WORD   e_ss;
+    // WORD   e_sp;
+    // WORD   e_csum;
+    // WORD   e_ip;
+    // WORD   e_cs;
+    // WORD   e_lfarlc;
+    // WORD   e_ovno;
+    // WORD   e_res[4];
+    // WORD   e_oemid;
+    // WORD   e_oeminfo;
+    // WORD   e_res2[10];
+    // LONG   e_lfanew;
+
+    oMap.insert("e_magic", QString("0x%1").arg(PEFILE_DOS_HEADER_EMAGIC, 0, 16));
+    oMap.insert("e_cblp", QString("0x%1").arg(PEFILE_DOS_HEADER_ECBLP, 0, 16));
+    oMap.insert("e_cp", QString("0x%1").arg(PEFILE_DOS_HEADER_ECP, 0, 16));
+    oMap.insert("e_crlc", QString("0x%1").arg(PEFILE_DOS_HEADER_ECRLC, 0, 16));
+    oMap.insert("e_cparhdr", QString("0x%1").arg(PEFILE_DOS_HEADER_ECPARHDR, 0, 16));
+    oMap.insert("e_minalloc", QString("0x%1").arg(PEFILE_DOS_HEADER_EMINALLOC, 0, 16));
+    oMap.insert("e_maxalloc", QString("0x%1").arg(PEFILE_DOS_HEADER_EMAXALLOC, 0, 16));
+    oMap.insert("e_ss", QString("0x%1").arg(PEFILE_DOS_HEADER_ESS, 0, 16));
+    oMap.insert("e_sp", QString("0x%1").arg(PEFILE_DOS_HEADER_ESP, 0, 16));
+    oMap.insert("e_csum", QString("0x%1").arg(PEFILE_DOS_HEADER_ECSUM, 0, 16));
+    oMap.insert("e_ip", QString("0x%1").arg(PEFILE_DOS_HEADER_EIP, 0, 16));
+    oMap.insert("e_cs", QString("0x%1").arg(PEFILE_DOS_HEADER_ECS, 0, 16));
+    oMap.insert("e_lfarlc", QString("0x%1").arg(PEFILE_DOS_HEADER_ELFARLC, 0, 16));
+    oMap.insert("e_ovno", QString("0x%1").arg(PEFILE_DOS_HEADER_EOVNO, 0, 16));
+
+    QList<QString> lstRes;
+    for (int res = 0; res < 4; ++res) {
+        lstRes.append(QString("0x%1").arg(PEFILE_DOS_HEADER_ERES[res], 0, 16));
+    }
+
+    oMap.insert("e_res", QString("0x%1").arg(lstRes.join(" ")));
+
+    oMap.insert("e_oemid", QString("0x%1").arg(PEFILE_DOS_HEADER_EOEMID, 0, 16));
+    oMap.insert("e_oeminfo", QString("0x%1").arg(PEFILE_DOS_HEADER_EOEMINFO, 0, 16));
+
+    QList<QString> lstRes2;
+    for (int res2 = 0; res2 < 10; ++res2) {
+        lstRes2.append(QString("0x%1").arg(PEFILE_DOS_HEADER_ERES2[res2], 0, 16));
+    }
+
+    oMap.insert("e_res2", QString("0x%1").arg(lstRes2.join(" ")));
+    oMap.insert("e_lfanew", QString("0x%1").arg(PEFILE_DOS_HEADER_ELFANEW, 0, 16));
+
+    return oMap;
 }
 
 void PE32FILE::PrintRichHeaderInfo() {
