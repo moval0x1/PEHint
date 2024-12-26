@@ -9,11 +9,10 @@ image: Visual Studio 2019
 # Define the build matrix
 environment:
   matrix:
-    - QT_DIR: C:\Qt\6.8.0\msvc2022_64
+    - QT_DIR: C:/Qt/6.8.0/msvc2022_64/lib/cmake/Qt6
 
 platform:
   - x64
-  - x86
   
 configuration:
   - Release
@@ -27,24 +26,24 @@ build:
 
 # Define the build cache to speed up subsequent builds
 cache:
-  - C:\Qt\6.8.0\msvc2022_64
+  - C:/Qt/6.8.0/msvc2022_64
 
 # Clone the repository
-clone_folder: c:\projects\pehint
+clone_folder: c:/projects/pehint
 
 # Before build: set up environment
 before_build:
-  # Add Qt bin folder to PATH
-  - set PATH=%QT_DIR%\bin;%PATH%
-  # Specify CMake prefix path
-  - set CMAKE_PREFIX_PATH=%QT_DIR%
-  # Debug output for paths
-  - echo PATH=%PATH%
+  # Debug Qt installation
   - echo CMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH%
+  - echo QT_DIR=%QT_DIR%
+  - dir %QT_DIR%
+  # Specify CMake prefix path
+  - set CMAKE_PREFIX_PATH=C:/Qt/6.8.0/msvc2022_64
+  # Generate build system
+  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -G "Visual Studio 16 2019" -A x64
 
 # Build script
 build_script:
-  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -A x64
   - cmake --build build --config Release
 
 # Artifacts: include the final executable for download
