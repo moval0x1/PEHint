@@ -1,7 +1,5 @@
 # AppVeyor CI configuration for PEHint
 
-# AppVeyor CI configuration for PEHint
-
 version: 1.0.{build}
 image: Visual Studio 2022
 
@@ -22,9 +20,8 @@ install:
 
   # Check if Qt is already installed, download and install if not
   - cmd: |
-      echo Checking if Qt is already installed...
-      if not exist C:\Qt\6.5.2 (
-        echo "Qt not found, downloading and installing..."
+      set QT_INSTALL_DIR=C:\Qt
+      if not exist %QT_INSTALL_DIR%\%QT_VERSION% (
         curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
         qt-installer.exe --script qt-install-script.qs
       ) else (
