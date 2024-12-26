@@ -1,4 +1,3 @@
-// qt-install-script.qs
 function Controller() {
     installer.setAutomatedPageStatus(QInstaller.Introduction, QInstaller.AcceptLicense);
     installer.setAutomatedPageStatus(QInstaller.TargetDirectory, "C:\\Qt");
