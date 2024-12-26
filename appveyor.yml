@@ -32,9 +32,9 @@ install:
       } else {
           $qtVersion = $qtDirs[-1].FullName
           $qtConfigPath = Get-ChildItem -Recurse -Filter "Qt6Config.cmake" "$qtVersion" | Select-Object -First 1
-          if ($qtConfigPath) {
-              Write-Host "Using Qt installation at: $qtConfigPath.DirectoryName"
-              [Environment]::SetEnvironmentVariable("QT_DIR", "$qtConfigPath.DirectoryName", "Process")
+          if ($qtConfigPath -and $qtConfigPath.DirectoryName) {
+              Write-Host "Using Qt installation at: $($qtConfigPath.DirectoryName)"
+              [Environment]::SetEnvironmentVariable("QT_DIR", $qtConfigPath.DirectoryName, "Process")
           } else {
               Write-Host "Could not find Qt6Config.cmake in $qtVersion"
               exit 1
