@@ -11,9 +11,6 @@ environment:
   matrix:
     - QT_DIR: C:\Qt\6.8.0\msvc2022_64
 
-image:
-- Visual Studio 2019
-     
 platform:
   - x64
   - x86
