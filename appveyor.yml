@@ -16,7 +16,7 @@ configuration:
 
 branches:
   only:
-    - main
+    - update-layout-structure
 
 build:
   verbosity: detailed
@@ -28,14 +28,15 @@ environment:
   buildPlatform: $(PLATFORM)
 
 install:
-  # Update Git submodules
-  - git submodule update --init --recursive
-
   # Set Qt paths dynamically based on platform
-  - if [%buildPlatform%]==[x64] (set QT=C:\Qt\%QT_VERSION%\msvc2019_64)
-  - if [%buildPlatform%]==[x86] (set QT=C:\Qt\%QT_VERSION%\msvc2019)
-  - set QT_DIR=%QT%
-  - set PATH=%PATH%;%QT%\bin
+  - ps: |
+      if ($env:buildPlatform -eq "x64") {
+        $env:QT="C:\Qt\$env:QT_VERSION\msvc2019_64"
+      } elseif ($env:buildPlatform -eq "x86") {
+        $env:QT="C:\Qt\$env:QT_VERSION\msvc2019"
+      }
+      $env:QT_DIR=$env:QT
+      $env:PATH="$env:PATH;$env:QT\bin"
 
 before_build:
   # Debug paths
@@ -43,31 +44,33 @@ before_build:
   - dir %QT_DIR%\lib\cmake
 
   # Verify necessary Qt configuration files
-  - if not exist "%QT_DIR%\lib\cmake\Qt6Config.cmake" (
-      echo "Error: Qt6Config.cmake not found in %QT_DIR%\lib\cmake"
-      exit /b 1
-    )
+  - ps: |
+      if (-not (Test-Path "$env:QT_DIR\lib\cmake\Qt6Config.cmake")) {
+        Write-Host "Error: Qt6Config.cmake not found in $env:QT_DIR\lib\cmake"
+        Exit 1
+      }
 
   # Create build directory
-  - mkdir build
-  - cd build
+  - cmd: mkdir build
+  - cmd: cd build
 
 build_script:
   # Configure the project using CMake
-  - if [%buildPlatform%]==[x64] (
-      cmake .. -A x64 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
-    )
-  - if [%buildPlatform%]==[x86] (
-      cmake .. -A Win32 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
-    )
+  - cmd: |
+      if "%buildPlatform%"=="x64" (
+        cmake .. -A x64 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
+      ) else (
+        cmake .. -A Win32 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
+      )
 
   # Build the executable
-  - cmake --build . --config %buildConfig%
+  - cmd: cmake --build . --config %buildConfig%
 
 after_build:
   # Collect the .exe file as an artifact
-  - mkdir %artifactName%
-  - cp %buildConfig%\PEHint.exe %artifactName%
+  - cmd: |
+      mkdir %artifactName%
+      copy %buildConfig%\PEHint.exe %artifactName%
 
 artifacts:
   # Specify the artifact path
