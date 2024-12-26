@@ -31,6 +31,9 @@ public:
     void setupTree(QTreeWidget *tree);
     void setupUI();
     void startUI();
+    void populateTable(const QMap<QString, QString>& mapInfo);
+
+    void baseUI();
 
 private slots:
 

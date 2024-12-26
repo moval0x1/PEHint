@@ -26,8 +26,8 @@ public:
 
 
     // PRINT INFO
-    QList<QString> PrintFileInfo();
-    void PrintDOSHeaderInfo();
+    QMap<QString, QString> PrintFileInfo();
+    QMap<QString, QString> PrintDOSHeaderInfo();
     void PrintRichHeaderInfo();
     void PrintNTHeadersInfo();
     void PrintSectionHeadersInfo();

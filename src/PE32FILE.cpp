@@ -354,9 +354,9 @@ void PE32FILE::ParseRichHeader() {
 }
 
 // PRINT INFO
-QList<QString> PE32FILE::PrintFileInfo() {
+QMap<QString, QString> PE32FILE::PrintFileInfo() {
 
-    QList<QString> lst;
+    QMap<QString, QString> map;
 
     // Display in the console
     // qInfo() << QString("FILE: -> %1").arg(QString::fromStdString(_fileName));
@@ -365,22 +365,27 @@ QList<QString> PE32FILE::PrintFileInfo() {
     QStringList parts = _peFile->fileName().split('/');
     QString exeName = parts.last();
 
-    lst.append(exeName);
-    lst.append(QString("TYPE: 0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16).toUpper());
+    map["Name"] = exeName;
+    map["Type"] = QString("0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16).toUpper();
 
-
-    return lst;
+    return map;
 
 }
 
-void PE32FILE::PrintDOSHeaderInfo() {
+QMap<QString, QString> PE32FILE::PrintDOSHeaderInfo() {
 
-    printf(" DOS HEADER:\n");
-    printf(" -----------\n\n");
+    QMap<QString, QString> map;
 
-    printf(" Magic: 0x%X\n", PEFILE_DOS_HEADER_EMAGIC);
-    printf(" File address of new exe header: 0x%X\n", PEFILE_DOS_HEADER_LFANEW);
+    // printf(" DOS HEADER:\n");
+    // printf(" -----------\n\n");
 
+    // printf(" Magic: 0x%X\n", PEFILE_DOS_HEADER_EMAGIC);
+    // printf(" File address of new exe header: 0x%X\n", PEFILE_DOS_HEADER_LFANEW);
+
+    map["Magic"] = QString("0x%1").arg(PEFILE_DOS_HEADER_EMAGIC, 0, 16).toUpper();
+    map["Elfanew"] = QString("0x%1").arg(PEFILE_DOS_HEADER_LFANEW, 0, 16).toUpper();
+
+    return map;
 }
 
 void PE32FILE::PrintRichHeaderInfo() {

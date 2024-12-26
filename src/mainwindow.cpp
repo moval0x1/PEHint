@@ -3,7 +3,9 @@
 
 #include "PEFILE.h"
 
-QList<QString> lstInfo;
+QMap<QString, QString> mapInfo;
+QString fileName;
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), _tree(new QTreeWidget(this)), _table(new QTableWidget(this))
     , ui(new Ui::MainWindow)
@@ -75,6 +77,9 @@ void MainWindow::on_action_Open_triggered()
 
     int arc = INITPARSE(peFile);
 
+    // Get only the fileName from the binary
+    fileName = peFile.fileName().split('/').last();
+
     if (arc == 1) {
         exit(1);
     }
@@ -83,8 +88,10 @@ void MainWindow::on_action_Open_triggered()
         PE32FILE pe32(&peFile);
         pe32.PrintInfo();
 
-        lstInfo = pe32.PrintFileInfo();
+        mapInfo = pe32.PrintFileInfo();
         MainWindow::setupUI();
+
+        populateTable(mapInfo);
 
     }
     else if (arc == 64) {
@@ -99,44 +106,28 @@ void MainWindow::on_action_Open_triggered()
 void MainWindow::onHeaderClicked(int section) {
 
     _table->clearContents();
-    _table->setHorizontalHeaderLabels({"Name", "Type"});  // Restore headers
+    _table->setHorizontalHeaderLabels({"Property", "Value"});  // Restore headers
 
     if (section == 0) {
-        _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem(lstInfo[0])); // FileName
-        _table->setItem(0, 1, new QTableWidgetItem(lstInfo[1])); // Value
+        populateTable(mapInfo);
     }else if (section == 1) {
-        _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem(lstInfo[0])); // FileName
-        _table->setItem(0, 1, new QTableWidgetItem(lstInfo[1])); // Value
+        populateTable(mapInfo);
     }
 }
 
 void MainWindow::setupUI() {
-    // Create a horizontal splitter
-    QSplitter *splitter = new QSplitter(Qt::Horizontal, this); // Set orientation to horizontal
 
-    // Initialize the tree and table widgets
-    _tree = new QTreeWidget();
-    _table = new QTableWidget();
-
-    // Add the widgets to the splitter
-    splitter->addWidget(_tree);
-    splitter->addWidget(_table);
-
-    // Optional: Set initial sizes for splitter widgets
-    splitter->setStretchFactor(0, 1); // Tree gets more focus
-    splitter->setStretchFactor(1, 2); // Table takes up more space
+    baseUI();
 
     // Setup tree and table contents
     setupTree(_tree);
     setupTable(_table);
 
     // Set the splitter as the central widget of the main window
-    setCentralWidget(splitter);
+    //setCentralWidget(splitter);
 }
 
-void MainWindow::startUI()
+void MainWindow::baseUI()
 {
     // Create a central widget if none exists
     QWidget *centralWidget = new QWidget(this);
@@ -154,17 +145,37 @@ void MainWindow::startUI()
     QVBoxLayout *layout = new QVBoxLayout(centralWidget);
     layout->addWidget(splitter);
     centralWidget->setLayout(layout);
+}
+
+void MainWindow::startUI()
+{
+    baseUI();
 
     // Configure the tree widget
     _tree->setHeaderLabel("");
     _tree->clear();
 }
 
+void MainWindow::populateTable(const QMap<QString, QString> &mapInfo)
+{
+    // Set the row count to match the number of entries in the map
+    _table->setRowCount(mapInfo.size());
+
+    // Iterate through the map and populate the table
+    int row = 0;
+    for (auto it = mapInfo.begin(); it != mapInfo.end(); ++it, ++row) {
+        // Set key in the first column
+        _table->setItem(row, 0, new QTableWidgetItem(it.key()));
+
+        // Set value in the second column
+        _table->setItem(row, 1, new QTableWidgetItem(it.value()));
+    }
+}
+
 void MainWindow::setupTree(QTreeWidget *tree) {
 
     tree->header()->setSectionsClickable(true);
-    //tree->setHeaderLabel("FileName.exe");
-    tree->setHeaderLabel(lstInfo[0]); //FileName
+    tree->setHeaderLabel(fileName);
 
     // Add items to the tree
     QTreeWidgetItem *fileItem = new QTreeWidgetItem(tree);
@@ -190,7 +201,7 @@ void MainWindow::setupTable(QTableWidget *table) {
 
     // Set up the table with headers
     table->setColumnCount(2);
-    table->setHorizontalHeaderLabels({"Name", "Type"});
+    table->setHorizontalHeaderLabels({"Property", "Value"});
 
     // Automatically adjust the "Property" and "Value" column widths to fit content
     table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
