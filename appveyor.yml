@@ -14,14 +14,15 @@ configuration:
   - Release
   - Debug
 
-#branches:
-#  only:
-#    - main
+branches:
+  only:
+    - main
 
 build:
   verbosity: detailed
 
 environment:
+  QT_VERSION: 6.5.2
   artifactName: $(APPVEYOR_PROJECT_NAME)-$(APPVEYOR_REPO_COMMIT)-$(CONFIGURATION)-$(PLATFORM)
   buildConfig: $(CONFIGURATION)
   buildPlatform: $(PLATFORM)
@@ -30,48 +31,45 @@ install:
   # Update Git submodules
   - git submodule update --init --recursive
 
-  # Set Qt version and path based on platform
-  - if [%buildPlatform%]==[x64] (set QT_VER=6)
-  - if [%buildPlatform%]==[x64] (set QT=C:\Qt\6.5.2\msvc2019_64)
-  - if [%buildPlatform%]==[x86] (set QT_VER=5)
-  - if [%buildPlatform%]==[x86] (set QT=C:\Qt\5.15.2\msvc2019)
+  # Set Qt paths dynamically based on platform
+  - if [%buildPlatform%]==[x64] (set QT=C:\Qt\%QT_VERSION%\msvc2019_64)
+  - if [%buildPlatform%]==[x86] (set QT=C:\Qt\%QT_VERSION%\msvc2019)
   - set QT_DIR=%QT%
-  - set PATH=%PATH%;%QT%\bin;%QT%\lib\cmake
+  - set PATH=%PATH%;%QT%\bin
 
 before_build:
+  # Debug paths
+  - echo Using Qt from %QT_DIR%
+  - dir %QT_DIR%\lib\cmake
+
+  # Verify necessary Qt configuration files
+  - if not exist "%QT_DIR%\lib\cmake\Qt6Config.cmake" (
+      echo "Error: Qt6Config.cmake not found in %QT_DIR%\lib\cmake"
+      exit /b 1
+    )
+
   # Create build directory
   - mkdir build
   - cd build
 
 build_script:
   # Configure the project using CMake
-  - if [%buildPlatform%]==[x64] (cmake .. -A x64 -DCMAKE_PREFIX_PATH=%QT_DIR% -DCOMMIT_HASH:STRING="\""%APPVEYOR_REPO_COMMIT%"\"" )
-  - if [%buildPlatform%]==[x86] (cmake .. -A Win32 -DCMAKE_PREFIX_PATH=%QT_DIR% -DCOMMIT_HASH:STRING="\""%APPVEYOR_REPO_COMMIT%"\"" )
-  
-  # Build the project
+  - if [%buildPlatform%]==[x64] (
+      cmake .. -A x64 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
+    )
+  - if [%buildPlatform%]==[x86] (
+      cmake .. -A Win32 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
+    )
+
+  # Build the executable
   - cmake --build . --config %buildConfig%
 
 after_build:
-  # Create output directory for artifacts
+  # Collect the .exe file as an artifact
   - mkdir %artifactName%
-  
-  # Copy build outputs and necessary Qt libraries
-  - cp -r bin/%buildConfig%/* %artifactName%
-  - set DLL_SUFFIX=.dll
-  - if [%buildConfig%]==[Debug] (set DLL_SUFFIX=d.dll)
-  - cp "%QT%\bin\Qt%QT_VER%Core%DLL_SUFFIX%" %artifactName%
-  - cp "%QT%\bin\Qt%QT_VER%Gui%DLL_SUFFIX%" %artifactName%
-  - cp "%QT%\bin\Qt%QT_VER%Widgets%DLL_SUFFIX%" %artifactName%
-  
-  # Copy plugins
-  - mkdir %artifactName%\platforms
-  - mkdir %artifactName%\styles
-  - mkdir %artifactName%\imageformats
-  - cp "%QT%\plugins\platforms\qwindows%DLL_SUFFIX%" %artifactName%\platforms
-  - cp "%QT%\plugins\imageformats\qico%DLL_SUFFIX%" %artifactName%\imageformats
-  - if [%QT_VER%]==[5] (cp "%QT%\plugins\styles\qwindowsvistastyle%DLL_SUFFIX%" %artifactName%\styles)
-  - if [%QT_VER%]==[6] (cp "%QT%\plugins\styles\qmodernwindowsstyle%DLL_SUFFIX%" %artifactName%\styles)
+  - cp %buildConfig%\PEHint.exe %artifactName%
 
 artifacts:
-  # Collect artifacts
+  # Specify the artifact path
   - path: build\%artifactName%
+    name: PEHint Executables
