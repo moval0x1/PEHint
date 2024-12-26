@@ -1,78 +1,33 @@
-# AppVeyor CI configuration for PEHint
+# AppVeyor configuration for PEHint project
 
-version: '{branch}.{build}'
-skip_tags: true
+# Set the environment to Windows
+image: Visual Studio 2022
 
-image:
-- Visual Studio 2022
-
-platform:
-  - x64
-  - x86
-
-configuration:
-  - Release
-  - Debug
-
-branches:
-  only:
-    - update-layout-structure
-
-build:
-  verbosity: detailed
-
+# Define the build matrix
 environment:
-  QT_VERSION: 6.5.2
-  artifactName: $(APPVEYOR_PROJECT_NAME)-$(APPVEYOR_REPO_COMMIT)-$(CONFIGURATION)-$(PLATFORM)
-  buildConfig: $(CONFIGURATION)
-  buildPlatform: $(PLATFORM)
+  matrix:
+    - QT_DIR: C:\Qt\6.8.0\msvc2022_64
 
-install:
-  # Set Qt paths dynamically based on platform
-  - ps: |
-      if ($env:buildPlatform -eq "x64") {
-        $env:QT="C:\Qt\$env:QT_VERSION\msvc2019_64"
-      } elseif ($env:buildPlatform -eq "x86") {
-        $env:QT="C:\Qt\$env:QT_VERSION\msvc2019"
-      }
-      $env:QT_DIR=$env:QT
-      $env:PATH="$env:PATH;$env:QT\bin"
+# Define the build cache to speed up subsequent builds
+cache:
+  - C:\Qt\6.8.0\msvc2022_64
 
+# Clone the repository
+clone_folder: c:\projects\pehint
+
+# Before build: install dependencies
 before_build:
-  # Debug paths
-  - echo Using Qt from %QT_DIR%
-  - dir %QT_DIR%\lib\cmake
+  # Add Qt bin folder to PATH
+  - set PATH=%QT_DIR%\bin;%PATH%
+  # Set the generator to Visual Studio 2022
+  - set CMAKE_GENERATOR="Visual Studio 17 2022"
 
-  # Verify necessary Qt configuration files
-  - ps: |
-      if (-not (Test-Path "$env:QT_DIR\lib\cmake\Qt6Config.cmake")) {
-        Write-Host "Error: Qt6Config.cmake not found in $env:QT_DIR\lib\cmake"
-        Exit 1
-      }
-
-  # Create build directory
-  - cmd: mkdir build
-  - cmd: cd build
-
+# Build script
 build_script:
-  # Configure the project using CMake
-  - cmd: |
-      if "%buildPlatform%"=="x64" (
-        cmake .. -A x64 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
-      ) else (
-        cmake .. -A Win32 -DCMAKE_PREFIX_PATH="%QT_DIR%\lib\cmake" -DCMAKE_BUILD_TYPE=%buildConfig%
-      )
+  - cmake -B build -DCMAKE_PREFIX_PATH=%QT_DIR% -A x64
+  - cmake --build build --config Release
 
-  # Build the executable
-  - cmd: cmake --build . --config %buildConfig%
-
-after_build:
-  # Collect the .exe file as an artifact
-  - cmd: |
-      mkdir %artifactName%
-      copy %buildConfig%\PEHint.exe %artifactName%
-
+# Artifacts: include the final executable for download
 artifacts:
-  # Specify the artifact path
-  - path: build\%artifactName%
-    name: PEHint Executables
+  - path: build\Release\PEHint.exe
+    name: PEHint Executable
