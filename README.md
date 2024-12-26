@@ -1,5 +1,7 @@
 # PEHint
 
+[![Build status](https://ci.appveyor.com/api/projects/status/idui839eimxgdaw1/branch/update-layout-structure?svg=true)](https://ci.appveyor.com/project/charleslomboni/pehint/branch/update-layout-structure)
+
 ![PEHint](/ui/imgs/PEHint.png)
 
 A Portable Executable Hint that was created for study purposes.<br/>Feel free to use it and help improve. ;)

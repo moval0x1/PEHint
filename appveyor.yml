@@ -13,16 +13,22 @@ cache:
 install:
   # Install curl using Chocolatey
   - choco install curl --yes
-  
+
   # Debug environment variables
+  - echo Debugging environment variables...
   - echo QT_INSTALL_DIR=%QT_INSTALL_DIR%
   - echo QT_VERSION=%QT_VERSION%
 
-  # Check and install Qt if not present
+  # Create the QT_INSTALL_DIR if it doesn't exist
   - cmd: |
-      echo Checking if Qt is already installed...
+      echo Ensuring %QT_INSTALL_DIR% exists...
+      IF NOT EXIST "%QT_INSTALL_DIR%" mkdir "%QT_INSTALL_DIR%"
+
+  # Check and install Qt if not already installed
+  - cmd: |
+      echo Checking if Qt %QT_VERSION% is installed at %QT_INSTALL_DIR%...
       IF NOT EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
-        echo "Qt not found at %QT_INSTALL_DIR%\%QT_VERSION%. Starting installation..."
+        echo "Qt not found. Downloading and installing..."
         curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
         qt-installer.exe --script qt-install-script.qs
         IF %ERRORLEVEL% NEQ 0 (
@@ -30,14 +36,14 @@ install:
           exit /b %ERRORLEVEL%
         )
       ) ELSE (
-        echo "Qt already installed at %QT_INSTALL_DIR%\%QT_VERSION%."
+        echo "Qt %QT_VERSION% is already installed at %QT_INSTALL_DIR%."
       )
 
   # Verify Qt installation
   - cmd: |
       echo Verifying Qt installation...
       IF EXIST "%QT_INSTALL_DIR%\%QT_VERSION%" (
-        echo "Qt installation verified at %QT_INSTALL_DIR%\%QT_VERSION%."
+        echo "Qt installation verified successfully."
       ) ELSE (
         echo "Qt installation missing. Exiting with error."
         exit /b 1
@@ -47,7 +53,7 @@ build_script:
   # Create build directory and configure project
   - cmd: mkdir build
   - cmd: cd build
-  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\%QT_VERSION%\msvc2019_64 ..
+  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=%QT_INSTALL_DIR%\%QT_VERSION%\msvc2019_64 ..
   - cmd: cmake --build . --config Release
 
 test_script:
