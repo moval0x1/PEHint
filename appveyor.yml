@@ -30,4 +30,5 @@ test_script:
   - cmd: ctest --output-on-failure
 
 artifacts:
-  - path
+  - path: build\Release\*.exe
+    name: PEHint Executables
