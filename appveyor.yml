@@ -3,50 +3,31 @@
 version: 1.0.{build}
 image: Visual Studio 2022
 
-# Environment settings
 environment:
-  matrix:
-    - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
-  global:
-    QT_VERSION: "6.5.2"
-    CMAKE_GENERATOR: "Ninja"
+  QT_VERSION: "6.5.2"
 
-# Cache Qt installation to speed up builds
 cache:
   - C:\Qt
 
-# Clone the repository
-clone_depth: 1
-
-# Install dependencies
 install:
-  # Install Qt
+  - choco install curl --yes
   - cmd: |
       set QT_INSTALL_DIR=C:\Qt
+      set QT_VERSION=6.5.2
       if not exist %QT_INSTALL_DIR%\%QT_VERSION% (
         curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
         qt-installer.exe --script qt-install-script.qs
       )
-  # Install CMake
-  - cmd: |
-      choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --yes
-  # Install Ninja (faster builds)
-  - cmd: |
-      choco install ninja --yes
 
-# Build steps
 build_script:
   - cmd: mkdir build
   - cmd: cd build
-  - cmd: cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\%QT_VERSION%\msvc2019_64 ..
+  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\Qt\%QT_VERSION%\msvc2019_64 ..
   - cmd: cmake --build . --config Release
 
-# Test steps
 test_script:
   - cmd: cd build
   - cmd: ctest --output-on-failure
 
-# Artifacts (optional: export the compiled binaries)
 artifacts:
-  - path: build\Release\*.exe
-    name: PEHint Executables
+  - path
