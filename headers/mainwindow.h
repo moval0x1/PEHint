@@ -6,6 +6,9 @@
 #include <QFileDialog>
 #include <QTreeWidget>
 #include <QTableWidget>
+#include <QSplitter>
+#include <QVBoxLayout>
+#include <QHeaderView>
 
 #include <iostream>
 #include <fstream>
@@ -27,17 +30,13 @@ public:
     void setupTable(QTableWidget *table);
     void setupTree(QTreeWidget *tree);
     void setupUI();
+    void startUI();
 
 private slots:
 
     void on_action_PEHint_triggered();
-
     void on_action_Exit_triggered();
-
     void on_action_Open_triggered();
-
-    void onTreeItemClicked(QTreeWidgetItem *item, int column);
-
     void onHeaderClicked(int section);
 
 

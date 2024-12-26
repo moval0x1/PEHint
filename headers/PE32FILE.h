@@ -14,17 +14,28 @@
 #include <QStandardItemModel>
 #include <QTreeWidget>
 #include <QString>
+#include <QFile>
+#include <QMessageBox>
 
 class PE32FILE
 {
 public:
-    PE32FILE(const char* NAME, FILE* Ppefile);
+    explicit PE32FILE(QFile *file);
 
     void PrintInfo();
 
+
+    // PRINT INFO
+    QList<QString> PrintFileInfo();
+    void PrintDOSHeaderInfo();
+    void PrintRichHeaderInfo();
+    void PrintNTHeadersInfo();
+    void PrintSectionHeadersInfo();
+    void PrintImportTableInfo();
+    void PrintBaseRelocationsInfo();
+
 private:
-    std::string _fileName;
-    FILE* _peFile;
+    QFile *_peFile;
 
     int _import_directory_count, _import_directory_size;
     int _basreloc_directory_count;
@@ -102,14 +113,6 @@ private:
     void ParseBaseReloc();
     void ParseRichHeader();
 
-    // PRINT INFO
-    void PrintFileInfo();
-    void PrintDOSHeaderInfo();
-    void PrintRichHeaderInfo();
-    void PrintNTHeadersInfo();
-    void PrintSectionHeadersInfo();
-    void PrintImportTableInfo();
-    void PrintBaseRelocationsInfo();
 };
 
 

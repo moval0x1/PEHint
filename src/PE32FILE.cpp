@@ -7,8 +7,8 @@
 #include "PE32FILE.h"
 
 // CONSTRUCTOR
-PE32FILE::PE32FILE(const char* NAME, FILE* Ppefile)
-    : _fileName(NAME), _peFile(Ppefile)
+PE32FILE::PE32FILE(QFile *file)
+    : _peFile(file)
 {
     ParseFile();
 
@@ -39,8 +39,18 @@ DWORD PE32FILE::resolve(DWORD VA, int index) {
 // PARSERS
 void PE32FILE::ParseDOSHeader() {
 
-    fseek(_peFile, 0, SEEK_SET);
-    fread(&PEFILE_DOS_HEADER, sizeof(___IMAGE_DOS_HEADER), 1, _peFile);
+
+    // Seek to the beginning of the file (equivalent to fseek(_peFile, 0, SEEK_SET))
+    if (!_peFile->seek(0)) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to seek to the start of the file");
+        return;
+    }
+
+    // Read the IMAGE_DOS_HEADER structure (equivalent to fread(&PEFILE_DOS_HEADER, sizeof(___IMAGE_DOS_HEADER), 1, _peFile))
+    if (_peFile->read(reinterpret_cast<char*>(&PEFILE_DOS_HEADER), sizeof(___IMAGE_DOS_HEADER)) != sizeof(___IMAGE_DOS_HEADER)) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to read IMAGE_DOS_HEADER from file");
+        return;
+    }
 
     PEFILE_DOS_HEADER_EMAGIC = PEFILE_DOS_HEADER.e_magic;
     PEFILE_DOS_HEADER_LFANEW = PEFILE_DOS_HEADER.e_lfanew;
@@ -49,8 +59,17 @@ void PE32FILE::ParseDOSHeader() {
 
 void PE32FILE::ParseNTHeaders() {
 
-    fseek(_peFile, PEFILE_DOS_HEADER.e_lfanew, SEEK_SET);
-    fread(&PEFILE_NT_HEADERS, sizeof(PEFILE_NT_HEADERS), 1, _peFile);
+    // Seek to the position specified by e_lfanew
+    if (!_peFile->seek(PEFILE_DOS_HEADER.e_lfanew)) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to seek to e_lfanew position in the file");
+        return;
+    }
+
+    // Read the IMAGE_NT_HEADERS structure
+    if (_peFile->read(reinterpret_cast<char*>(&PEFILE_NT_HEADERS), sizeof(PEFILE_NT_HEADERS)) != sizeof(PEFILE_NT_HEADERS)) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to read IMAGE_NT_HEADERS from file");
+        return;
+    }
 
     PEFILE_NT_HEADERS_SIGNATURE = PEFILE_NT_HEADERS.Signature;
 
@@ -91,10 +110,32 @@ void PE32FILE::ParseNTHeaders() {
 void PE32FILE::ParseSectionHeaders() {
 
     PEFILE_SECTION_HEADERS = new ___IMAGE_SECTION_HEADER[PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS];
+    // for (int i = 0; i < PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS; i++) {
+    //     int offset = (PEFILE_DOS_HEADER.e_lfanew + sizeof(PEFILE_NT_HEADERS)) + (i * ___IMAGE_SIZEOF_SECTION_HEADER);
+
+    //     fseek(_peFile, offset, SEEK_SET);
+    //     fread(&PEFILE_SECTION_HEADERS[i], ___IMAGE_SIZEOF_SECTION_HEADER, 1, _peFile);
+    // }
+
     for (int i = 0; i < PEFILE_NT_HEADERS_FILE_HEADER_NUMBER0F_SECTIONS; i++) {
-        int offset = (PEFILE_DOS_HEADER.e_lfanew + sizeof(PEFILE_NT_HEADERS)) + (i * ___IMAGE_SIZEOF_SECTION_HEADER);
-        fseek(_peFile, offset, SEEK_SET);
-        fread(&PEFILE_SECTION_HEADERS[i], ___IMAGE_SIZEOF_SECTION_HEADER, 1, _peFile);
+        // Calculate the offset for the current section header
+        qint64 offset = (PEFILE_DOS_HEADER.e_lfanew + sizeof(PEFILE_NT_HEADERS)) + (i * ___IMAGE_SIZEOF_SECTION_HEADER);
+
+        // Seek to the calculated offset
+        if (!_peFile->seek(offset)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to section header offset: %1").arg(offset));
+            delete[] PEFILE_SECTION_HEADERS;
+            PEFILE_SECTION_HEADERS = nullptr;
+            return;
+        }
+
+        // Read the section header
+        if (_peFile->read(reinterpret_cast<char*>(&PEFILE_SECTION_HEADERS[i]), ___IMAGE_SIZEOF_SECTION_HEADER) != ___IMAGE_SIZEOF_SECTION_HEADER) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read section header at index: %1").arg(i));
+            delete[] PEFILE_SECTION_HEADERS;
+            PEFILE_SECTION_HEADERS = nullptr;
+            return;
+        }
     }
 
 }
@@ -107,8 +148,21 @@ void PE32FILE::ParseImportDirectory() {
     while (true) {
         ___IMAGE_IMPORT_DESCRIPTOR tmp;
         int offset = (_import_directory_count * sizeof(___IMAGE_IMPORT_DESCRIPTOR)) + _import_directory_address;
-        fseek(_peFile, offset, SEEK_SET);
-        fread(&tmp, sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
+
+        // fseek(_peFile, offset, SEEK_SET);
+        // fread(&tmp, sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
+
+        // Seek to the specified offset
+        if (!_peFile->seek(offset)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to offset: %1").arg(offset));
+            return;
+        }
+
+        // Read the IMAGE_IMPORT_DESCRIPTOR structure
+        if (_peFile->read(reinterpret_cast<char*>(&tmp), sizeof(___IMAGE_IMPORT_DESCRIPTOR)) != sizeof(___IMAGE_IMPORT_DESCRIPTOR)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read IMAGE_IMPORT_DESCRIPTOR at offset: %1").arg(offset));
+            return;
+        }
 
         if (tmp.Name == 0x00000000 && tmp.FirstThunk == 0x00000000) {
             _import_directory_count -= 1;
@@ -123,8 +177,21 @@ void PE32FILE::ParseImportDirectory() {
 
     for (int i = 0; i < _import_directory_count; i++) {
         int offset = (i * sizeof(___IMAGE_IMPORT_DESCRIPTOR)) + _import_directory_address;
-        fseek(_peFile, offset, SEEK_SET);
-        fread(&PEFILE_IMPORT_TABLE[i], sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
+
+        // fseek(_peFile, offset, SEEK_SET);
+        // fread(&PEFILE_IMPORT_TABLE[i], sizeof(___IMAGE_IMPORT_DESCRIPTOR), 1, _peFile);
+
+        // Seek to the specified offset
+        if (!_peFile->seek(offset)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to offset: %1").arg(offset));
+            return;
+        }
+
+        // Read the IMAGE_IMPORT_DESCRIPTOR structure
+        if (_peFile->read(reinterpret_cast<char*>(&PEFILE_IMPORT_TABLE[i]), sizeof(___IMAGE_IMPORT_DESCRIPTOR)) != sizeof(___IMAGE_IMPORT_DESCRIPTOR)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read IMAGE_IMPORT_DESCRIPTOR at offset: %1").arg(offset));
+            return;
+        }
     }
 
 }
@@ -140,8 +207,20 @@ void PE32FILE::ParseBaseReloc() {
 
         int offset = (_basereloc_size_counter + _basereloc_directory_address);
 
-        fseek(_peFile, offset, SEEK_SET);
-        fread(&tmp, sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
+        // fseek(_peFile, offset, SEEK_SET);
+        // fread(&tmp, sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
+
+        // Seek to the specified offset
+        if (!_peFile->seek(offset)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to offset: %1").arg(offset));
+            return;
+        }
+
+        // Read the IMAGE_BASE_RELOCATION structure
+        if (_peFile->read(reinterpret_cast<char*>(&tmp), sizeof(___IMAGE_BASE_RELOCATION)) != sizeof(___IMAGE_BASE_RELOCATION)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read IMAGE_BASE_RELOCATION at offset: %1").arg(offset));
+            return;
+        }
 
         if (tmp.VirtualAddress == 0x00000000 &&
             tmp.SizeOfBlock == 0x00000000) {
@@ -158,8 +237,22 @@ void PE32FILE::ParseBaseReloc() {
 
     for (int i = 0; i < _basreloc_directory_count; i++) {
         int offset = _basereloc_directory_address + _basereloc_size_counter;
-        fseek(_peFile, offset, SEEK_SET);
-        fread(&PEFILE_BASERELOC_TABLE[i], sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
+
+        // fseek(_peFile, offset, SEEK_SET);
+        // fread(&PEFILE_BASERELOC_TABLE[i], sizeof(___IMAGE_BASE_RELOCATION), 1, _peFile);
+
+        // Seek to the specified offset
+        if (!_peFile->seek(offset)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to offset: %1").arg(offset));
+            return;
+        }
+
+        // Read the IMAGE_BASE_RELOCATION structure
+        if (_peFile->read(reinterpret_cast<char*>(&PEFILE_BASERELOC_TABLE[i]), sizeof(___IMAGE_BASE_RELOCATION)) != sizeof(___IMAGE_BASE_RELOCATION)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read IMAGE_BASE_RELOCATION at offset: %1").arg(offset));
+            return;
+        }
+
         _basereloc_size_counter += PEFILE_BASERELOC_TABLE[i].SizeOfBlock;
     }
 
@@ -168,8 +261,21 @@ void PE32FILE::ParseBaseReloc() {
 void PE32FILE::ParseRichHeader() {
 
     char* dataPtr = new char[PEFILE_DOS_HEADER_LFANEW];
-    fseek(_peFile, 0, SEEK_SET);
-    fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile);
+
+    // fseek(_peFile, 0, SEEK_SET);
+    // fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile);
+
+    // Seek to the beginning of the file (equivalent to fseek(_peFile, 0, SEEK_SET))
+    if (!_peFile->seek(0)) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to seek to the start of the file.");
+        return;
+    }
+
+    // Read data (equivalent to fread(dataPtr, PEFILE_DOS_HEADER_LFANEW, 1, _peFile))
+    if (_peFile->read(dataPtr, PEFILE_DOS_HEADER_LFANEW) != PEFILE_DOS_HEADER_LFANEW) {
+        QMessageBox::critical(nullptr, "File Error", "Failed to read data from the file.");
+        return;
+    }
 
     int index_ = 0;
 
@@ -248,37 +354,22 @@ void PE32FILE::ParseRichHeader() {
 }
 
 // PRINT INFO
-void PE32FILE::PrintFileInfo() {
+QList<QString> PE32FILE::PrintFileInfo() {
+
+    QList<QString> lst;
 
     // Display in the console
-    qInfo() << QString("FILE: -> %1").arg(QString::fromStdString(_fileName));
-    printf(" TYPE: 0x%X (PE32)\n", PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC);
+    // qInfo() << QString("FILE: -> %1").arg(QString::fromStdString(_fileName));
+    // printf(" TYPE: 0x%X (PE32)\n", PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC);
+
+    QStringList parts = _peFile->fileName().split('/');
+    QString exeName = parts.last();
+
+    lst.append(exeName);
+    lst.append(QString("TYPE: 0x%1 (PE32)").arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16).toUpper());
 
 
-
-
-
-
-
-
-    // // Set up the model for the TreeView
-    // QStandardItemModel *model = new QStandardItemModel(tvHint);
-    // model->setHorizontalHeaderLabels({"Property", "Value"});
-
-    // // Populate the model
-    // QList<QStandardItem *> rowFileName;
-    // rowFileName << new QStandardItem("File Name")
-    //             << new QStandardItem(QString::fromStdString(_fileName));
-    // model->appendRow(rowFileName);
-
-    // QList<QStandardItem *> rowFileType;
-    // rowFileType << new QStandardItem("File Type")
-    //             << new QStandardItem(QString("0x%1 (PE32)")
-    //                                      .arg(PEFILE_NT_HEADERS_OPTIONAL_HEADER_MAGIC, 0, 16).toUpper());
-    // model->appendRow(rowFileType);
-
-    // // Set the model for the TreeView
-    // tvHint->setModel(model);
+    return lst;
 
 }
 
@@ -424,8 +515,21 @@ void PE32FILE::PrintImportTableInfo() {
 
         while (true) {
             char tmp;
-            fseek(_peFile, (NameAddr + NameSize), SEEK_SET);
-            fread(&tmp, sizeof(char), 1, _peFile);
+            // fseek(_peFile, (NameAddr + NameSize), SEEK_SET);
+            // fread(&tmp, sizeof(char), 1, _peFile);
+
+            // Seek to the calculated position
+            qint64 seekPosition = NameAddr + NameSize;
+            if (!_peFile->seek(seekPosition)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to position: %1").arg(seekPosition));
+                return;
+            }
+
+            // Read one character from the file
+            if (_peFile->read(&tmp, sizeof(char)) != sizeof(char)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to read character at position: %1").arg(seekPosition));
+                return;
+            }
 
             if (tmp == 0x00) {
                 break;
@@ -435,8 +539,24 @@ void PE32FILE::PrintImportTableInfo() {
         }
 
         char* Name = new char[NameSize + 2];
-        fseek(_peFile, NameAddr, SEEK_SET);
-        fread(Name, (NameSize * sizeof(char)) + 1, 1, _peFile);
+        // fseek(_peFile, NameAddr, SEEK_SET);
+        // fread(Name, (NameSize * sizeof(char)) + 1, 1, _peFile);
+
+        // Seek to the specified position
+        qint64 seekPosition = NameAddr;
+        if (!_peFile->seek(seekPosition)) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to position: %1").arg(seekPosition));
+            return;
+        }
+
+        // Read the name
+        qint64 bufferSize = (NameSize * sizeof(char)) + 1; // Calculate buffer size
+        if (_peFile->read(Name, bufferSize) != bufferSize) {
+            QMessageBox::critical(nullptr, "File Error", QString("Failed to read name from position: %1").arg(seekPosition));
+            delete[] Name;
+            return;
+        }
+
         printf("   * %s:\n", Name);
         delete[] Name;
 
@@ -459,8 +579,21 @@ void PE32FILE::PrintImportTableInfo() {
 
             ILT_ENTRY_32 entry;
 
-            fseek(_peFile, (ILTAddr + (entrycounter * sizeof(DWORD))), SEEK_SET);
-            fread(&entry, sizeof(ILT_ENTRY_32), 1, _peFile);
+            // fseek(_peFile, (ILTAddr + (entrycounter * sizeof(DWORD))), SEEK_SET);
+            // fread(&entry, sizeof(ILT_ENTRY_32), 1, _peFile);
+
+            // Calculate the seek position
+            qint64 seekPosition = ILTAddr + (entrycounter * sizeof(quint32)); // Use `quint32` for `DWORD` equivalent
+            if (!_peFile->seek(seekPosition)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to position: %1").arg(seekPosition));
+                return;
+            }
+
+            // Read the ILT_ENTRY_32 structure
+            if (_peFile->read(reinterpret_cast<char*>(&entry), sizeof(ILT_ENTRY_32)) != sizeof(ILT_ENTRY_32)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to read ILT_ENTRY_32 at position: %1").arg(seekPosition));
+                return;
+            }
 
             BYTE flag = entry.FIELD_1.ORDINAL_NAME_FLAG;
             DWORD HintRVA = 0x0;
@@ -483,8 +616,21 @@ void PE32FILE::PrintImportTableInfo() {
                 ___IMAGE_IMPORT_BY_NAME hint;
 
                 DWORD HintAddr = resolve(HintRVA, locate(HintRVA));
-                fseek(_peFile, HintAddr, SEEK_SET);
-                fread(&hint, sizeof(___IMAGE_IMPORT_BY_NAME), 1, _peFile);
+                // fseek(_peFile, HintAddr, SEEK_SET);
+                // fread(&hint, sizeof(___IMAGE_IMPORT_BY_NAME), 1, _peFile);
+
+                // Seek to the HintAddr
+                if (!_peFile->seek(HintAddr)) {
+                    QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to HintAddr: %1").arg(HintAddr));
+                    return;
+                }
+
+                // Read the IMAGE_IMPORT_BY_NAME structure
+                if (_peFile->read(reinterpret_cast<char*>(&hint), sizeof(___IMAGE_IMPORT_BY_NAME)) != sizeof(___IMAGE_IMPORT_BY_NAME)) {
+                    QMessageBox::critical(nullptr, "File Error", QString("Failed to read IMAGE_IMPORT_BY_NAME at HintAddr: %1").arg(HintAddr));
+                    return;
+                }
+
                 printf("         Name: %s\n", hint.Name);
                 printf("         Hint RVA: 0x%X\n", HintRVA);
                 printf("         Hint: 0x%X\n", hint.Hint);
@@ -529,10 +675,25 @@ void PE32FILE::PrintBaseRelocationsInfo() {
 
             BASE_RELOC_ENTRY entry;
 
+            // int offset = (BASE_RELOC_ADDR + szCounter + (i * sizeof(WORD)));
+
+            // fseek(_peFile, offset, SEEK_SET);
+            // fread(&entry, sizeof(WORD), 1, _peFile);
+
+            // Calculate the offset
             int offset = (BASE_RELOC_ADDR + szCounter + (i * sizeof(WORD)));
 
-            fseek(_peFile, offset, SEEK_SET);
-            fread(&entry, sizeof(WORD), 1, _peFile);
+            // Seek to the offset
+            if (!_peFile->seek(offset)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to seek to offset: %1").arg(offset));
+                return;
+            }
+
+            // fread(&entry, sizeof(WORD), 1, _peFile);
+            if (_peFile->read(reinterpret_cast<char*>(&entry), sizeof(WORD)) != sizeof(WORD)) {
+                QMessageBox::critical(nullptr, "File Error", QString("Failed to read entry at offset: %1").arg(offset));
+                return;
+            }
 
             printf("\n       * Value: 0x%X\n", entry);
             printf("         Relocation Type: 0x%X\n", entry.TYPE);

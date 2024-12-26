@@ -10,6 +10,6 @@
 #include "PE32FILE.h"
 #include "PE64FILE.h"
 
-int INITPARSE(FILE* PpeFile);
+int INITPARSE(QFile &PpeFile);
 
 #endif // PEFILE_H

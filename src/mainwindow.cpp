@@ -3,13 +3,7 @@
 
 #include "PEFILE.h"
 
-#include <QSplitter>
-#include <QTreeWidget>
-#include <QTableWidget>
-#include <QVBoxLayout>
-#include <QHeaderView>
-
-
+QList<QString> lstInfo;
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), _tree(new QTreeWidget(this)), _table(new QTableWidget(this))
     , ui(new Ui::MainWindow)
@@ -22,9 +16,8 @@ MainWindow::MainWindow(QWidget *parent)
     icon.addFile(":/images/imgs/PEHint-ico.ico");
     this->setWindowIcon(icon);
 
-    MainWindow::setupUI();
+    startUI();
 
-    connect(_tree, &QTreeWidget::itemClicked, this, &MainWindow::onTreeItemClicked);
 }
 
 MainWindow::~MainWindow()
@@ -72,89 +65,106 @@ void MainWindow::on_action_Open_triggered()
         return; // If no file is selected, do nothing
     }
 
-    // Open the file using C-style file handling
-    FILE *PpeFile = ::fopen(filePath.toStdString().c_str(), "rb"); // Open in binary mode
+    // Open the file using QFile
+    QFile peFile(filePath);
 
-    if (!PpeFile) {
+    if (!peFile.open(QIODevice::ReadOnly)) {
         QMessageBox::critical(this, tr("Error"), tr("Failed to open the file."));
         return;
     }
 
-    // Do something with the file (e.g., read or process it)
-    QMessageBox::information(this, tr("File Opened"), tr("Successfully opened the file: %1").arg(filePath));
+    int arc = INITPARSE(peFile);
 
-    if (INITPARSE(PpeFile) == 1) {
+    if (arc == 1) {
         exit(1);
     }
-    else if (INITPARSE(PpeFile) == 32) {
-        PE32FILE PeFile_1(filePath.toStdString().c_str(), PpeFile);
-        PeFile_1.PrintInfo();
-        ::fclose(PpeFile);
-        ::exit(0);
+
+    else if (arc == 32) {
+        PE32FILE pe32(&peFile);
+        pe32.PrintInfo();
+
+        lstInfo = pe32.PrintFileInfo();
+        MainWindow::setupUI();
+
     }
-    else if (INITPARSE(PpeFile) == 64) {
-        PE64FILE PeFile_1(filePath.toStdString().c_str(), PpeFile);
-        PeFile_1.PrintInfo();
-        ::fclose(PpeFile);
-        ::exit(0);
+    else if (arc == 64) {
+        //PE64FILE pe64(filePath.toStdString().c_str(), peFile);
+        //pe64.PrintInfo();
     }
 
     // Close the file when done
-    fclose(PpeFile);
-}
-
-void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column) {
-    // Clear the table before updating
-    _table->clearContents();
-
-    if (item->text(0) == "DOS HEADER") {
-        _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem("Property"));
-        _table->setItem(0, 1, new QTableWidgetItem("DOS Header Details"));
-    } else if (item->text(0) == "RICH HEADER") {
-        _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem("Entropy"));
-        _table->setItem(0, 1, new QTableWidgetItem("7.609"));
-    }
+    peFile.close();
 }
 
 void MainWindow::onHeaderClicked(int section) {
 
     _table->clearContents();
-    _table->setHorizontalHeaderLabels({"Property", "Value"});  // Restore headers
+    _table->setHorizontalHeaderLabels({"Name", "Type"});  // Restore headers
 
     if (section == 0) {
         _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem("Header"));
-        _table->setItem(0, 1, new QTableWidgetItem("Property Column Clicked"));
-    } else if (section == 1) {
+        _table->setItem(0, 0, new QTableWidgetItem(lstInfo[0])); // FileName
+        _table->setItem(0, 1, new QTableWidgetItem(lstInfo[1])); // Value
+    }else if (section == 1) {
         _table->setRowCount(2);
-        _table->setItem(0, 0, new QTableWidgetItem("Header"));
-        _table->setItem(0, 1, new QTableWidgetItem("Value Column Clicked"));
+        _table->setItem(0, 0, new QTableWidgetItem(lstInfo[0])); // FileName
+        _table->setItem(0, 1, new QTableWidgetItem(lstInfo[1])); // Value
     }
 }
 
 void MainWindow::setupUI() {
-    // Use class members instead of creating new local variables
-    QSplitter *splitter = new QSplitter(this);
+    // Create a horizontal splitter
+    QSplitter *splitter = new QSplitter(Qt::Horizontal, this); // Set orientation to horizontal
+
+    // Initialize the tree and table widgets
+    _tree = new QTreeWidget();
+    _table = new QTableWidget();
+
+    // Add the widgets to the splitter
     splitter->addWidget(_tree);
     splitter->addWidget(_table);
 
-    // Setup tree and table
+    // Optional: Set initial sizes for splitter widgets
+    splitter->setStretchFactor(0, 1); // Tree gets more focus
+    splitter->setStretchFactor(1, 2); // Table takes up more space
+
+    // Setup tree and table contents
     setupTree(_tree);
     setupTable(_table);
 
-    // Set the splitter as the central widget
+    // Set the splitter as the central widget of the main window
     setCentralWidget(splitter);
+}
+
+void MainWindow::startUI()
+{
+    // Create a central widget if none exists
+    QWidget *centralWidget = new QWidget(this);
+    this->setCentralWidget(centralWidget);
+
+    // Use a layout to manage the _tree and _table widgets
+    QSplitter *splitter = new QSplitter(Qt::Horizontal, centralWidget);
+    splitter->addWidget(_tree);
+    splitter->addWidget(_table);
+
+    // Optional: Set initial sizes for splitter widgets
+    splitter->setStretchFactor(0, 1); // Tree gets more focus
+    splitter->setStretchFactor(1, 2); // Table takes up more space
+
+    QVBoxLayout *layout = new QVBoxLayout(centralWidget);
+    layout->addWidget(splitter);
+    centralWidget->setLayout(layout);
+
+    // Configure the tree widget
+    _tree->setHeaderLabel("");
+    _tree->clear();
 }
 
 void MainWindow::setupTree(QTreeWidget *tree) {
 
     tree->header()->setSectionsClickable(true);
-    tree->setHeaderLabel("FileName.exe");
-
-    // Connect header sectionClicked signal
-    connect(tree->header(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
+    //tree->setHeaderLabel("FileName.exe");
+    tree->setHeaderLabel(lstInfo[0]); //FileName
 
     // Add items to the tree
     QTreeWidgetItem *fileItem = new QTreeWidgetItem(tree);
@@ -172,14 +182,25 @@ void MainWindow::setupTree(QTreeWidget *tree) {
 
     tree->expandAll();  // Optional: expand all nodes
 
+    // Connect header sectionClicked signal
+    connect(tree->header(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
 }
-
 
 void MainWindow::setupTable(QTableWidget *table) {
 
     // Set up the table with headers
     table->setColumnCount(2);
-    table->setHorizontalHeaderLabels({"Property", "Value"});
+    table->setHorizontalHeaderLabels({"Name", "Type"});
+
+    // Automatically adjust the "Property" and "Value" column widths to fit content
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+
+    // Optional: Set the row height dynamically to fit content
+    table->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+
+    // Optional: Allow horizontal header resizing by the user if needed
+    table->horizontalHeader()->setStretchLastSection(false); // Disable stretching
 
     // Connect header signal to onHeaderClicked
     connect(table->horizontalHeader(), &QHeaderView::sectionClicked, this, &MainWindow::onHeaderClicked);
