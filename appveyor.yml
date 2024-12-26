@@ -1,67 +1,77 @@
 # AppVeyor CI configuration for PEHint
 
-version: 1.0.{build}
-image: Visual Studio 2022
+version: '{branch}.{build}'
+skip_tags: true
+
+image:
+- Visual Studio 2022
+
+platform:
+  - x64
+  - x86
+
+configuration:
+  - Release
+  - Debug
+
+#branches:
+#  only:
+#    - main
+
+build:
+  verbosity: detailed
 
 environment:
-  QT_INSTALL_DIR: "C:\\Qt"
-  QT_VERSION: "6.5.2"
-
-cache:
-  - C:\Qt
+  artifactName: $(APPVEYOR_PROJECT_NAME)-$(APPVEYOR_REPO_COMMIT)-$(CONFIGURATION)-$(PLATFORM)
+  buildConfig: $(CONFIGURATION)
+  buildPlatform: $(PLATFORM)
 
 install:
-  # Install curl using Chocolatey
-  - choco install curl --yes
+  # Update Git submodules
+  - git submodule update --init --recursive
 
-  # Debug environment variables
-  - echo Debugging environment variables...
-  - echo QT_INSTALL_DIR=%QT_INSTALL_DIR%
-  - echo QT_VERSION=%QT_VERSION%
+  # Set Qt version and path based on platform
+  - if [%buildPlatform%]==[x64] (set QT_VER=6)
+  - if [%buildPlatform%]==[x64] (set QT=C:\Qt\6.5.2\msvc2019_64)
+  - if [%buildPlatform%]==[x86] (set QT_VER=5)
+  - if [%buildPlatform%]==[x86] (set QT=C:\Qt\5.15.2\msvc2019)
+  - set QT_DIR=%QT%
+  - set PATH=%PATH%;%QT%\bin;%QT%\lib\cmake
 
-  # Ensure QT_INSTALL_DIR exists without causing errors
-  - cmd: |
-      echo Ensuring that %QT_INSTALL_DIR% exists...
-      if not exist "%QT_INSTALL_DIR%" mkdir "%QT_INSTALL_DIR%"
-
-  # Check if Qt is installed
-  - cmd: |
-      echo Checking if Qt %QT_VERSION% is installed...
-      if not exist "%QT_INSTALL_DIR%\%QT_VERSION%" (
-        echo "Qt not found. Starting installation..."
-        curl -Lo qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-unified-windows-x86-online.exe
-        qt-installer.exe --script qt-install-script.qs
-        if %ERRORLEVEL% neq 0 (
-          echo "Qt installation failed. Exiting..."
-          exit /b %ERRORLEVEL%
-        )
-      ) else (
-        echo "Qt %QT_VERSION% is already installed."
-      )
-
-  # Verify Qt installation
-  - cmd: |
-      echo Verifying Qt installation...
-      if exist "%QT_INSTALL_DIR%\%QT_VERSION%" (
-        echo "Qt installation verified successfully."
-      ) else (
-        echo "Qt installation missing. Exiting with error."
-        exit /b 1
-      )
+before_build:
+  # Create build directory
+  - mkdir build
+  - cd build
 
 build_script:
-  # Create build directory and configure project
-  - cmd: mkdir build
-  - cmd: cd build
-  - cmd: cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=%QT_INSTALL_DIR%\%QT_VERSION%\msvc2019_64 ..
-  - cmd: cmake --build . --config Release
+  # Configure the project using CMake
+  - if [%buildPlatform%]==[x64] (cmake .. -A x64 -DCMAKE_PREFIX_PATH=%QT_DIR% -DCOMMIT_HASH:STRING="\""%APPVEYOR_REPO_COMMIT%"\"" )
+  - if [%buildPlatform%]==[x86] (cmake .. -A Win32 -DCMAKE_PREFIX_PATH=%QT_DIR% -DCOMMIT_HASH:STRING="\""%APPVEYOR_REPO_COMMIT%"\"" )
+  
+  # Build the project
+  - cmake --build . --config %buildConfig%
 
-test_script:
-  # Run tests
-  - cmd: cd build
-  - cmd: ctest --output-on-failure
+after_build:
+  # Create output directory for artifacts
+  - mkdir %artifactName%
+  
+  # Copy build outputs and necessary Qt libraries
+  - cp -r bin/%buildConfig%/* %artifactName%
+  - set DLL_SUFFIX=.dll
+  - if [%buildConfig%]==[Debug] (set DLL_SUFFIX=d.dll)
+  - cp "%QT%\bin\Qt%QT_VER%Core%DLL_SUFFIX%" %artifactName%
+  - cp "%QT%\bin\Qt%QT_VER%Gui%DLL_SUFFIX%" %artifactName%
+  - cp "%QT%\bin\Qt%QT_VER%Widgets%DLL_SUFFIX%" %artifactName%
+  
+  # Copy plugins
+  - mkdir %artifactName%\platforms
+  - mkdir %artifactName%\styles
+  - mkdir %artifactName%\imageformats
+  - cp "%QT%\plugins\platforms\qwindows%DLL_SUFFIX%" %artifactName%\platforms
+  - cp "%QT%\plugins\imageformats\qico%DLL_SUFFIX%" %artifactName%\imageformats
+  - if [%QT_VER%]==[5] (cp "%QT%\plugins\styles\qwindowsvistastyle%DLL_SUFFIX%" %artifactName%\styles)
+  - if [%QT_VER%]==[6] (cp "%QT%\plugins\styles\qmodernwindowsstyle%DLL_SUFFIX%" %artifactName%\styles)
 
 artifacts:
-  # Collect compiled executables
-  - path: build\Release\*.exe
-    name: PEHint Executables
+  # Collect artifacts
+  - path: build\%artifactName%
