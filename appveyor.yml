@@ -1,5 +1,5 @@
 # AppVeyor configuration for Qt + CMake project
-version: 1.0.{build}
+version: '{branch}.{build}'
 
 # OS and image
 image: Visual Studio 2022
@@ -7,13 +7,15 @@ image: Visual Studio 2022
 # Environment setup
 environment:
   matrix:
-    - QT_DIR: "C:\\Qt\\6.5.2\\msvc2019_64"  # Adjust to your Qt version and installation path
-      CMAKE_GENERATOR: "Ninja"             # Use Ninja or Visual Studio generators
+    - QT_DIR: "C:\\Qt\\6.5.2\\mingw_64"    # Adjust to your Qt version and MinGW installation path
+      CMAKE_GENERATOR: "MinGW Makefiles"  # Use MinGW Makefiles generator
 
 # Install dependencies
 install:
-  - cmd: set PATH=%QT_DIR%\bin;%PATH%      # Add Qt to PATH
+  - cmd: set PATH=%QT_DIR%\bin;%PATH%       # Add Qt binaries to PATH
   - cmd: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress
+  - cmd: choco install mingw --no-progress  # Install MinGW via Chocolatey
+  - cmd: set PATH=C:\tools\mingw64\bin;%PATH%  # Add MinGW to PATH
 
 # Build script
 build_script:
@@ -23,9 +25,9 @@ build_script:
       -DCMAKE_PREFIX_PATH="%QT_DIR%" ^
       -DCMAKE_BUILD_TYPE=Release ^
       ..
-  - cmake --build . --config Release
+  - mingw32-make  # Use mingw32-make to build the project
 
 # Artifacts (if you want to keep the resulting binaries)
 artifacts:
-  - path: build\Release\*.exe
+  - path: build\*.exe
     name: PEHint Executable
