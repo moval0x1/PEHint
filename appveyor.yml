@@ -29,9 +29,3 @@ build_script:
 artifacts:
   - path: build\Release\*.exe
     name: PEHint Executable
-
-# Notifications (optional)
-notifications:
-  email:
-    on_failure: always
-    on_success: change
