@@ -1,53 +1,37 @@
-# AppVeyor configuration for PEHint project
+# AppVeyor configuration for Qt + CMake project
+version: 1.0.{build}
 
-version: '{branch}.{build}'
-skip_tags: true
+# OS and image
+image: Visual Studio 2022
 
-# Set the environment to Windows
-image: Visual Studio 2019
+# Environment setup
+environment:
+  matrix:
+    - QT_DIR: "C:\\Qt\\6.5.2\\msvc2019_64"  # Adjust to your Qt version and installation path
+      CMAKE_GENERATOR: "Ninja"             # Use Ninja or Visual Studio generators
 
-platform:
-  - x64
-
-configuration:
-  - Release
-
-branches:
-  only:
-    - update-layout-structure
-
-build:
-  verbosity: detailed
-
-# Install Qt
+# Install dependencies
 install:
-  - ps: |
-      $qtInstallerUrl = "https://download.qt.io/official_releases/online_installers/qt-unified-windows-x64-online.exe"
-      $qtInstallerPath = "$env:TEMP\qt-unified-windows-x64-online.exe"
-      Invoke-WebRequest -Uri $qtInstallerUrl -OutFile $qtInstallerPath
-      if (-Not (Test-Path $qtInstallerPath)) {
-          Write-Host "Qt installer was not downloaded successfully!"
-          exit 1
-      }
-      Start-Process -Wait -FilePath $qtInstallerPath -ArgumentList "--silent", "--platform minimal", "--root C:\Qt", "--modules qt.qt6.670.win64_msvc2019_64,qt.qt6.670.win64_msvc2019_64.tools,qt.qt6.670.win64_msvc2019_64.qttools"
-
-# Cache installed Qt
-cache:
-  - C:\Qt
-
-# Clone the repository
-clone_folder: c:\projects\pehint
-
-# Before build: set up environment
-before_build:
-  - set CMAKE_PREFIX_PATH=C:\Qt\6.7.2\msvc2019_64\lib\cmake
-  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -G "Visual Studio 16 2019" -A x64 -DQT_DEBUG_FIND_PACKAGE=ON --debug-find
+  - cmd: set PATH=%QT_DIR%\bin;%PATH%      # Add Qt to PATH
+  - cmd: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress
 
 # Build script
 build_script:
-  - cmake --build build --config Release
+  - mkdir build
+  - cd build
+  - cmake -G "%CMAKE_GENERATOR%" ^
+      -DCMAKE_PREFIX_PATH="%QT_DIR%" ^
+      -DCMAKE_BUILD_TYPE=Release ^
+      ..
+  - cmake --build . --config Release
 
-# Artifacts: include the final executable for download
+# Artifacts (if you want to keep the resulting binaries)
 artifacts:
-  - path: build\Release\PEHint.exe
+  - path: build\Release\*.exe
     name: PEHint Executable
+
+# Notifications (optional)
+notifications:
+  email:
+    on_failure: always
+    on_success: change
