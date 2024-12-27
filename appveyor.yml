@@ -1,33 +1,35 @@
-# AppVeyor configuration for Qt + CMake project
-version: '{branch}.{build}'
+# AppVeyor configuration for a Qt + CMake project
+version: 1.0.{build}
 
 # OS and image
-image: Visual Studio 2022
+image: Visual Studio 2019
 
 # Environment setup
 environment:
-  matrix:
-    - QT_DIR: "C:\\Qt\\6.5.2\\mingw_64"    # Adjust to your Qt version and MinGW installation path
-      CMAKE_GENERATOR: "MinGW Makefiles"  # Use MinGW Makefiles generator
+  QT_DIR: "C:\\Qt\\6.5.2\\msvc2019_64"
+  CMAKE_EXE: "C:\\Qt\\Tools\\CMake_64\\bin\\cmake.exe"
+  BUILD_DIR: "C:\\projects\\build\\Desktop_x86_windows_msvc2019_pe_64bit-Release"
 
 # Install dependencies
 install:
-  - cmd: set PATH=%QT_DIR%\bin;%PATH%       # Add Qt binaries to PATH
-  - cmd: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress
-  - cmd: choco install mingw --no-progress  # Install MinGW via Chocolatey
-  - cmd: set PATH=C:\tools\mingw64\bin;%PATH%  # Add MinGW to PATH
+  # Add Qt to the PATH
+  - set PATH=%QT_DIR%\bin;%PATH%
+  # Verify CMake installation
+  - "%CMAKE_EXE% --version"
 
 # Build script
 build_script:
-  - mkdir build
-  - cd build
-  - cmake -G "%CMAKE_GENERATOR%" ^
-      -DCMAKE_PREFIX_PATH="%QT_DIR%" ^
-      -DCMAKE_BUILD_TYPE=Release ^
-      ..
-  - mingw32-make  # Use mingw32-make to build the project
+  - mkdir "%BUILD_DIR%"
+  - cd "%BUILD_DIR%"
+  - |
+    %CMAKE_EXE% ^
+      -S %APPVEYOR_BUILD_FOLDER% ^
+      -B %BUILD_DIR% ^
+      "-DCMAKE_PREFIX_PATH:PATH=%QT_DIR%" ^
+      "-DQT_DIR:PATH=%QT_DIR%\\lib\\cmake\\Qt6"
+  - "%CMAKE_EXE% --build %BUILD_DIR% --config Release"
 
-# Artifacts (if you want to keep the resulting binaries)
+# Artifacts
 artifacts:
-  - path: build\*.exe
+  - path: build\Desktop_x86_windows_msvc2019_pe_64bit-Release\*.exe
     name: PEHint Executable
