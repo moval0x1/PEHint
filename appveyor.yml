@@ -52,6 +52,7 @@ before_build:
 # Build script
 build_script:
   - cmake --build build --config Release
+  - ps: Start-Sleep -Seconds 3600
 
 # Artifacts: include the final executable for download
 artifacts:
