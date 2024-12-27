@@ -29,8 +29,7 @@ install:
           Write-Host "Qt installer was not downloaded successfully!"
           exit 1
       }
-      Write-Host "Qt installer downloaded to $qtInstallerPath"
-      Start-Process -Wait -FilePath $qtInstallerPath -ArgumentList "--silent", "--verbose", "--platform minimal", "--root C:\Qt", "--modules qt.qt6.670.win64_msvc2019_64,qt.qt6.670.win64_msvc2019_64.tools"
+      Start-Process -Wait -FilePath $qtInstallerPath -ArgumentList "--silent", "--platform minimal", "--root C:\Qt", "--modules qt.qt6.670.win64_msvc2019_64,qt.qt6.670.win64_msvc2019_64.tools,qt.qt6.670.win64_msvc2019_64.qttools"
 
 # Cache installed Qt
 cache:
@@ -41,11 +40,8 @@ clone_folder: c:\projects\pehint
 
 # Before build: set up environment
 before_build:
-  - set Qt6_DIR=C:\Qt\6.7.2\msvc2019_64\lib\cmake\Qt6
-  - set Qt6Widgets_DIR=C:\Qt\6.7.2\msvc2019_64\lib\cmake\Qt6Widgets
-  - set Qt6CoreTools_DIR=C:\Qt\6.7.2\msvc2019_64\lib\cmake\Qt6CoreTools
-  - echo CMAKE_PREFIX_PATH=%Qt6_DIR%
-  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%Qt6_DIR% -G "Visual Studio 16 2019" -A x64 -DQT_DEBUG_FIND_PACKAGE=ON --debug-find
+  - set CMAKE_PREFIX_PATH=C:\Qt\6.7.2\msvc2019_64\lib\cmake
+  - cmake -B build -S . -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -G "Visual Studio 16 2019" -A x64 -DQT_DEBUG_FIND_PACKAGE=ON --debug-find
 
 # Build script
 build_script:
