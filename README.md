@@ -112,6 +112,11 @@ See [docs/](docs/) for detailed development guides.
 3. **Follow** existing architecture patterns
 4. **Submit** a pull request
 
+## References
+- https://0xrick.github.io/win-internals/pe1/
+- https://learn.microsoft.com/en-us/windows/win32/api/winnt/
+- https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
