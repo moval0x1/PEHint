@@ -111,6 +111,8 @@ private:
     
     // Security analysis
     void highlightSuspiciousSections(const SecurityAnalysisResult &result);
+    void highlightSuspiciousFieldsInTree(const SecurityAnalysisResult &result);
+    void clearTreeHighlights();
     
     // Context menu
     QMenu *m_contextMenu;

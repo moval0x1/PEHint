@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QtGlobal>
+#include "pe_structures.h"
 
 class PEUtils
 {
@@ -22,6 +23,7 @@ public:
     
     // Validation utilities
     static bool isValidDOSMagic(quint16 magic);
+    static bool isValidDOSHeader(const IMAGE_DOS_HEADER &dosHeader);
     static bool isValidPESignature(quint32 signature);
     static bool isValidOptionalHeaderMagic(quint16 magic);
     

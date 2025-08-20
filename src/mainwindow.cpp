@@ -686,6 +686,9 @@ void MainWindow::onSecurityAnalysis()
     // Highlight suspicious sections in hex viewer
     highlightSuspiciousSections(result);
     
+    // Highlight suspicious fields in the tree view
+    highlightSuspiciousFieldsInTree(result);
+    
     // Update status
     QString riskLevelText;
     switch (result.riskLevel) {
@@ -740,6 +743,9 @@ void MainWindow::clearDisplay()
 {
     // Access UI components through UIManager
     if (m_uiManager) {
+        // Clear tree highlights before clearing the tree
+        clearTreeHighlights();
+        
         m_uiManager->m_peTree->clear();
         m_uiManager->m_fieldExplanationText->clear();
         m_uiManager->m_fileInfoLabel->setText(LANG("UI/file_no_file_loaded"));
@@ -748,6 +754,11 @@ void MainWindow::clearDisplay()
         m_uiManager->m_copyButton->setEnabled(false);
         m_uiManager->m_saveButton->setEnabled(false);
         if (m_uiManager->m_securityButton) m_uiManager->m_securityButton->setEnabled(false);
+        
+        // Also clear hex viewer highlights
+        if (m_uiManager->m_hexViewer) {
+            m_uiManager->m_hexViewer->clearHighlights();
+        }
     }
 }
 
@@ -877,30 +888,210 @@ void MainWindow::highlightSuspiciousSections(const SecurityAnalysisResult &resul
     }
 }
 
-void MainWindow::setupLanguageMenu()
+void MainWindow::highlightSuspiciousFieldsInTree(const SecurityAnalysisResult &result)
 {
-    // Add language submenu to Tools menu
-    QMenu *toolsMenu = menuBar()->findChild<QMenu*>();
-    if (!toolsMenu) {
-        // If Tools menu doesn't exist, create it
-        toolsMenu = menuBar()->addMenu("&Tools");
+    if (!m_uiManager || !m_uiManager->m_peTree) {
+        return;
     }
     
-    // Find or create the Tools menu
-    QMenu *toolsMenuFound = nullptr;
+    // Clear previous tree highlights
+    clearTreeHighlights();
+    
+    // Define suspicious field patterns and their risk levels
+    QMap<QString, SecurityRiskLevel> suspiciousFields;
+    
+    // High risk fields - commonly exploited or manipulated
+    suspiciousFields["Characteristics"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["DllCharacteristics"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["Subsystem"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["SizeOfCode"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["SizeOfImage"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["AddressOfEntryPoint"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["BaseOfCode"] = SecurityRiskLevel::HIGH;
+    suspiciousFields["ImageBase"] = SecurityRiskLevel::HIGH;
+    
+    // Medium risk fields - potentially suspicious
+    suspiciousFields["TimeDateStamp"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["CheckSum"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["NumberOfSections"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["SizeOfHeaders"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["SizeOfStackReserve"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["SizeOfStackCommit"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["SizeOfHeapReserve"] = SecurityRiskLevel::MEDIUM;
+    suspiciousFields["SizeOfHeapCommit"] = SecurityRiskLevel::MEDIUM;
+    
+    // Low risk fields - less commonly exploited but worth checking
+    suspiciousFields["MajorLinkerVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MinorLinkerVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MajorOperatingSystemVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MinorOperatingSystemVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MajorImageVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MinorImageVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MajorSubsystemVersion"] = SecurityRiskLevel::LOW;
+    suspiciousFields["MinorSubsystemVersion"] = SecurityRiskLevel::LOW;
+    
+    // Highlight fields based on risk level and analysis results
+    QTreeWidgetItemIterator it(m_uiManager->m_peTree);
+    while (*it) {
+        QTreeWidgetItem *item = *it;
+        QString fieldName = item->text(0);
+        
+        // Check if this field is in our suspicious fields list
+        if (suspiciousFields.contains(fieldName)) {
+            SecurityRiskLevel fieldRisk = suspiciousFields[fieldName];
+            
+            // Determine highlight color based on field risk and analysis results
+            QColor highlightColor;
+            QString tooltip;
+            
+            if (result.riskLevel == SecurityRiskLevel::HIGH || fieldRisk == SecurityRiskLevel::HIGH) {
+                // High risk - light red
+                highlightColor = QColor(255, 200, 200, 180); // Light red with transparency
+                QMap<QString, QString> params;
+                params["field_name"] = fieldName;
+                tooltip = LANG_PARAMS("UI/security_field_high_risk_tooltip", params);
+            } else if (result.riskLevel == SecurityRiskLevel::MEDIUM || fieldRisk == SecurityRiskLevel::MEDIUM) {
+                // Medium risk - light orange
+                highlightColor = QColor(255, 220, 180, 180); // Light orange with transparency
+                QMap<QString, QString> params;
+                params["field_name"] = fieldName;
+                tooltip = LANG_PARAMS("UI/security_field_medium_risk_tooltip", params);
+            } else {
+                // Low risk - light yellow
+                highlightColor = QColor(255, 255, 200, 180); // Light yellow with transparency
+                QMap<QString, QString> params;
+                params["field_name"] = fieldName;
+                tooltip = LANG_PARAMS("UI/security_field_low_risk_tooltip", params);
+            }
+            
+            // Apply highlighting to the item
+            item->setBackground(0, highlightColor);
+            item->setBackground(1, highlightColor);
+            item->setBackground(2, highlightColor);
+            item->setBackground(3, highlightColor);
+            
+            // Set tooltip
+            item->setToolTip(0, tooltip);
+            item->setToolTip(1, tooltip);
+            item->setToolTip(2, tooltip);
+            item->setToolTip(3, tooltip);
+            
+            // Store the original background color for later restoration
+            item->setData(0, Qt::UserRole + 1, item->background(0));
+        }
+        
+        ++it;
+    }
+    
+    // Also highlight fields mentioned in detected issues
+    for (const QString &issue : result.detectedIssues) {
+        // Look for field names mentioned in the issue description
+        for (const QString &fieldName : suspiciousFields.keys()) {
+            if (issue.contains(fieldName, Qt::CaseInsensitive)) {
+                // Find and highlight this specific field
+                QTreeWidgetItemIterator it2(m_uiManager->m_peTree);
+                while (*it2) {
+                    QTreeWidgetItem *item = *it2;
+                    if (item->text(0) == fieldName) {
+                        // Highlight with a more prominent color for detected issues
+                        QColor issueColor(255, 150, 150, 200); // Brighter red for detected issues
+                        item->setBackground(0, issueColor);
+                        item->setBackground(1, issueColor);
+                        item->setBackground(2, issueColor);
+                        item->setBackground(3, issueColor);
+                        
+                        // Update tooltip to include the detected issue
+                        QString currentTooltip = item->toolTip(0);
+                        QMap<QString, QString> params;
+                        params["tooltip"] = currentTooltip;
+                        params["issue"] = issue;
+                        QString newTooltip = LANG_PARAMS("UI/security_field_detected_issue_tooltip", params);
+                        item->setToolTip(0, newTooltip);
+                        item->setToolTip(1, newTooltip);
+                        item->setToolTip(2, newTooltip);
+                        item->setToolTip(3, newTooltip);
+                        break;
+                    }
+                    ++it2;
+                }
+                break;
+            }
+        }
+    }
+    
+    // Show summary of highlighted fields
+    int highlightedCount = 0;
+    QTreeWidgetItemIterator countIt(m_uiManager->m_peTree);
+    while (*countIt) {
+        QTreeWidgetItem *item = *countIt;
+        if (item->background(0) != item->data(0, Qt::UserRole + 1).value<QColor>()) {
+            highlightedCount++;
+        }
+        ++countIt;
+    }
+    
+    if (highlightedCount > 0) {
+        QString highlightMsg = LANG_PARAM("UI/security_fields_highlighted", "count", QString::number(highlightedCount));
+        statusBar()->showMessage(highlightMsg, 3000);
+    }
+}
+
+void MainWindow::clearTreeHighlights()
+{
+    if (!m_uiManager || !m_uiManager->m_peTree) {
+        return;
+    }
+    
+    QTreeWidgetItemIterator it(m_uiManager->m_peTree);
+    while (*it) {
+        QTreeWidgetItem *item = *it;
+        
+        // Restore original background color if it was stored
+        QVariant originalColor = item->data(0, Qt::UserRole + 1);
+        if (originalColor.isValid()) {
+            QColor color = originalColor.value<QColor>();
+            if (color.isValid()) {
+                item->setBackground(0, color);
+                item->setBackground(1, color);
+                item->setBackground(2, color);
+                item->setBackground(3, color);
+            }
+        } else {
+            // Reset to default if no original color was stored
+            item->setBackground(0, QColor());
+            item->setBackground(1, QColor());
+            item->setBackground(2, QColor());
+            item->setBackground(3, QColor());
+        }
+        
+        // Clear tooltips
+        item->setToolTip(0, QString());
+        item->setToolTip(1, QString());
+        item->setToolTip(2, QString());
+        item->setToolTip(3, QString());
+        
+        ++it;
+    }
+}
+
+void MainWindow::setupLanguageMenu()
+{
+    // Find the Tools menu
+    QMenu *toolsMenu = nullptr;
     for (QAction *action : menuBar()->actions()) {
         if (action->menu() && action->menu()->title().contains("Tools", Qt::CaseInsensitive)) {
-            toolsMenuFound = action->menu();
+            toolsMenu = action->menu();
             break;
         }
     }
     
-    if (!toolsMenuFound) {
-        toolsMenuFound = menuBar()->addMenu("&" + LANG("UI/menu_tools"));
+    if (!toolsMenu) {
+        qWarning() << "Tools menu not found, creating it";
+        toolsMenu = menuBar()->addMenu("&Tools");
     }
     
     // Add language submenu
-    QMenu *languageMenu = toolsMenuFound->addMenu(LANG("UI/menu_language"));
+    QMenu *languageMenu = toolsMenu->addMenu(LANG("UI/menu_language"));
     
     // Get available languages from Language Manager
     QStringList languages = LanguageManager::getInstance().getAvailableLanguages();

@@ -1,7 +1,6 @@
 #include "pe_utils.h"
 #include "language_manager.h"
 #include <QString>
-#include <windows.h>
 
 // Formatting utilities
 QString PEUtils::formatHex(quint32 value)
@@ -147,6 +146,21 @@ QString PEUtils::getDebugTypeName(quint32 typeId)
 bool PEUtils::isValidDOSMagic(quint16 magic)
 {
     return magic == 0x5A4D; // "MZ"
+}
+
+bool PEUtils::isValidDOSHeader(const IMAGE_DOS_HEADER &dosHeader)
+{
+    // Check magic number
+    if (!isValidDOSMagic(dosHeader.e_magic)) {
+        return false;
+    }
+    
+    // Check if PE header offset is reasonable
+    if (dosHeader.e_lfanew < sizeof(IMAGE_DOS_HEADER) || dosHeader.e_lfanew > 0x10000) {
+        return false;
+    }
+    
+    return true;
 }
 
 bool PEUtils::isValidPESignature(quint32 signature)

@@ -160,7 +160,40 @@ public:
      * This method converts the raw file size to a user-friendly format
      * for display in the UI.
      */
-    QString getFileSize() const;
+    QString getFileSizeString() const;
+    
+    /**
+     * @brief Gets the raw file size in bytes
+     * @return File size in bytes
+     */
+    qint64 getFileSize() const { return m_dataModel.getFileSize(); }
+    
+    /**
+     * @brief Checks if the current file is considered "large"
+     * @return true if file exceeds the large file threshold
+     * 
+     * This method helps determine parsing strategy for large files,
+     * allowing optimization of memory usage and parsing performance.
+     */
+    bool isLargeFile() const;
+    
+    /**
+     * @brief Checks if the current file is considered "very large"
+     * @return true if file exceeds the very large file threshold
+     * 
+     * This method helps determine parsing strategy for very large files,
+     * allowing aggressive optimization of memory usage and parsing performance.
+     */
+    bool isVeryLargeFile() const;
+    
+    /**
+     * @brief Loads large files using streaming approach to avoid memory issues
+     * @return true if loading succeeded, false otherwise
+     * 
+     * This method reads only essential headers and structure information
+     * without loading the entire file into memory.
+     */
+    bool loadLargeFileStreaming();
     
     // Data access - Access to parsed PE information
     
@@ -355,33 +388,6 @@ private:
      */
     quint32 rvaToFileOffset(quint32 rva);
     
-    /**
-     * @brief Checks if the current file is considered "large"
-     * @return true if file exceeds the large file threshold
-     * 
-     * This method helps determine parsing strategy for large files,
-     * allowing optimization of memory usage and parsing performance.
-     */
-    bool isLargeFile() const;
-    
-    /**
-     * @brief Checks if the current file is considered "very large"
-     * @return true if file exceeds the very large file threshold
-     * 
-     * This method helps determine parsing strategy for very large files,
-     * allowing aggressive optimization of memory usage and parsing performance.
-     */
-    bool isVeryLargeFile() const;
-    
-    /**
-     * @brief Loads large files using streaming approach to avoid memory issues
-     * @return true if loading succeeded, false otherwise
-     * 
-     * This method reads only essential headers and structure information
-     * without loading the entire file into memory.
-     */
-    bool loadLargeFileStreaming();
-    
     // Tree building methods - For UI compatibility
     
     /**
@@ -433,9 +439,6 @@ private:
     QByteArray m_fileData;           ///< Raw file data in memory
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
-    
-    // Utility methods
-    qint64 getFileSize() const { return m_dataModel.getFileSize(); }
     
     // Async parsing support - For non-blocking file processing
     

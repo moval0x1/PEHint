@@ -1,4 +1,5 @@
 #include "pe_import_export_parser.h"
+#include "language_manager.h"
 #include <QDebug>
 
 PEImportExportParser::PEImportExportParser(const QByteArray &fileData)

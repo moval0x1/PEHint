@@ -1,0 +1,564 @@
+{
+  "pt": {
+    "DOS Header": {
+      "title": "Cabeçalho DOS (Cabeçalho MZ)",
+      "description": "O cabeçalho DOS é a primeira estrutura em cada arquivo PE. Foi originalmente projetado para compatibilidade com DOS, mas agora serve como um cabeçalho legado que aponta para o cabeçalho PE real. O número mágico 'MZ' (0x5A4D) identifica este como um arquivo executável válido.",
+      "purpose": "Fornece compatibilidade com versões anteriores e contém o offset para o cabeçalho PE",
+      "security_notes": "Cabeçalho legado - sem implicações de segurança diretas, mas deve estar presente para arquivos PE válidos"
+    },
+    "PE Header": {
+      "title": "Cabeçalho PE (Cabeçalho do Arquivo)",
+      "description": "O cabeçalho PE contém informações essenciais sobre o formato do arquivo, incluindo o tipo de máquina de destino, número de seções e características. Ele segue o cabeçalho DOS e contém as informações principais do formato PE.",
+      "purpose": "Define a estrutura básica do arquivo PE e suas características",
+      "security_notes": "Crítico para validação do arquivo - verifique o campo Machine para arquiteturas inesperadas e Characteristics para flags suspeitos"
+    },
+    "Optional Header": {
+      "title": "Cabeçalho Opcional",
+      "description": "O cabeçalho opcional contém informações detalhadas sobre o executável, incluindo ponto de entrada, base da imagem, alinhamento de seções e informações do subsistema. É essencial para o carregador do Windows carregar e executar o arquivo corretamente.",
+      "purpose": "Fornecer informações detalhadas de carregamento e execução para o carregador do Windows",
+      "security_notes": "Campos de segurança críticos incluem EntryPoint, ImageBase e DllCharacteristics. Valores incomuns podem indicar modificações maliciosas."
+    },
+    "Sections": {
+      "title": "Seções PE",
+      "description": "As seções contêm o código, dados e recursos reais do executável. Cada seção tem características e permissões específicas que determinam como é carregada na memória e quais operações são permitidas.",
+      "purpose": "Organizar o conteúdo executável em segmentos lógicos e carregáveis com permissões específicas",
+      "security_notes": "Crítico para análise de segurança - verifique as características das seções para permissões suspeitas, procure por seções ocultas e verifique o alinhamento das seções"
+    },
+    "Data Directories": {
+      "title": "Diretórios de Dados",
+      "description": "Os diretórios de dados apontam para estruturas importantes dentro do arquivo, como tabelas de importação/exportação, recursos e informações de segurança. Eles fornecem ao carregador as localizações de dados críticos necessários para execução.",
+      "purpose": "Localizar estruturas de dados importantes para carregamento e execução",
+      "security_notes": "Diretórios de importação/exportação são críticos para análise de segurança. Verifique importações suspeitas, exportações inesperadas e verifique a integridade dos diretórios"
+    },
+    "e_magic": {
+      "title": "Número Mágico (e_magic)",
+      "description": "Este valor de 16 bits deve ser 0x5A4D ('MZ' em ASCII). É a assinatura que identifica este arquivo como um executável DOS válido. O 'MZ' significa Mark Zbikowski, um dos desenvolvedores originais do DOS.",
+      "value": "Sempre 0x5A4D (0x5A = 'M', 0x4D = 'Z')",
+      "purpose": "Validação e identificação do formato de arquivo",
+      "security_notes": "Campo de validação crítico - qualquer outro valor indica corrupção ou manipulação do arquivo. Autores de malware às vezes tentam modificar isso para contornar a detecção básica de tipo de arquivo."
+    },
+    "e_cblp": {
+      "title": "Bytes na Última Página (e_cblp)",
+      "description": "O número de bytes na última página do arquivo. Este campo é usado para determinar o tamanho exato do arquivo.",
+      "purpose": "Calcular tamanho exato do arquivo para compatibilidade DOS",
+      "security_notes": "Valores incomuns podem indicar manipulação do arquivo ou preenchimento."
+    },
+    "e_cp": {
+      "title": "Páginas no Arquivo (e_cp)",
+      "description": "O número de páginas no arquivo. No DOS, arquivos eram organizados em páginas de 512 bytes.",
+      "purpose": "Cálculo do tamanho do arquivo DOS",
+      "security_notes": "Campo legado com implicações mínimas de segurança."
+    },
+    "e_crlc": {
+      "title": "Relocações (e_crlc)",
+      "description": "O número de entradas de relocação no arquivo. Estas são usadas para ajustar endereços quando o arquivo não pode ser carregado no seu endereço base preferido.",
+      "purpose": "Lidar com conflitos de espaço de endereço no DOS",
+      "security_notes": "Números altos podem indicar relocações complexas ou manipulação."
+    },
+    "e_cparhdr": {
+      "title": "Tamanho do Cabeçalho (e_cparhdr)",
+      "description": "O tamanho do cabeçalho em parágrafos (unidades de 16 bytes). Isso inclui o cabeçalho DOS e qualquer informação adicional do cabeçalho.",
+      "purpose": "Definir limites do cabeçalho",
+      "security_notes": "Tamanhos de cabeçalho incomuns podem indicar manipulação do cabeçalho."
+    },
+    "e_minalloc": {
+      "title": "Alocação Mínima (e_minalloc)",
+      "description": "O número mínimo de parágrafos de memória que o programa precisa para executar.",
+      "purpose": "Definir requisitos mínimos de memória",
+      "security_notes": "Valores muito altos podem indicar ataques de alocação de memória."
+    },
+    "e_maxalloc": {
+      "title": "Alocação Máxima (e_maxalloc)",
+      "description": "O número máximo de parágrafos de memória que o programa pode usar.",
+      "purpose": "Definir requisitos máximos de memória",
+      "security_notes": "Valores incomumente altos podem indicar ataques de esgotamento de memória."
+    },
+    "e_ss": {
+      "title": "SS Inicial (e_ss)",
+      "description": "O valor inicial do registro SS (segmento da pilha) quando o programa inicia.",
+      "purpose": "Configurar localização inicial da pilha",
+      "security_notes": "Localizações de pilha incomuns podem indicar manipulação da pilha."
+    },
+    "e_sp": {
+      "title": "SP Inicial (e_sp)",
+      "description": "O valor inicial do registro SP (ponteiro da pilha) quando o programa inicia.",
+      "purpose": "Configurar ponteiro inicial da pilha",
+      "security_notes": "Ponteiros de pilha incomuns podem indicar tentativas de estouro da pilha."
+    },
+    "e_csum": {
+      "title": "Soma de Verificação (e_csum)",
+      "description": "Um valor de soma de verificação para o arquivo. Este campo é frequentemente definido como 0 em arquivos PE modernos.",
+      "purpose": "Verificação de integridade do arquivo",
+      "security_notes": "Somas de verificação não-zero devem ser validadas. Zero é normal para arquivos modernos."
+    },
+    "e_ip": {
+      "title": "IP Inicial (e_ip)",
+      "description": "O valor inicial do registro IP (ponteiro de instrução) quando o programa inicia.",
+      "purpose": "Configurar ponto inicial de execução",
+      "security_notes": "Ponteiros de instrução incomuns podem indicar injeção de código."
+    },
+    "e_cs": {
+      "title": "CS Inicial (e_cs)",
+      "description": "O valor inicial do registro CS (segmento de código) quando o programa inicia.",
+      "purpose": "Configurar segmento de código inicial",
+      "security_notes": "Segmentos de código incomuns podem indicar manipulação de segmento."
+    },
+    "e_lfarlc": {
+      "title": "Endereço do Arquivo da Tabela de Relocação (e_lfarlc)",
+      "description": "O endereço do arquivo da tabela de relocação. Isso aponta para as entradas de relocação.",
+      "purpose": "Localizar informações de relocação",
+      "security_notes": "Localizações incomuns da tabela de relocação podem indicar manipulação."
+    },
+    "e_ovno": {
+      "title": "Número do Overlay (e_ovno)",
+      "description": "O número do overlay. Este campo é tipicamente 0 para o programa principal.",
+      "purpose": "Identificar segmentos de overlay",
+      "security_notes": "Valores não-zero podem indicar malware baseado em overlay."
+    },
+    "e_lfanew": {
+      "title": "Offset do Cabeçalho PE (e_lfanew)",
+      "description": "Este valor de 32 bits contém o offset do arquivo para o cabeçalho PE. Ele diz ao carregador onde encontrar o cabeçalho Executável Portável real dentro do arquivo. Este offset é tipicamente 0x80 (128 bytes) ou maior.",
+      "purpose": "Localizar o cabeçalho PE para execução moderna do Windows",
+      "calculation": "Offset do arquivo desde o início até a assinatura PE",
+      "security_notes": "Suspeito se o offset for muito grande (>0x1000) - pode indicar preenchimento do arquivo para ocultar conteúdo malicioso. Também verifique se o offset aponta para uma assinatura PE válida."
+    },
+    "Signature": {
+      "title": "Assinatura PE",
+      "description": "A assinatura PE que identifica este como um arquivo Executável Portável válido. Deve ser 0x00004550 ('PE\\0\\0' em ASCII).",
+      "purpose": "Validar formato de arquivo PE",
+      "security_notes": "Campo de validação crítico - qualquer outro valor indica corrupção ou manipulação do arquivo."
+    },
+    "Machine": {
+      "title": "Tipo de Máquina",
+      "description": "Especifica a arquitetura da CPU de destino para este executável. Valores comuns incluem: 0x014C (Intel 386), 0x8664 (AMD64), 0x01C0 (ARM), 0xAA64 (ARM64).",
+      "purpose": "Garantir que o executável execute em hardware compatível",
+      "security_notes": "Verifique incompatibilidade de arquitetura - executar malware de 64 bits em sistema de 32 bits ou vice-versa. Alguns malware usam múltiplas arquiteturas em arquivo único."
+    },
+    "NumberOfSections": {
+      "title": "Número de Seções",
+      "description": "Indica quantas seções estão definidas na tabela de seções. Cada seção representa uma divisão lógica do executável (código, dados, recursos, etc.). Executáveis típicos têm 3-10 seções.",
+      "purpose": "Definir a estrutura lógica e layout de memória do arquivo",
+      "security_notes": "Suspeito se muito poucas seções (<3) ou muitas (>15). Poucas seções podem indicar código empacotado/obfuscado. Muitas seções podem indicar injeção de código ou malware complexo."
+    },
+    "TimeDateStamp": {
+      "title": "Carimbo de Data/Hora",
+      "description": "Contém o timestamp quando o executável foi criado ou modificado pela última vez. Isso é armazenado como segundos desde 1º de janeiro de 1970 (época Unix).",
+      "purpose": "Rastreamento de versão e identificação de build",
+      "security_notes": "Verifique timestamps suspeitos: datas futuras, datas muito antigas ou datas correspondendo a campanhas conhecidas de malware. Manipulação de timestamp é comum em malware."
+    },
+    "PointerToSymbolTable": {
+      "title": "Ponteiro para Tabela de Símbolos",
+      "description": "Aponta para a tabela de símbolos COFF. Isso é tipicamente 0 em arquivos PE modernos, pois as informações de símbolos são geralmente armazenadas em arquivos PDB separados.",
+      "purpose": "Localizar informações de símbolos de depuração",
+      "security_notes": "Valores não-zero em builds de lançamento podem indicar informações de depuração deixadas para trás ou manipulação."
+    },
+    "NumberOfSymbols": {
+      "title": "Número de Símbolos",
+      "description": "O número de símbolos na tabela de símbolos COFF. Isso é tipicamente 0 em arquivos PE modernos.",
+      "purpose": "Definir tamanho da tabela de símbolos",
+      "security_notes": "Valores não-zero em builds de lançamento podem indicar informações de depuração deixadas para trás ou manipulação."
+    },
+    "SizeOfOptionalHeader": {
+      "title": "Tamanho do Cabeçalho Opcional",
+      "description": "O tamanho do cabeçalho opcional em bytes. Este campo indica quantos dados do cabeçalho opcional seguem o cabeçalho PE.",
+      "purpose": "Definir limites do cabeçalho opcional",
+      "security_notes": "Tamanhos incomuns podem indicar manipulação do cabeçalho ou corrupção."
+    },
+    "Characteristics": {
+      "title": "Características do Arquivo",
+      "description": "Um conjunto de flags que descrevem as propriedades do executável: 0x0002 (Executável), 0x2000 (DLL), 0x0001 (Informação de relocação removida), 0x0100 (Máquina de palavra de 32 bits).",
+      "purpose": "Definir tipo e comportamento do arquivo",
+      "security_notes": "Características de DLL em arquivos EXE são suspeitas. Informação de relocação removida pode indicar malware empacotado. Verifique combinações incomuns de flags."
+    },
+    "Magic": {
+      "title": "Número Mágico",
+      "description": "Identifica o tipo de cabeçalho opcional: 0x010B (PE32), 0x020B (PE32+).",
+      "purpose": "Determinar formato e tamanho do cabeçalho",
+      "security_notes": "Deve corresponder à arquitetura do arquivo. Incompatibilidade pode indicar corrupção ou manipulação do arquivo. Alguns malware tentam confundir ferramentas de análise."
+    },
+    "MajorLinkerVersion": {
+      "title": "Versão Principal do Linker",
+      "description": "A versão principal do linker que criou este executável.",
+      "purpose": "Identificar ferramentas de build e compatibilidade",
+      "security_notes": "Versões muito antigas ou muito novas do linker podem indicar compilação suspeita ou manipulação."
+    },
+    "MinorLinkerVersion": {
+      "title": "Versão Menor do Linker",
+      "description": "A versão menor do linker que criou este executável.",
+      "purpose": "Identificar ferramentas de build e compatibilidade",
+      "security_notes": "Versões muito antigas ou muito novas do linker podem indicar compilação suspeita ou manipulação."
+    },
+    "SizeOfCode": {
+      "title": "Tamanho do Código",
+      "description": "O tamanho da seção de código em bytes. Isso representa o tamanho total de todas as seções de código combinadas.",
+      "purpose": "Definir requisitos da seção de código",
+      "security_notes": "Suspeito se muito grande ou muito pequeno comparado ao tamanho do arquivo. Pode indicar injeção de código ou obfuscação."
+    },
+    "SizeOfInitializedData": {
+      "title": "Tamanho dos Dados Inicializados",
+      "description": "O tamanho da seção de dados inicializados em bytes. Isso inclui todas as seções de dados que contêm valores inicializados.",
+      "purpose": "Definir requisitos de dados inicializados",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "SizeOfUninitializedData": {
+      "title": "Tamanho dos Dados Não Inicializados",
+      "description": "O tamanho da seção de dados não inicializados (BSS) em bytes. Esta seção é preenchida com zeros no tempo de carregamento.",
+      "purpose": "Definir requisitos de dados não inicializados",
+      "security_notes": "Seções BSS grandes podem indicar malware tentando alocar memória para desempacotamento ou injeção de código."
+    },
+    "AddressOfEntryPoint": {
+      "title": "Endereço do Ponto de Entrada",
+      "description": "O endereço virtual relativo (RVA) onde a execução começa quando o programa inicia. Este aponta para a primeira instrução que será executada.",
+      "purpose": "Definir o ponto de partida da execução do programa",
+      "format": "RVA relativo à base da imagem",
+      "security_notes": "CAMPO DE SEGURANÇA CRÍTICO! Suspeito se: 1) Aponta para seção de dados (não código), 2) Endereço muito baixo (<0x1000), 3) Aponta para última seção, 4) Aponta para overlay. Estes frequentemente indicam malware empacotado ou injeção de código."
+    },
+    "BaseOfCode": {
+      "title": "Base do Código",
+      "description": "O RVA do início da seção de código quando carregada na memória.",
+      "purpose": "Definir endereço base da seção de código",
+      "security_notes": "Endereços base incomuns podem indicar injeção de código ou manipulação."
+    },
+    "BaseOfData": {
+      "title": "Base dos Dados",
+      "description": "O RVA do início da seção de dados quando carregada na memória. Este campo está presente apenas em arquivos PE32.",
+      "purpose": "Definir endereço base da seção de dados",
+      "security_notes": "Endereços base incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "ImageBase": {
+      "title": "Base da Imagem",
+      "description": "O endereço base preferido na memória onde o executável deve ser carregado. O padrão é 0x00400000 para executáveis de 32 bits e 0x0000000140000000 para executáveis de 64 bits.",
+      "purpose": "Otimizar layout de memória e reduzir sobrecarga de relocação",
+      "security_notes": "Endereços base incomuns podem indicar malware tentando evitar detecção ou conflito com outros processos. Verifique valores não padrão."
+    },
+    "SectionAlignment": {
+      "title": "Alinhamento da Seção",
+      "description": "O alinhamento das seções na memória. As seções são alinhadas a este limite quando carregadas na memória. Valores comuns são 0x1000 (4KB) para 32 bits e 0x2000 (8KB) para 64 bits.",
+      "purpose": "Otimizar layout de memória e performance",
+      "security_notes": "Valores de alinhamento incomuns podem indicar manipulação ou compilação não padrão."
+    },
+    "FileAlignment": {
+      "title": "Alinhamento do Arquivo",
+      "description": "O alinhamento das seções no arquivo. Os dados brutos são alinhados a este limite no disco. Valores comuns são 0x200 (512 bytes) ou 0x1000 (4KB).",
+      "purpose": "Otimizar performance de I/O do arquivo",
+      "security_notes": "Alinhamento de arquivo incomum pode indicar manipulação ou compilação não padrão."
+    },
+    "MajorOperatingSystemVersion": {
+      "title": "Versão Principal do Sistema Operacional",
+      "description": "O número da versão principal do sistema operacional necessário para executar este executável.",
+      "purpose": "Definir requisitos de compatibilidade do SO",
+      "security_notes": "Requisitos incomuns de versão do SO podem indicar malware direcionado ou problemas de compatibilidade."
+    },
+    "MinorOperatingSystemVersion": {
+      "title": "Versão Menor do Sistema Operacional",
+      "description": "O número da versão menor do sistema operacional necessário para executar este executável.",
+      "purpose": "Definir requisitos de compatibilidade do SO",
+      "security_notes": "Requisitos incomuns de versão do SO podem indicar malware direcionado ou problemas de compatibilidade."
+    },
+    "MajorImageVersion": {
+      "title": "Versão Principal da Imagem",
+      "description": "O número da versão principal da imagem em si. Isso é tipicamente definido pelo desenvolvedor.",
+      "purpose": "Rastreamento de versão e identificação",
+      "security_notes": "Números de versão incomuns podem indicar manipulação ou versionamento falso."
+    },
+    "MinorImageVersion": {
+      "title": "Versão Menor da Imagem",
+      "description": "O número da versão menor da imagem em si. Isso é tipicamente definido pelo desenvolvedor.",
+      "purpose": "Rastreamento de versão e identificação",
+      "security_notes": "Números de versão incomuns podem indicar manipulação ou versionamento falso."
+    },
+    "MajorSubsystemVersion": {
+      "title": "Versão Principal do Subsistema",
+      "description": "O número da versão principal do subsistema necessário para executar este executável.",
+      "purpose": "Definir requisitos de compatibilidade do subsistema",
+      "security_notes": "Requisitos incomuns de versão do subsistema podem indicar problemas de compatibilidade ou manipulação."
+    },
+    "MinorSubsystemVersion": {
+      "title": "Versão Menor do Subsistema",
+      "description": "O número da versão menor do subsistema necessário para executar este executável.",
+      "purpose": "Definir requisitos de compatibilidade do subsistema",
+      "security_notes": "Requisitos incomuns de versão do subsistema podem indicar problemas de compatibilidade ou manipulação."
+    },
+    "Win32VersionValue": {
+      "title": "Valor da Versão Win32",
+      "description": "Campo reservado que deve ser 0. Este campo não é usado pelo carregador do Windows.",
+      "purpose": "Reservado para uso futuro",
+      "security_notes": "Valores não-zero podem indicar corrupção do arquivo ou formato PE não padrão."
+    },
+    "SizeOfImage": {
+      "title": "Tamanho da Imagem",
+      "description": "O tamanho total da imagem quando carregada na memória, incluindo todos os cabeçalhos e seções.",
+      "purpose": "Definir requisitos de alocação de memória",
+      "security_notes": "Tamanhos de imagem incomuns podem indicar injeção de código ou manipulação."
+    },
+    "SizeOfHeaders": {
+      "title": "Tamanho dos Cabeçalhos",
+      "description": "O tamanho combinado do stub DOS, cabeçalho PE e cabeçalhos de seção.",
+      "purpose": "Definir requisitos de tamanho de cabeçalho",
+      "security_notes": "Tamanhos de cabeçalho incomuns podem indicar manipulação de cabeçalho ou corrupção."
+    },
+    "CheckSum": {
+      "title": "Soma de Verificação",
+      "description": "Um valor de soma de verificação para a imagem. Este campo é usado para verificação de integridade.",
+      "purpose": "Verificação de integridade da imagem",
+      "security_notes": "Somas de verificação não-zero devem ser validadas. Zero é normal para muitos arquivos."
+    },
+    "Subsystem": {
+      "title": "Subsistema",
+      "description": "Especifica o subsistema do Windows que executará este executável: 2 (Windows GUI), 3 (Windows CUI), 1 (Nativo), 5 (OS/2 CUI).",
+      "purpose": "Determinar como o Windows deve lidar com a aplicação",
+      "security_notes": "Subsistema nativo (1) em executáveis de modo usuário é suspeito - indica código de modo kernel executando no espaço do usuário. Pode ser rootkit ou tentativa de escalonamento de privilégios."
+    },
+    "DllCharacteristics": {
+      "title": "Características da DLL",
+      "description": "Flags que descrevem propriedades específicas de DLL: 0x0001 (VA de alta entropia), 0x0002 (Base dinâmica), 0x0004 (Forçar integridade), 0x0008 (Compatível NX), 0x0010 (Consciente de isolamento), 0x0020 (Sem SEH), 0x0040 (Não vincular), 0x0080 (Container de aplicativo), 0x0100 (Driver WDM), 0x2000 (Consciente de servidor terminal).",
+      "purpose": "Definir comportamento e recursos de segurança da DLL",
+      "security_notes": "Flags de segurança ausentes (Compatível NX, Forçar integridade) podem indicar código vulnerável. VA de alta entropia e Base dinâmica ajudam a prevenir bypasses do ASLR."
+    },
+    "SizeOfStackReserve": {
+      "title": "Tamanho da Reserva da Pilha",
+      "description": "O tamanho da pilha a reservar na memória virtual. Este é o tamanho máximo da pilha que o processo pode usar.",
+      "purpose": "Definir alocação de memória da pilha",
+      "security_notes": "Reservas de pilha muito grandes podem indicar ataques de estouro da pilha ou tentativas de esgotamento de memória."
+    },
+    "SizeOfStackCommit": {
+      "title": "Tamanho do Commit da Pilha",
+      "description": "O tamanho da pilha a fazer commit na memória virtual. Este é o tamanho inicial da pilha que é realmente alocado.",
+      "purpose": "Definir alocação inicial da pilha",
+      "security_notes": "Tamanhos incomuns de commit da pilha podem indicar manipulação ou tentativas de otimização."
+    },
+    "SizeOfHeapReserve": {
+      "title": "Tamanho da Reserva do Heap",
+      "description": "O tamanho do heap local a reservar na memória virtual. Este é o tamanho máximo do heap que o processo pode usar.",
+      "purpose": "Definir alocação de memória do heap",
+      "security_notes": "Reservas de heap muito grandes podem indicar ataques de esgotamento de memória ou manipulação."
+    },
+    "SizeOfHeapCommit": {
+      "title": "Tamanho do Commit do Heap",
+      "description": "O tamanho do heap local a fazer commit na memória virtual. Este é o tamanho inicial do heap que é realmente alocado.",
+      "purpose": "Definir alocação inicial do heap",
+      "security_notes": "Tamanhos incomuns de commit do heap podem indicar manipulação ou tentativas de otimização."
+    },
+    "LoaderFlags": {
+      "title": "Flags do Carregador",
+      "description": "Flags que controlam o comportamento do carregador: 0x0001 (Parar no carregamento), 0x0002 (Depurar no carregamento), 0x0004 (Parar por padrão no carregamento), 0x0008 (Depurar por padrão no carregamento), 0x0010 (Link incremental), 0x0020 (Suprimir link incremental), 0x0040 (Manipulador SEH seguro), 0x0080 (Guard CF), 0x0100 (Consciente de servidor terminal).",
+      "purpose": "Controlar recursos de depuração e segurança",
+      "security_notes": "Flags de depuração habilitados em builds de lançamento são suspeitos. Flags de segurança ausentes podem indicar código vulnerável."
+    },
+    "NumberOfRvaAndSizes": {
+      "title": "Número de RVA e Tamanhos",
+      "description": "O número de entradas do diretório de dados que seguem. Isso deve sempre ser 16 para arquivos PE padrão.",
+      "purpose": "Definir o número de diretórios de dados",
+      "security_notes": "Valores diferentes de 16 podem indicar corrupção do arquivo ou formato PE não padrão."
+    },
+    "Name": {
+      "title": "Nome da Seção",
+      "description": "Um nome de 8 caracteres que identifica a seção. Nomes comuns incluem .text (código), .data (dados), .rdata (dados somente leitura), .idata (importações), .edata (exportações), .rsrc (recursos), .reloc (relocações).",
+      "purpose": "Identificar o propósito e o conteúdo da seção",
+      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
+      "security_notes": "Nomes de seção suspeitos: UPX0/UPX1 (empacotado), .aspack, .vmp0 (VMProtect), .themida. Nomes incomuns podem indicar obfuscamento ou malware."
+    },
+    "SectionName": {
+      "title": "Nome da Seção",
+      "description": "Um nome de 8 caracteres que identifica a seção. Nomes comuns incluem .text (código), .data (dados), .rdata (dados somente leitura), .idata (importações), .edata (exportações), .rsrc (recursos), .reloc (relocações).",
+      "purpose": "Identificar o propósito e o conteúdo da seção",
+      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
+      "security_notes": "Nomes de seção suspeitos: UPX0/UPX1 (empacotado), .aspack, .vmp0 (VMProtect), .themida. Nomes incomuns podem indicar obfuscamento ou malware."
+    },
+    "VirtualSize": {
+      "title": "Tamanho Virtual",
+      "description": "O tamanho da seção quando carregada na memória. Isso pode ser diferente do tamanho dos dados brutos devido a requisitos de alinhamento e preenchimento.",
+      "purpose": "Definir requisitos de alocação de memória",
+      "note": "Pode incluir dados não inicializados (BSS)",
+      "security_notes": "Suspeito se tamanho virtual >> tamanho bruto - pode indicar desempacotamento ou injeção de código. Tamanhos virtuais muito grandes podem ser malware tentando alocar memória excessiva."
+    },
+    "VirtualAddress": {
+      "title": "Endereço Virtual",
+      "description": "O endereço virtual relativo (RVA) onde esta seção será carregada na memória. Este é relativo ao endereço base da imagem.",
+      "purpose": "Definir layout de memória e posicionamento da seção",
+      "format": "RVA relativo à base da imagem",
+      "security_notes": "Suspeito se o endereço virtual for muito baixo (<0x1000) ou sobrepor outras seções. Pode indicar injeção de código ou manipulação de seção."
+    },
+    "SizeOfRawData": {
+      "title": "Tamanho dos Dados Brutos",
+      "description": "O tamanho real dos dados da seção armazenados no arquivo. Isso representa o número de bytes que serão lidos do disco.",
+      "purpose": "Definir requisitos de I/O do arquivo",
+      "note": "Deve ser múltiplo do alinhamento do arquivo",
+      "security_notes": "Tamanho bruto zero com tamanho virtual não-zero é suspeito - indica conteúdo desempacotado/descriptografado. Tamanhos brutos muito grandes podem conter malware embutido ou recursos."
+    },
+    "PointerToRawData": {
+      "title": "Ponteiro para Dados Brutos",
+      "description": "O offset do arquivo onde os dados brutos da seção começam. Isso diz ao carregador onde ler os dados da seção do disco.",
+      "purpose": "Localizar dados da seção dentro do arquivo",
+      "format": "Offset do arquivo desde o início",
+      "security_notes": "Verifique offsets suspeitos apontando para overlay ou valores muito grandes. Pode indicar conteúdo malicioso oculto ou manipulação de arquivo."
+    },
+    "PointerToRelocations": {
+      "title": "Ponteiro para Relocações",
+      "description": "Ponteiro para a tabela de relocação desta seção. Isso é tipicamente 0 em arquivos PE modernos.",
+      "purpose": "Localizar informações de relocação da seção",
+      "security_notes": "Valores não-zero podem indicar relocações complexas ou manipulação."
+    },
+    "PointerToLinenumbers": {
+      "title": "Ponteiro para Números de Linha",
+      "description": "Ponteiro para a tabela de números de linha desta seção. Isso é tipicamente 0 em builds de lançamento.",
+      "purpose": "Localizar informações de números de linha de depuração",
+      "security_notes": "Valores não-zero em builds de lançamento podem indicar informações de depuração deixadas para trás ou manipulação."
+    },
+    "NumberOfRelocations": {
+      "title": "Número de Relocações",
+      "description": "O número de entradas de relocação para esta seção. Relocações são necessárias quando a seção não pode ser carregada no seu endereço virtual preferido.",
+      "purpose": "Lidar com conflitos de espaço de endereço",
+      "note": "Geralmente 0 para a maioria das seções em executáveis modernos",
+      "security_notes": "Número alto de relocações em seções incomuns pode indicar injeção de código ou manipulação. Verifique se as relocações apontam para endereços suspeitos."
+    },
+    "NumberOfLinenumbers": {
+      "title": "Número de Números de Linha",
+      "description": "O número de entradas de número de linha para esta seção. Estes são usados para depuração para mapear o código de máquina de volta ao código-fonte.",
+      "purpose": "Suportar depuração e desenvolvimento",
+      "note": "Geralmente 0 em builds de lançamento",
+      "security_notes": "Números de linha em seções suspeitas podem ajudar a rastrear a origem do malware. Números de linha ausentes em seções de código podem indicar obfuscamento."
+    },
+    "SectionCharacteristics": {
+      "title": "Características da Seção",
+      "description": "Flags que definem as propriedades e permissões da seção. Flags comuns: 0x20 (contém código), 0x40 (contém dados inicializados), 0x80 (contém dados não inicializados), 0x20000000 (executável), 0x80000000 (legível), 0x40000000 (gravável).",
+      "purpose": "Definir permissões e comportamento da seção",
+      "common_flags": "0x20 (código), 0x40 (dados), 0x80 (BSS), 0x20000000 (executável), 0x80000000 (legível), 0x40000000 (gravável)",
+      "security_notes": "CRÍTICO: Seções de dados executáveis (0x40 + 0x20000000) são altamente suspeitas - indica injeção de código. Seções de código graváveis (0x20 + 0x40000000) sugerem código auto-modificável ou malware."
+    },
+    "VirtualAddress_DataDir": {
+      "title": "RVA do Diretório de Dados",
+      "description": "O endereço virtual relativo (RVA) da entrada do diretório de dados.",
+      "purpose": "Localizar conteúdo do diretório de dados na memória",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Size_DataDir": {
+      "title": "Tamanho do Diretório de Dados",
+      "description": "O tamanho da entrada do diretório de dados em bytes.",
+      "purpose": "Definir tamanho do conteúdo do diretório de dados",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "OriginalFirstThunk": {
+      "title": "Primeiro Thunk Original",
+      "description": "RVA para a tabela de thunk original contendo nomes de função e ordinais.",
+      "purpose": "Localizar informações de função importada",
+      "security_notes": "Manipulação deste campo pode ocultar funções importadas ou redirecionar importações."
+    },
+    "TimeDateStamp_Import": {
+      "title": "Carimbo de Data/Hora da Importação",
+      "description": "Timestamp quando a importação foi vinculada. 0 indica não vinculada, -1 indica vinculada.",
+      "purpose": "Rastrear status de vinculação da importação",
+      "security_notes": "Timestamps incomuns podem indicar manipulação de importação ou problemas de vinculação."
+    },
+    "ForwarderChain": {
+      "title": "Cadeia de Encaminhamento",
+      "description": "Índice na cadeia de encaminhamento. -1 se não houver encaminhadores.",
+      "purpose": "Lidar com exportações encaminhadas",
+      "security_notes": "Cadeias de encaminhamento complexas podem indicar obfuscação ou redirecionamento."
+    },
+    "Name_Import": {
+      "title": "Nome da DLL de Importação",
+      "description": "RVA para o nome da DLL sendo importada.",
+      "purpose": "Identificar DLL importada",
+      "security_notes": "Verifique nomes de DLL suspeitos ou importações de locais não padrão."
+    },
+    "FirstThunk": {
+      "title": "Primeiro Thunk",
+      "description": "RVA para a tabela de endereços de importação (IAT) que será preenchida com endereços de função.",
+      "purpose": "Localizar tabela de endereços de importação",
+      "security_notes": "Manipulação da IAT é comum em malware para ocultar funções importadas."
+    },
+    "Characteristics_Export": {
+      "title": "Características da Exportação",
+      "description": "Campo reservado que deve ser 0.",
+      "purpose": "Reservado para uso futuro",
+      "security_notes": "Valores não-zero podem indicar corrupção ou manipulação."
+    },
+    "TimeDateStamp_Export": {
+      "title": "Carimbo de Data/Hora da Exportação",
+      "description": "Timestamp quando a tabela de exportação foi criada.",
+      "purpose": "Rastrear tempo de criação da tabela de exportação",
+      "security_notes": "Timestamps incomuns podem indicar manipulação ou exportações falsas."
+    },
+    "MajorVersion_Export": {
+      "title": "Versão Principal da Exportação",
+      "description": "Número da versão principal da tabela de exportação.",
+      "purpose": "Rastreamento de versão",
+      "security_notes": "Números de versão incomuns podem indicar manipulação."
+    },
+    "MinorVersion_Export": {
+      "title": "Versão Menor da Exportação",
+      "description": "Número da versão menor da tabela de exportação.",
+      "purpose": "Rastreamento de versão",
+      "security_notes": "Números de versão incomuns podem indicar manipulação."
+    },
+    "Name_Export": {
+      "title": "Nome do Módulo de Exportação",
+      "description": "RVA para o nome do módulo que contém as exportações.",
+      "purpose": "Identificar módulo exportador",
+      "security_notes": "Verifique se o nome do módulo corresponde aos valores esperados."
+    },
+    "OrdinalBase": {
+      "title": "Base Ordinal",
+      "description": "Número ordinal inicial para exportações.",
+      "purpose": "Definir numeração ordinal de exportação",
+      "security_notes": "Bases ordinais incomuns podem indicar manipulação."
+    },
+    "NumberOfFunctions": {
+      "title": "Número de Funções",
+      "description": "Número total de funções exportadas.",
+      "purpose": "Definir tamanho da tabela de exportação",
+      "security_notes": "Números incomumente grandes podem indicar injeção de código ou exportações falsas."
+    },
+    "NumberOfNames": {
+      "title": "Número de Nomes",
+      "description": "Número de funções exportadas com nomes.",
+      "purpose": "Definir contagem de exportações nomeadas",
+      "security_notes": "Deve corresponder ou ser menor que NumberOfFunctions."
+    },
+    "AddressOfFunctions": {
+      "title": "Endereço das Funções",
+      "description": "RVA para o array de endereços de função.",
+      "purpose": "Localizar endereços de função de exportação",
+      "security_notes": "Verifique se os endereços apontam para seções de código válidas."
+    },
+    "AddressOfNames": {
+      "title": "Endereço dos Nomes",
+      "description": "RVA para o array de ponteiros de nome de função.",
+      "purpose": "Localizar nomes de função de exportação",
+      "security_notes": "Verifique se os nomes são válidos e não suspeitos."
+    },
+    "AddressOfNameOrdinals": {
+      "title": "Endereço dos Ordinais de Nome",
+      "description": "RVA para o array de números ordinais.",
+      "purpose": "Localizar mapeamento ordinal de exportação",
+      "security_notes": "Verifique se os ordinais estão dentro do intervalo válido."
+    }
+  },
+  "security_highlights": {
+    "critical_fields": [
+      "AddressOfEntryPoint",
+      "SectionCharacteristics", 
+      "Name_Import",
+      "e_lfanew"
+    ],
+    "suspicious_patterns": [
+      "Seções RWX (Gravável + Executável)",
+      "Ponto de entrada em seção de dados",
+      "Tamanho bruto zero com tamanho virtual não-zero",
+      "Número incomum de seções",
+      "Combinações suspeitas de importação",
+      "Timestamps futuros ou muito antigos",
+      "Endereços base de imagem não padrão"
+    ],
+    "malware_techniques": [
+      "Injeção de código via manipulação de seção",
+      "Empacotamento/obfuscação via características de seção",
+      "Anti-análise via importações suspeitas",
+      "Ataques de overlay via manipulação de cabeçalho PE",
+      "Malware multi-arquitetura",
+      "Manipulação de timestamp",
+      "Obfuscação de nome de seção"
+    ]
+  }
+}

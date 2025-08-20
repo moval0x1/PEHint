@@ -573,7 +573,35 @@ void HexViewer::applyHighlights()
                     
                     // Also highlight the ASCII portion if enabled
                     if (m_showAscii) {
-                        qint64 asciiStart = hexStartPos + (m_bytesPerLine * 3) + 2 + offsetInLine;
+                        // Calculate ASCII position (after hex portion + separator)
+                        qint64 asciiStartPos = hexStartPos + (m_bytesPerLine * 3) + 2; // +2 for "  " separator
+                        qint64 asciiCharStart = asciiStartPos + offsetInLine;
+                        qint64 asciiCharEnd = asciiCharStart + lengthInLine - 1;
+                        
+                        if (asciiCharStart < currentLine.length() && asciiCharEnd < currentLine.length()) {
+                            // Calculate absolute position for ASCII
+                            qint64 asciiAbsoluteStart = 0;
+                            for (qint64 i = 0; i < line; ++i) {
+                                asciiAbsoluteStart += lines[i].length() + 1; // +1 for newline
+                            }
+                            asciiAbsoluteStart += asciiCharStart;
+                            
+                            qint64 asciiAbsoluteEnd = asciiAbsoluteStart + (asciiCharEnd - asciiCharStart + 1);
+                            
+                            // Apply highlight to ASCII portion
+                            cursor.setPosition(static_cast<int>(asciiAbsoluteStart));
+                            cursor.setPosition(static_cast<int>(asciiAbsoluteEnd), QTextCursor::KeepAnchor);
+                            cursor.mergeCharFormat(highlightFormat);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Restore cursor position
+    m_hexText->setTextCursor(cursor);
+} asciiStart = hexStartPos + (m_bytesPerLine * 3) + 2 + offsetInLine;
                         qint64 asciiEnd = asciiStart + lengthInLine;
                         
                         if (asciiStart < currentLine.length() && asciiEnd < currentLine.length()) {

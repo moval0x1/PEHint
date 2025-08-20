@@ -30,6 +30,18 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON"
       }
+    },
+    {
+      "hidden": true,
+      "name": "Qt",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QTDIR}"
+      },
+      "vendor": {
+        "qt-project.org/Qt": {
+          "checksum": "wVa86FgEkvdCTVp1/nxvrkaemJc="
+        }
+      }
     }
   ],
   "buildPresets": [
@@ -41,5 +53,10 @@
       "name": "qt-release",
       "configurePreset": "qt-release"
     }
-  ]
+  ],
+  "vendor": {
+    "qt-project.org/Presets": {
+      "checksum": "3fH3tawrjetlM9SR+m+r8Wrk0yw="
+    }
+  }
 }

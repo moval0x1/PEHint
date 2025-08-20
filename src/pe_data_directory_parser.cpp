@@ -240,9 +240,24 @@ bool PEDataDirectoryParser::parseResourceDirectory(quint32 rva, quint32 size, PE
         
         // Parse the resource data
         if (entry->OffsetToData & 0x80000000) {
-            // Named entry
-                            QString resourceName = LANG_PARAM("UI/named_resource_format", "name", QString::fromWCharArray(entry->Name));
-            resources[resourceType][resourceName] = LANG("UI/resource_named");
+            // Named entry - Name contains offset to string
+            if (entry->Name != 0) {
+                quint32 nameOffset = fileOffset + (entry->Name & 0x7FFFFFFF);
+                if (nameOffset + 2 <= m_fileData.size()) {
+                    quint16 nameLength = *reinterpret_cast<const quint16*>(m_fileData.data() + nameOffset);
+                    if (nameOffset + 2 + nameLength * 2 <= m_fileData.size()) {
+                        const wchar_t* namePtr = reinterpret_cast<const wchar_t*>(m_fileData.data() + nameOffset + 2);
+                        QString resourceName = QString::fromWCharArray(namePtr, nameLength);
+                        resources[resourceType][resourceName] = LANG("UI/resource_named");
+                    } else {
+                        resources[resourceType][QString("Invalid Name")] = LANG("UI/resource_named");
+                    }
+                } else {
+                    resources[resourceType][QString("Invalid Name")] = LANG("UI/resource_named");
+                }
+            } else {
+                resources[resourceType][QString("Empty Name")] = LANG("UI/resource_named");
+            }
         } else {
             // ID entry
             QString resourceId = QString::number(entry->Name);
@@ -278,11 +293,11 @@ bool PEDataDirectoryParser::parseDebugDirectory(quint32 rva, quint32 size, PEDat
             );
             
             QString debugType = PEUtils::getDebugTypeName(debugDir->Type);
-                    QString debugDetailsStr = LANG_PARAMS("UI/debug_details_format", {
-            {"size", QString::number(debugDir->SizeOfData)},
-            {"rva", PEUtils::formatHex(debugDir->AddressOfRawData)},
-            {"raw", PEUtils::formatHex(debugDir->PointerToRawData)}
-        });
+            QMap<QString, QString> debugParams;
+            debugParams["size"] = QString::number(debugDir->SizeOfData);
+            debugParams["rva"] = PEUtils::formatHex(debugDir->AddressOfRawData);
+            debugParams["raw"] = PEUtils::formatHex(debugDir->PointerToRawData);
+            QString debugDetailsStr = LANG_PARAMS("UI/debug_details_format", debugParams);
             
             debugInfo.append(debugType);
             debugDetails[debugType] = debugDetailsStr;
@@ -310,10 +325,10 @@ bool PEDataDirectoryParser::parseTLSDirectory(quint32 rva, quint32 size, PEDataM
     QMap<QString, QString> tlsDetails;
     
     // Parse TLS directory structure
-            QString tlsData = LANG_PARAMS("UI/tls_details_format", {
-            {"rva", PEUtils::formatHex(tlsDir->AddressOfCallBacks)},
-            {"size", QString::number(tlsDir->SizeOfZeroFill)}
-        });
+    QMap<QString, QString> tlsParams;
+    tlsParams["rva"] = PEUtils::formatHex(tlsDir->AddressOfCallBacks);
+    tlsParams["size"] = QString::number(tlsDir->SizeOfZeroFill);
+    QString tlsData = LANG_PARAMS("UI/tls_details_format", tlsParams);
     
     tlsInfo.append(LANG("UI/data_dir_tls"));
     tlsDetails[LANG("UI/data_dir_tls")] = tlsData;
@@ -339,11 +354,11 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
     QMap<QString, QString> loadConfigDetails;
     
     // Parse Load Configuration directory structure
-            QString configData = LANG_PARAMS("UI/load_config_details_format", {
-            {"size", QString::number(loadConfigDir->Size)},
-            {"time", PEUtils::formatHex(loadConfigDir->TimeDateStamp)},
-            {"version", QString::number(loadConfigDir->MajorVersion)}
-        });
+    QMap<QString, QString> configParams;
+    configParams["size"] = QString::number(loadConfigDir->Size);
+    configParams["time"] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
+    configParams["version"] = QString::number(loadConfigDir->MajorVersion);
+    QString configData = LANG_PARAMS("UI/load_config_details_format", configParams);
     
     loadConfigInfo.append(LANG("UI/data_dir_load_config"));
     loadConfigDetails[LANG("UI/data_dir_load_config")] = configData;
@@ -399,10 +414,10 @@ bool PEDataDirectoryParser::parseExceptionDirectory(quint32 rva, quint32 size, P
     
     // Parse exception directory (typically contains exception handling information)
     // For x64, this contains RUNTIME_FUNCTION structures
-    QString exceptionData = LANG_PARAMS("UI/exception_details_format", {
-        {"rva", PEUtils::formatHex(rva)},
-        {"size", QString::number(size)}
-    });
+    QMap<QString, QString> exceptionParams;
+    exceptionParams["rva"] = PEUtils::formatHex(rva);
+    exceptionParams["size"] = QString::number(size);
+    QString exceptionData = LANG_PARAMS("UI/exception_details_format", exceptionParams);
     
     exceptionInfo.append(LANG("UI/data_dir_exception"));
     exceptionDetails[LANG("UI/data_dir_exception")] = exceptionData;

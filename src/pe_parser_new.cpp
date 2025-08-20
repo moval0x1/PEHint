@@ -140,17 +140,7 @@ QString PEParserNew::getFilePath() const
     return m_dataModel.getFilePath();
 }
 
-QString PEParserNew::getFileSize() const
-{
-    qint64 size = m_dataModel.getFileSize();
-    if (size < 1024) {
-        return QString("%1 bytes").arg(size);
-    } else if (size < 1024 * 1024) {
-        return QString("%1 KB").arg(size / 1024.0, 0, 'f', 1);
-    } else {
-        return QString("%1 MB").arg(size / (1024.0 * 1024.0), 0, 'f', 1);
-    }
-}
+
 
 const PEDataModel& PEParserNew::getDataModel() const
 {
@@ -432,30 +422,38 @@ bool PEParserNew::loadLargeFileStreaming()
 // Field explanation and offset methods (for UI compatibility)
 QString PEParserNew::getFieldExplanation(const QString &fieldName)
 {
-    // Load explanations from the JSON file in the binary directory
+    // Get current language from language manager
+    QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
+    
+    // Load explanations from the language-specific JSON file in the binary directory
     QString appDir = QCoreApplication::applicationDirPath();
-    QString explanationsPath = QDir(appDir).absoluteFilePath("config/explanations.json");
+    QString explanationsPath;
+    
+    if (currentLanguage == "pt") {
+        explanationsPath = QDir(appDir).absoluteFilePath("config/explanations_pt.json");
+    } else {
+        explanationsPath = QDir(appDir).absoluteFilePath("config/explanations.json");
+    }
+    
     QFile explanationsFile(explanationsPath);
     if (explanationsFile.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(explanationsFile.readAll());
         QJsonObject root = doc.object();
         
         // Search for the field in the explanations
-        for (const QString &category : root.keys()) {
-            QJsonObject categoryObj = root[category].toObject();
-            if (categoryObj.contains(fieldName)) {
-                QJsonObject fieldObj = categoryObj[fieldName].toObject();
-                QString description = fieldObj["description"].toString();
-                QString purpose = fieldObj["purpose"].toString();
-                QString securityNotes = fieldObj["security_notes"].toString();
-                
-                QString explanation = QString("%1\n\nPurpose: %2\n\nSecurity Notes: %3")
-                                   .arg(description)
-                                   .arg(purpose)
-                                   .arg(securityNotes);
-                
-                return explanation;
-            }
+        // The new structure has field names directly under the language key
+        if (root.contains(fieldName)) {
+            QJsonObject fieldObj = root[fieldName].toObject();
+            QString description = fieldObj["description"].toString();
+            QString purpose = fieldObj["purpose"].toString();
+            QString securityNotes = fieldObj["security_notes"].toString();
+            
+            QString explanation = QString("%1\n\nPurpose: %2\n\nSecurity Notes: %3")
+                               .arg(description)
+                               .arg(purpose)
+                               .arg(securityNotes);
+            
+            return explanation;
         }
     }
     
@@ -511,6 +509,50 @@ QPair<quint32, quint32> PEParserNew::getFieldOffset(const QString &fieldName)
     fieldOffsets["NumberOfSymbols"] = QPair<quint32, quint32>(fileHeaderOffset + 12, sizeof(quint32));
     fieldOffsets["SizeOfOptionalHeader"] = QPair<quint32, quint32>(fileHeaderOffset + 16, sizeof(quint16));
     fieldOffsets["Characteristics"] = QPair<quint32, quint32>(fileHeaderOffset + 18, sizeof(quint16));
+    
+    // Optional Header fields
+    quint32 optionalHeaderOffset = fileHeaderOffset + sizeof(IMAGE_FILE_HEADER);
+    fieldOffsets["Magic"] = QPair<quint32, quint32>(optionalHeaderOffset, sizeof(quint16));
+    fieldOffsets["MajorLinkerVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 2, sizeof(quint8));
+    fieldOffsets["MinorLinkerVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 3, sizeof(quint8));
+    fieldOffsets["SizeOfCode"] = QPair<quint32, quint32>(optionalHeaderOffset + 4, sizeof(quint32));
+    fieldOffsets["SizeOfInitializedData"] = QPair<quint32, quint32>(optionalHeaderOffset + 8, sizeof(quint32));
+    fieldOffsets["SizeOfUninitializedData"] = QPair<quint32, quint32>(optionalHeaderOffset + 12, sizeof(quint32));
+    fieldOffsets["AddressOfEntryPoint"] = QPair<quint32, quint32>(optionalHeaderOffset + 16, sizeof(quint32));
+    fieldOffsets["BaseOfCode"] = QPair<quint32, quint32>(optionalHeaderOffset + 20, sizeof(quint32));
+    fieldOffsets["BaseOfData"] = QPair<quint32, quint32>(optionalHeaderOffset + 24, sizeof(quint32));
+    fieldOffsets["ImageBase"] = QPair<quint32, quint32>(optionalHeaderOffset + 28, sizeof(quint32));
+    fieldOffsets["SectionAlignment"] = QPair<quint32, quint32>(optionalHeaderOffset + 32, sizeof(quint32));
+    fieldOffsets["FileAlignment"] = QPair<quint32, quint32>(optionalHeaderOffset + 36, sizeof(quint32));
+    fieldOffsets["MajorOperatingSystemVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 40, sizeof(quint16));
+    fieldOffsets["MinorOperatingSystemVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 42, sizeof(quint16));
+    fieldOffsets["MajorImageVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 44, sizeof(quint16));
+    fieldOffsets["MinorImageVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 46, sizeof(quint16));
+    fieldOffsets["MajorSubsystemVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 48, sizeof(quint16));
+    fieldOffsets["MinorSubsystemVersion"] = QPair<quint32, quint32>(optionalHeaderOffset + 50, sizeof(quint16));
+    fieldOffsets["Win32VersionValue"] = QPair<quint32, quint32>(optionalHeaderOffset + 52, sizeof(quint32));
+    fieldOffsets["SizeOfImage"] = QPair<quint32, quint32>(optionalHeaderOffset + 56, sizeof(quint32));
+    fieldOffsets["SizeOfHeaders"] = QPair<quint32, quint32>(optionalHeaderOffset + 60, sizeof(quint32));
+    fieldOffsets["CheckSum"] = QPair<quint32, quint32>(optionalHeaderOffset + 64, sizeof(quint32));
+    fieldOffsets["Subsystem"] = QPair<quint32, quint32>(optionalHeaderOffset + 68, sizeof(quint16));
+    fieldOffsets["DllCharacteristics"] = QPair<quint32, quint32>(optionalHeaderOffset + 70, sizeof(quint16));
+    fieldOffsets["SizeOfStackReserve"] = QPair<quint32, quint32>(optionalHeaderOffset + 72, sizeof(quint32));
+    fieldOffsets["SizeOfStackCommit"] = QPair<quint32, quint32>(optionalHeaderOffset + 76, sizeof(quint32));
+    fieldOffsets["SizeOfHeapReserve"] = QPair<quint32, quint32>(optionalHeaderOffset + 80, sizeof(quint32));
+    fieldOffsets["SizeOfHeapCommit"] = QPair<quint32, quint32>(optionalHeaderOffset + 84, sizeof(quint32));
+    fieldOffsets["LoaderFlags"] = QPair<quint32, quint32>(optionalHeaderOffset + 88, sizeof(quint32));
+    fieldOffsets["NumberOfRvaAndSizes"] = QPair<quint32, quint32>(optionalHeaderOffset + 92, sizeof(quint32));
+    
+    // Section fields - these will be calculated dynamically based on section index
+    // For now, we'll add common section field names that can be used for lookup
+    if (fieldName == "VirtualAddress" || fieldName == "SizeOfRawData" || 
+        fieldName == "PointerToRawData" || fieldName == "PointerToRelocations" ||
+        fieldName == "PointerToLineNumbers" || fieldName == "NumberOfRelocations" ||
+        fieldName == "NumberOfLineNumbers" || fieldName == "Characteristics") {
+        // These are section-specific fields, return a placeholder
+        // The actual offset will depend on which section is being examined
+        return QPair<quint32, quint32>(0, 0);
+    }
     
     // Return the field offset if found
     if (fieldOffsets.contains(fieldName)) {
