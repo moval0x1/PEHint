@@ -457,69 +457,31 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
                 QString explanation;
                 
                 // Main description
-                explanation += QString("<div style='margin-bottom: 16px; line-height: 1.6; color: #1f2937;'>%1</div>").arg(description);
+                explanation += QString("<div style='margin-bottom: 8px; line-height: 1.6; color: #1f2937;'>%1</div>").arg(description);
                 
                 // Value field (if exists)
                 if (!value.isEmpty()) {
-                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #059669;'>Value:</b> <span style='font-family: monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;'>%1</span></div>").arg(value);
+                    explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #059669;'>Value:</b> <span style='font-family: monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;'>%1</span></div>").arg(value);
                 }
                 
                 // Purpose field
                 if (!purpose.isEmpty()) {
-                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #1d4ed8;'>Purpose:</b> %1</div>").arg(purpose);
+                    explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #1d4ed8;'>Purpose:</b> %1</div>").arg(purpose);
                 }
                 
                 // Note field (if exists)
                 if (!note.isEmpty()) {
-                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #7c3aed;'>Note:</b> %1</div>").arg(note);
+                    explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #7c3aed;'>Note:</b> %1</div>").arg(note);
                 }
                 
                 // Common names field (if exists)
                 if (!commonNames.isEmpty()) {
-                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #dc2626;'>Common Names:</b> <span style='font-family: monospace; background: #fef2f2; padding: 2px 6px; border-radius: 4px; color: #991b1b;'>%1</span></div>").arg(commonNames);
+                    explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #dc2626;'>Common Names:</b> <span style='font-family: monospace; background: #fef2f2; padding: 2px 6px; border-radius: 4px; color: #991b1b;'>%1</span></div>").arg(commonNames);
                 }
                 
-                // Security notes with enhanced fancy styling
+                // Security notes - bold and dark red
                 if (!securityNotes.isEmpty()) {
-                    explanation += QString(
-                        "<div style='"
-                        "margin-top: 20px; "
-                        "padding: 16px; "
-                        "background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 50%, #fecaca 100%); "
-                        "border: 2px solid #fecaca; "
-                        "border-left: 6px solid #dc2626; "
-                        "border-radius: 12px; "
-                        "box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1); "
-                        "position: relative; "
-                        "transform: translateY(-2px); "
-                        "transition: all 0.3s ease; "
-                        "'>"
-                        "<div style='"
-                        "position: absolute; "
-                        "top: -12px; "
-                        "left: 16px; "
-                        "background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); "
-                        "color: white; "
-                        "padding: 6px 12px; "
-                        "border-radius: 16px; "
-                        "font-size: 11px; "
-                        "font-weight: bold; "
-                        "text-transform: uppercase; "
-                        "letter-spacing: 0.8px; "
-                        "box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); "
-                        "border: 2px solid #fecaca; "
-                        "'>"
-                        "Security Tip"
-                        "</div>"
-                        "<div style='"
-                        "margin-top: 12px; "
-                        "color: #7f1d1d; "
-                        "font-weight: 500; "
-                        "line-height: 1.6; "
-                        "font-size: 13px; "
-                        "'>%1</div>"
-                        "</div>"
-                    ).arg(securityNotes);
+                    explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #7f1d1d;'>Security Notes:</b> %1</div>").arg(securityNotes);
                 }
                 
                 return explanation;
@@ -546,25 +508,25 @@ QPair<quint32, quint32> PEParserNew::getFieldOffset(const QString &fieldName)
     QMap<QString, QPair<quint32, quint32>> fieldOffsets;
     
     // DOS Header fields
-    fieldOffsets["e_magic"] = QPair<quint32, quint32>(0, sizeof(quint16));
-    fieldOffsets["e_cblp"] = QPair<quint32, quint32>(2, sizeof(quint16));
-    fieldOffsets["e_cp"] = QPair<quint32, quint32>(4, sizeof(quint16));
-    fieldOffsets["e_crlc"] = QPair<quint32, quint32>(6, sizeof(quint16));
-    fieldOffsets["e_cparhdr"] = QPair<quint32, quint32>(8, sizeof(quint16));
-    fieldOffsets["e_minalloc"] = QPair<quint32, quint32>(10, sizeof(quint16));
-    fieldOffsets["e_maxalloc"] = QPair<quint32, quint32>(12, sizeof(quint16));
-    fieldOffsets["e_ss"] = QPair<quint32, quint32>(14, sizeof(quint16));
-    fieldOffsets["e_sp"] = QPair<quint32, quint32>(16, sizeof(quint16));
-    fieldOffsets["e_csum"] = QPair<quint32, quint32>(18, sizeof(quint16));
-    fieldOffsets["e_ip"] = QPair<quint32, quint32>(20, sizeof(quint16));
-    fieldOffsets["e_cs"] = QPair<quint32, quint32>(22, sizeof(quint16));
-    fieldOffsets["e_lfarlc"] = QPair<quint32, quint32>(24, sizeof(quint16));
-    fieldOffsets["e_ovno"] = QPair<quint32, quint32>(26, sizeof(quint16));
-    fieldOffsets["e_res"] = QPair<quint32, quint32>(28, sizeof(quint16) * 4);
-    fieldOffsets["e_oemid"] = QPair<quint32, quint32>(36, sizeof(quint16));
-    fieldOffsets["e_oeminfo"] = QPair<quint32, quint32>(38, sizeof(quint16));
-    fieldOffsets["e_res2"] = QPair<quint32, quint32>(40, sizeof(quint16) * 10);
-    fieldOffsets["e_lfanew"] = QPair<quint32, quint32>(60, sizeof(quint32));
+    fieldOffsets["e_magic"] = QPair<quint32, quint32>(0, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_cblp"] = QPair<quint32, quint32>(2, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_cp"] = QPair<quint32, quint32>(4, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_crlc"] = QPair<quint32, quint32>(6, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_cparhdr"] = QPair<quint32, quint32>(8, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_minalloc"] = QPair<quint32, quint32>(10, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_maxalloc"] = QPair<quint32, quint32>(12, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_ss"] = QPair<quint32, quint32>(14, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_sp"] = QPair<quint32, quint32>(16, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_csum"] = QPair<quint32, quint32>(18, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_ip"] = QPair<quint32, quint32>(20, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_cs"] = QPair<quint32, quint32>(22, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_lfarlc"] = QPair<quint32, quint32>(24, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_ovno"] = QPair<quint32, quint32>(26, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_res"] = QPair<quint32, quint32>(28, static_cast<quint32>(sizeof(quint16) * 4));
+    fieldOffsets["e_oemid"] = QPair<quint32, quint32>(36, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_oeminfo"] = QPair<quint32, quint32>(38, static_cast<quint32>(sizeof(quint16)));
+    fieldOffsets["e_res2"] = QPair<quint32, quint32>(40, static_cast<quint32>(sizeof(quint16) * 10));
+    fieldOffsets["e_lfanew"] = QPair<quint32, quint32>(60, static_cast<quint32>(sizeof(quint32)));
     
     // PE Header fields
     quint32 peHeaderOffset = dosHeader->e_lfanew;

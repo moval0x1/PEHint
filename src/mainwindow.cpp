@@ -80,6 +80,9 @@ MainWindow::MainWindow(QWidget *parent)
     
     qDebug() << "Application directory:" << appDir;
     qDebug() << "Config path:" << configPath;
+    qDebug() << "Current working directory:" << QDir::currentPath();
+    qDebug() << "Config directory exists:" << QDir("config").exists();
+    qDebug() << "Config directory absolute path:" << QDir("config").absolutePath();
     
     if (QFile::exists(configPath)) {
         qDebug() << "Config file found at:" << configPath;
@@ -177,6 +180,9 @@ void MainWindow::setupConnections()
     connect(m_peParser, &PEParserNew::parsingComplete, this, &MainWindow::onParsingComplete);
     connect(m_peParser, &PEParserNew::parsingProgress, this, &MainWindow::onParsingProgress);
     connect(m_peParser, &PEParserNew::errorOccurred, this, &MainWindow::onErrorOccurred);
+    
+    // Language Manager connections
+    connect(&LanguageManager::getInstance(), &LanguageManager::languageChanged, this, &MainWindow::updateLanguageMenu);
     
     // REFACTORED: Use UI Manager to setup connections
     // This extracts UI-specific connections from MainWindow, reducing coupling
@@ -1076,18 +1082,46 @@ void MainWindow::clearTreeHighlights()
 
 void MainWindow::setupLanguageMenu()
 {
-    // Find the Tools menu
+    qDebug() << "=== SETUP LANGUAGE MENU START ===";
+    
+    // Find the Tools menu - try multiple approaches
     QMenu *toolsMenu = nullptr;
+    
+    // First, try to find by exact title match
     for (QAction *action : menuBar()->actions()) {
-        if (action->menu() && action->menu()->title().contains("Tools", Qt::CaseInsensitive)) {
-            toolsMenu = action->menu();
-            break;
+        if (action->menu()) {
+            QString menuTitle = action->menu()->title();
+            // Remove accelerator prefix (&) and compare
+            QString cleanTitle = menuTitle.replace("&", "");
+            qDebug() << "Checking menu:" << menuTitle << "clean:" << cleanTitle;
+            if (cleanTitle == "Tools") {
+                toolsMenu = action->menu();
+                qDebug() << "Found Tools menu by exact match:" << menuTitle;
+                break;
+            }
         }
     }
     
+    // If not found, try case-insensitive search
+    if (!toolsMenu) {
+        for (QAction *action : menuBar()->actions()) {
+            if (action->menu()) {
+                QString menuTitle = action->menu()->title();
+                QString cleanTitle = menuTitle.replace("&", "");
+                if (cleanTitle.contains("Tools", Qt::CaseInsensitive)) {
+                    toolsMenu = action->menu();
+                    qDebug() << "Found Tools menu by case-insensitive search:" << menuTitle;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // If still not found, create it
     if (!toolsMenu) {
         qWarning() << "Tools menu not found, creating it";
         toolsMenu = menuBar()->addMenu("&Tools");
+        qDebug() << "Created new Tools menu";
     }
     
     // Add language submenu with icon
@@ -1095,6 +1129,7 @@ void MainWindow::setupLanguageMenu()
     languageMenu->setIcon(QIcon(":/images/imgs/language.png")); // Use language icon
     
     // Get available languages from Language Manager
+    qDebug() << "About to get available languages from LanguageManager...";
     QStringList languages = LanguageManager::getInstance().getAvailableLanguages();
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
     
@@ -1115,24 +1150,44 @@ void MainWindow::setupLanguageMenu()
         connect(langAction, &QAction::triggered, this, [this, langAction]() {
             this->onLanguageMenuTriggered(langAction);
         });
+        
+        qDebug() << "Created action for" << langCode << "checked:" << (langCode == currentLanguage);
     }
+    
+    // Ensure only one action is checked initially
+    updateLanguageMenu();
 }
 
 void MainWindow::onLanguageMenuTriggered(QAction *action)
 {
     QString languageCode = action->data().toString();
+    QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
+    
+    qDebug() << "Language menu triggered for:" << languageCode;
+    qDebug() << "Current language is:" << currentLanguage;
+    
+    // Don't do anything if the same language is already selected
+    if (languageCode == currentLanguage) {
+        qDebug() << "Same language already selected, doing nothing";
+        return;
+    }
     
     if (LanguageManager::getInstance().setLanguage(languageCode)) {
+        qDebug() << "Language successfully changed to:" << languageCode;
+        
         // Update all UI elements with new language
         updateUILanguage();
         
-        // Update the checked state of language actions
-        QMenu *languageMenu = qobject_cast<QMenu*>(action->parent());
-        if (languageMenu) {
-            for (QAction *langAction : languageMenu->actions()) {
-                langAction->setChecked(langAction->data().toString() == languageCode);
-            }
-        }
+        // Force immediate menu update
+        QTimer::singleShot(0, this, [this]() {
+            updateLanguageMenu();
+            // Also force a complete menu refresh
+            menuBar()->update();
+        });
+        
+        qDebug() << "Language changed to:" << languageCode;
+    } else {
+        qWarning() << "Failed to change language to:" << languageCode;
     }
 }
 
@@ -1210,5 +1265,65 @@ void MainWindow::updateMenuLanguage()
             }
         }
     }
+}
+
+void MainWindow::updateLanguageMenu()
+{
+    // Find the Tools menu and then the language submenu
+    QMenu *toolsMenu = nullptr;
+    QMenu *languageMenu = nullptr;
+    
+    // Find Tools menu
+    for (QAction *action : menuBar()->actions()) {
+        if (action->menu()) {
+            QString menuTitle = action->menu()->title();
+            QString cleanTitle = menuTitle.replace("&", "");
+            if (cleanTitle == "Tools") {
+                toolsMenu = action->menu();
+                break;
+            }
+        }
+    }
+    
+    if (!toolsMenu) {
+        qWarning() << "Tools menu not found in updateLanguageMenu";
+        return;
+    }
+    
+    // Find language submenu
+    for (QAction *action : toolsMenu->actions()) {
+        if (action->menu() && action->text().contains(LANG("UI/menu_language"), Qt::CaseInsensitive)) {
+            languageMenu = action->menu();
+            break;
+        }
+    }
+    
+    if (!languageMenu) {
+        qWarning() << "Language submenu not found in updateLanguageMenu";
+        return;
+    }
+    
+    // Get current language and update all language actions
+    QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
+    qDebug() << "Updating language menu, current language:" << currentLanguage;
+    
+    // First, uncheck ALL actions
+    for (QAction *langAction : languageMenu->actions()) {
+        langAction->setChecked(false);
+        qDebug() << "Unchecked action:" << langAction->data().toString();
+    }
+    
+    // Then, check ONLY the current language action
+    for (QAction *langAction : languageMenu->actions()) {
+        QString langCode = langAction->data().toString();
+        if (langCode == currentLanguage) {
+            langAction->setChecked(true);
+            qDebug() << "Checked action:" << langCode;
+            break; // Only one should be checked
+        }
+    }
+    
+    // Force menu update
+    languageMenu->update();
 }
 

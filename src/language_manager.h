@@ -122,6 +122,12 @@ public:
      */
     QString getLanguageDisplayName(const QString &languageCode) const;
 
+    /**
+     * @brief Check if the language manager is initialized
+     * @return true if initialized, false otherwise
+     */
+    bool isInitialized() const;
+
 signals:
     /**
      * @brief Emitted when language changes

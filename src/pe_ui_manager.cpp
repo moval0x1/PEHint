@@ -80,7 +80,7 @@ void UIManager::setupMainUI(QWidget *centralWidget)
     // Create hex viewer component and add it to the layout
     m_hexViewer = new HexViewer(centralWidget);
     m_hexViewer->setVisible(true); // Make hex viewer visible
-    m_hexViewer->setMinimumHeight(200); // Set minimum height for better visibility
+    m_hexViewer->setMinimumHeight(120); // Smaller, more compact hex viewer
     mainLayout->addWidget(m_hexViewer);
 }
 
@@ -273,7 +273,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     
     // Create Field Explanation Text area
     m_fieldExplanationText = new QTextEdit();
-    m_fieldExplanationText->setMaximumHeight(100); // Compact but readable
+    m_fieldExplanationText->setMaximumHeight(250); // Bigger for better readability
     m_fieldExplanationText->setReadOnly(true);     // User can't edit explanations
     m_fieldExplanationText->setStyleSheet(
         "QTextEdit { "

@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QLibraryInfo>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 /**
  * @file language_manager.cpp
@@ -51,6 +52,11 @@ LanguageManager& LanguageManager::getInstance()
 
 bool LanguageManager::initialize(const QString &configPath)
 {
+    if (m_initialized) {
+        qDebug() << "LanguageManager already initialized, skipping re-initialization";
+        return true;
+    }
+    
     m_configPath = configPath;
     
     // Load language configuration
@@ -71,32 +77,62 @@ bool LanguageManager::initialize(const QString &configPath)
     QDir configDir = QFileInfo(configPath).dir();
     m_availableLanguages.clear();
     
-    qDebug() << "Config directory:" << configDir.absolutePath();
-    qDebug() << "Looking for language files in:" << configDir.absolutePath();
-    
     // First, always add English since we have the main config file
     m_availableLanguages.append("en");
     qDebug() << "Added English language (main config file)";
     
-    // Now check for other language files
+    // Get the actual config directory where the main config file is located
+    QDir actualConfigDir = QFileInfo(m_configPath).absoluteDir();
+    qDebug() << "Actual config directory (absolute):" << actualConfigDir.absolutePath();
+    
+    // List all files in the config directory to see what's actually there
+    QStringList allFiles = actualConfigDir.entryList(QDir::Files);
+    qDebug() << "Files in config directory:" << allFiles;
+    
+    // Filter for language config files
+    QStringList langFiles = actualConfigDir.entryList(QStringList("language_config*.ini"), QDir::Files);
+    qDebug() << "Language config files found:" << langFiles;
+    
+    // Now check for other language files from config
     for (const QString &langCode : configLanguages) {
         if (langCode == "en") {
-            continue; // Already added
+            continue; // Already added above
         }
         
         QString langFile = QString("language_config_%1.ini").arg(langCode);
-        QString fullPath = configDir.absoluteFilePath(langFile);
-        qDebug() << "Checking for language file:" << langFile << "at full path:" << fullPath;
+        QString fullPath = actualConfigDir.absoluteFilePath(langFile);
+        
+        qDebug() << "Checking for language file:" << langFile;
+        qDebug() << "Full path:" << fullPath;
+        qDebug() << "File exists:" << QFile::exists(fullPath);
         
         if (QFile::exists(fullPath)) {
             m_availableLanguages.append(langCode);
-            qDebug() << "Found language file for" << langCode << "at" << fullPath;
+            qDebug() << "✓ Found language file for" << langCode << "at:" << fullPath;
         } else {
-            qDebug() << "Language file not found for" << langCode << "at" << fullPath;
+            qDebug() << "✗ Language file not found for" << langCode;
         }
     }
     
-    qDebug() << "Available languages after validation:" << m_availableLanguages;
+    // Also scan for any additional language files that might not be in the config
+    qDebug() << "Scanning for additional language files...";
+    for (const QString &fileName : langFiles) {
+        if (fileName == "language_config.ini") {
+            continue; // Skip the main English config
+        }
+        
+        // Extract language code from filename: language_config_XX.ini
+        QRegularExpression regex("language_config_([a-z]{2})\\.ini");
+        QRegularExpressionMatch match = regex.match(fileName);
+        if (match.hasMatch()) {
+            QString langCode = match.captured(1);
+            if (!m_availableLanguages.contains(langCode)) {
+                m_availableLanguages.append(langCode);
+                qDebug() << "✓ Found additional language file for" << langCode << ":" << fileName;
+            }
+        }
+    }
+    
     
     // Validate default language
     if (!m_availableLanguages.contains(m_defaultLanguage)) {
@@ -133,7 +169,7 @@ bool LanguageManager::setLanguage(const QString &languageCode)
     
     // Load language-specific configuration file
     QString oldConfigPath = m_configPath;
-    QDir configDir = QFileInfo(m_configPath).dir();
+    QDir configDir = QFileInfo(m_configPath).absoluteDir();
     QString langFile;
     if (languageCode == "en") {
         langFile = "language_config.ini";
@@ -151,6 +187,9 @@ bool LanguageManager::setLanguage(const QString &languageCode)
         m_configPath = oldConfigPath; // Restore old path
         return false;
     }
+    
+    // Restore the original config path to maintain available languages list
+    m_configPath = oldConfigPath;
     
     // Load Qt translations for new language
     if (!loadQtTranslations(languageCode)) {
@@ -171,6 +210,9 @@ QString LanguageManager::getCurrentLanguage() const
 
 QStringList LanguageManager::getAvailableLanguages() const
 {
+    qDebug() << "getAvailableLanguages() called, returning:" << m_availableLanguages;
+    qDebug() << "m_availableLanguages size:" << m_availableLanguages.size();
+    qDebug() << "m_availableLanguages content:" << m_availableLanguages.join(", ");
     return m_availableLanguages;
 }
 
@@ -405,4 +447,9 @@ QString LanguageManager::substituteParameters(const QString &text, const QMap<QS
 QTranslator* LanguageManager::getQtTranslator(const QString &languageCode)
 {
     return m_qtTranslator;
+}
+
+bool LanguageManager::isInitialized() const
+{
+    return m_initialized;
 }

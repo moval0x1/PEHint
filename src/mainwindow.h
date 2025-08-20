@@ -69,6 +69,7 @@ public slots:
     void onLanguageMenuTriggered(QAction *action);
     void updateUILanguage();
     void updateMenuLanguage();
+    void updateLanguageMenu();
 
 private:
     
