@@ -1,9 +1,0 @@
-<RCC>
-    <qresource prefix="/images">
-        <file>imgs/PEHint.png</file>
-        <file>imgs/PEHint-ico.ico</file>
-        <file>imgs/about.ico</file>
-        <file>imgs/folder.ico</file>
-        <file>imgs/logout.ico</file>
-    </qresource>
-</RCC>

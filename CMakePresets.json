@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64"
+      },
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.8.0/msvc2022_64"
+      }
+    },
+    {
+      "name": "qt-debug",
+      "inherits": "default",
+      "displayName": "Qt-Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON"
+      }
+    },
+    {
+      "name": "qt-release",
+      "inherits": "default",
+      "displayName": "Qt-Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "qt-debug",
+      "configurePreset": "qt-debug"
+    },
+    {
+      "name": "qt-release",
+      "configurePreset": "qt-release"
+    }
+  ]
+}
