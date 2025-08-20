@@ -27,6 +27,7 @@
 
 #include "version.h"
 #include "language_manager.h"
+#include "crash_handler.h"
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QApplication>
@@ -44,6 +45,10 @@
 #include <QTimer>
 #include <QCoreApplication>
 #include <QLocale>
+#include <QFile>
+#include <QDir>
+#include <QTextStream>
+#include <QSysInfo>
 
 /**
  * @brief Constructor for MainWindow
@@ -74,29 +79,32 @@ MainWindow::MainWindow(QWidget *parent)
     // This reduces MainWindow complexity and follows Single Responsibility Principle
     m_uiManager = new UIManager(this);
     
+    // Initialize crash handling system (includes logging)
+    CrashHandler::getInstance().initialize();
+    
     // Initialize Language Manager for internationalization
     // Look for config file in multiple possible locations
     QString configDir;
     QStringList possibleConfigPaths;
     
-    // 1. Try relative to executable (for deployed builds)
+    // 1. Try relative to executable (for deployed builds) - PRIORITY 1
     QString appDir = QCoreApplication::applicationDirPath();
     possibleConfigPaths << QDir(appDir).absoluteFilePath("config");
     
-    // 2. Try relative to executable but go up to project root (for development builds)
+    // 2. Try current working directory - PRIORITY 2
+    possibleConfigPaths << QDir::currentPath() + "/config";
+    
+    // 3. Try relative to executable but go up to project root (for development builds) - PRIORITY 3
     QDir appDirObj(appDir);
     if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
         possibleConfigPaths << appDirObj.absoluteFilePath("config");
     }
     
-    // 3. Try current working directory
-    possibleConfigPaths << QDir::currentPath() + "/config";
-    
-    // 4. Try source directory (for development builds)
+    // 4. Try source directory (for development builds) - PRIORITY 4
     possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config");
     
     qDebug() << "Application directory:" << appDir;
-    qDebug() << "Possible config paths:" << possibleConfigPaths;
+    qDebug() << "Possible config paths (in priority order):" << possibleConfigPaths;
     
     // Find the first valid config directory
     for (const QString &path : possibleConfigPaths) {
@@ -146,19 +154,29 @@ MainWindow::MainWindow(QWidget *parent)
             filters << "language_config*.ini";
             QStringList langFiles = configDirObj.entryList(filters, QDir::Files);
             qDebug() << "Language files found:" << langFiles;
+            
+            CrashHandler::getInstance().logInfo("MainWindow", QString("LanguageManager initialized successfully with config: %1").arg(configPath));
+            CrashHandler::getInstance().logInfo("MainWindow", QString("Available languages: %1").arg(LanguageManager::getInstance().getAvailableLanguages().join(", ")));
+            CrashHandler::getInstance().logInfo("MainWindow", QString("Current language: %1").arg(LanguageManager::getInstance().getCurrentLanguage()));
         } else {
             qWarning() << "LanguageManager initialization failed";
+            CrashHandler::getInstance().logError("MainWindow", "LanguageManager initialization failed", QString("Config path: %1").arg(configPath));
         }
     } else {
         qWarning() << "Config file does not exist at:" << configPath;
+        CrashHandler::getInstance().logWarning("MainWindow", "Config file not found", QString("Expected path: %1").arg(configPath));
         // Try to initialize with auto-detection
         qDebug() << "Trying to initialize LanguageManager with auto-detection...";
         if (LanguageManager::getInstance().initialize()) {
             qDebug() << "LanguageManager initialized successfully with auto-detection";
             qDebug() << "Available languages:" << LanguageManager::getInstance().getAvailableLanguages();
             qDebug() << "Current language:" << LanguageManager::getInstance().getCurrentLanguage();
+            CrashHandler::getInstance().logInfo("MainWindow", "LanguageManager initialized successfully with auto-detection");
+            CrashHandler::getInstance().logInfo("MainWindow", QString("Available languages: %1").arg(LanguageManager::getInstance().getAvailableLanguages().join(", ")));
+            CrashHandler::getInstance().logInfo("MainWindow", QString("Current language: %1").arg(LanguageManager::getInstance().getCurrentLanguage()));
         } else {
             qWarning() << "LanguageManager auto-detection also failed";
+            CrashHandler::getInstance().logError("MainWindow", "LanguageManager auto-detection failed");
         }
     }
     
@@ -190,6 +208,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+
 }
 
 /**
@@ -207,6 +226,8 @@ MainWindow::~MainWindow()
  */
 void MainWindow::setupUI()
 {
+    CrashHandler::getInstance().logInfo("MainWindow", "Setting up main UI components");
+    
     // Create central widget with layout
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
@@ -215,6 +236,8 @@ void MainWindow::setupUI()
     // This extracts ~100+ lines of UI creation code from MainWindow
     // MainWindow no longer needs to know about QVBoxLayout, QHBoxLayout, etc.
     m_uiManager->setupMainUI(centralWidget);
+    
+    CrashHandler::getInstance().logInfo("MainWindow", "Main UI setup completed");
 }
     
 
@@ -232,6 +255,8 @@ void MainWindow::setupUI()
  */
 void MainWindow::setupConnections()
 {
+    CrashHandler::getInstance().logInfo("MainWindow", "Setting up signal-slot connections");
+    
     // PE Parser connections - NEW ARCHITECTURE: Using PEParserNew signals
     // These replace the old PEParser signals, maintaining the same interface
     connect(m_peParser, &PEParserNew::parsingComplete, this, &MainWindow::onParsingComplete);
@@ -245,6 +270,8 @@ void MainWindow::setupConnections()
     // This extracts UI-specific connections from MainWindow, reducing coupling
     // MainWindow no longer needs to know about m_refreshButton, m_copyButton, etc.
     m_uiManager->setupConnections(this);
+    
+    CrashHandler::getInstance().logInfo("MainWindow", "Signal-slot connections setup completed");
 }
 
 /**
@@ -260,6 +287,8 @@ void MainWindow::setupConnections()
  */
 void MainWindow::setupMenus()
 {
+    CrashHandler::getInstance().logInfo("MainWindow", "Setting up application menus");
+    
     // Clear any existing menus to prevent duplication
     menuBar()->clear();
     
@@ -308,6 +337,8 @@ void MainWindow::setupMenus()
     connect(refreshAction, &QAction::triggered, this, &MainWindow::on_action_Refresh_triggered);
     connect(hexViewerAction, &QAction::triggered, this, &MainWindow::onHexViewerOptions);
     connect(aboutAction, &QAction::triggered, this, &MainWindow::on_action_PEHint_triggered);
+    
+    CrashHandler::getInstance().logInfo("MainWindow", "Application menus setup completed");
 }
 
 /**
@@ -441,7 +472,10 @@ void MainWindow::on_action_Open_triggered()
     );
     
     if (!filePath.isEmpty()) {
+        CrashHandler::getInstance().logInfo("MainWindow", QString("Opening PE file: %1").arg(filePath));
         loadPEFile(filePath);
+    } else {
+        CrashHandler::getInstance().logInfo("MainWindow", "File open dialog cancelled by user");
     }
 }
 
@@ -503,11 +537,13 @@ void MainWindow::onParsingComplete(bool success)
     
     if (success) {
         m_fileLoaded = true;
+        CrashHandler::getInstance().logInfo("MainWindow", "PE file parsing completed successfully");
         updateFileInfo();
         updateAnalysisDisplay();
         statusBar()->showMessage(LANG("UI/status_file_loaded_success"), 3000);
     } else {
         m_fileLoaded = false;
+        CrashHandler::getInstance().logError("MainWindow", "PE file parsing failed");
         clearDisplay();
         statusBar()->showMessage(LANG("UI/file_load_failed"), 3000);
     }
@@ -528,6 +564,7 @@ void MainWindow::onParsingProgress(int percentage, const QString &message)
 
 void MainWindow::onErrorOccurred(const QString &error)
 {
+    CrashHandler::getInstance().logError("MainWindow", "PE parsing error occurred", error);
     showError(LANG("UI/error_parsing"), error);
     statusBar()->showMessage(LANG("UI/status_error"), 5000);
 }
@@ -535,48 +572,57 @@ void MainWindow::onErrorOccurred(const QString &error)
 // UI interaction slots
 void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
 {
-    if (item && m_uiManager) {
-        // Show field explanation in the explanation panel
-        if (m_peParser && m_peParser->isValid()) {
+    try {
+        if (item && m_uiManager) {
             QString fieldName = item->text(0);
-            QString explanation = m_peParser->getFieldExplanation(fieldName);
-            m_uiManager->m_fieldExplanationText->setHtml(explanation);
-        }
-        
-        // Show detailed information in status bar
-        QMap<QString, QString> infoParams;
-        infoParams["field_name"] = item->text(0);
-        infoParams["field_value"] = item->text(1);
-        QString info = LANG_PARAMS("UI/field_info_format", infoParams);
-        statusBar()->showMessage(info, 3000);
-        
-        // Highlight the field in hex viewer
-        if (m_peParser && m_peParser->isValid()) {
-            QString fieldName = item->text(0);
-            QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
+            CrashHandler::getInstance().logDebug("MainWindow", QString("Tree item clicked: %1").arg(fieldName));
             
-            // Debug: Show the field offset information
-            QMap<QString, QString> debugParams;
-            debugParams["field_name"] = fieldName;
-            debugParams["offset"] = QString("0x%1").arg(fieldOffset.first, 0, 16);
-            debugParams["size"] = QString::number(fieldOffset.second);
-            QString debugInfo = LANG_PARAMS("UI/field_debug_info", debugParams);
-            statusBar()->showMessage(debugInfo, 5000);
+            // Show field explanation in the explanation panel
+            if (m_peParser && m_peParser->isValid()) {
+                QString explanation = m_peParser->getFieldExplanation(fieldName);
+                m_uiManager->m_fieldExplanationText->setHtml(explanation);
+            }
             
-            if (fieldOffset.first > 0 || fieldOffset.second > 0) {
-                        // Clear previous highlights
-        m_uiManager->m_hexViewer->clearHighlights();
-        
-        // Highlight the field with a bright yellow color
-        QColor highlightColor(255, 255, 0, 200); // Bright yellow with more opacity
-        m_uiManager->m_hexViewer->highlightRange(fieldOffset.first, fieldOffset.second, highlightColor);
-        
-        // Go to the offset in hex viewer
-        m_uiManager->m_hexViewer->goToOffset(fieldOffset.first);
-            } else {
-                statusBar()->showMessage(LANG_PARAM("UI/field_no_offset", "field_name", fieldName), 3000);
-    }
+            // Show detailed information in status bar
+            QMap<QString, QString> infoParams;
+            infoParams["field_name"] = fieldName;
+            infoParams["field_value"] = item->text(1);
+            QString info = LANG_PARAMS("UI/field_info_format", infoParams);
+            statusBar()->showMessage(info, 3000);
+            
+            // Highlight the field in hex viewer
+            if (m_peParser && m_peParser->isValid()) {
+                QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
+                
+                // Debug: Show the field offset information
+                QMap<QString, QString> debugParams;
+                debugParams["field_name"] = fieldName;
+                debugParams["offset"] = QString("0x%1").arg(fieldOffset.first, 0, 16);
+                debugParams["size"] = QString::number(fieldOffset.second);
+                QString debugInfo = LANG_PARAMS("UI/field_debug_info", debugParams);
+                statusBar()->showMessage(debugInfo, 5000);
+                
+                if (fieldOffset.first > 0 || fieldOffset.second > 0) {
+                    // Clear previous highlights
+                    m_uiManager->m_hexViewer->clearHighlights();
+                    
+                    // Highlight the field with a bright yellow color
+                    QColor highlightColor(255, 255, 0, 200); // Bright yellow with more opacity
+                    m_uiManager->m_hexViewer->highlightRange(fieldOffset.first, fieldOffset.second, highlightColor);
+                    
+                    // Go to the offset in hex viewer
+                    m_uiManager->m_hexViewer->goToOffset(fieldOffset.first);
+                } else {
+                    statusBar()->showMessage(LANG_PARAM("UI/field_no_offset", "field_name", fieldName), 3000);
+                }
+            }
         }
+    } catch (const std::exception& e) {
+        CrashHandler::getInstance().logError("MainWindow", "Exception during tree item click", QString("Exception: %1").arg(e.what()));
+        showError("Error", QString("Exception occurred: %1").arg(e.what()));
+    } catch (...) {
+        CrashHandler::getInstance().logError("MainWindow", "Unknown exception during tree item click", "Unknown exception type");
+        showError("Error", "Unknown exception occurred");
     }
 }
 
@@ -766,40 +812,53 @@ void MainWindow::onSecurityAnalysis()
 // Private helper methods
 void MainWindow::loadPEFile(const QString &filePath)
 {
-    m_currentFilePath = filePath;
-    if (m_uiManager) {
-        m_uiManager->m_progressBar->setVisible(true);
-        m_uiManager->m_progressBar->setRange(0, 100);
-        m_uiManager->m_progressBar->setValue(0);
-    }
-    
-    statusBar()->showMessage(LANG("UI/status_loading"));
-    
-    // Load the file using the PE parser
-    if (!m_peParser->loadFile(filePath)) {
+    try {
+        CrashHandler::getInstance().logInfo("MainWindow", QString("Loading PE file: %1").arg(filePath));
+        
+        m_currentFilePath = filePath;
         if (m_uiManager) {
-            m_uiManager->m_progressBar->setVisible(false);
+            m_uiManager->m_progressBar->setVisible(true);
+            m_uiManager->m_progressBar->setRange(0, 100);
+            m_uiManager->m_progressBar->setValue(0);
         }
-        showError(LANG("UI/error_file_load"), LANG("UI/error_file_load_failed"));
-        return;
+        
+        statusBar()->showMessage(LANG("UI/status_loading"));
+        
+        // Load the file using the PE parser
+        if (!m_peParser->loadFile(filePath)) {
+            if (m_uiManager) {
+                m_uiManager->m_progressBar->setVisible(false);
+            }
+            CrashHandler::getInstance().logError("MainWindow", "Failed to load PE file", QString("File: %1").arg(filePath));
+            showError(LANG("UI/error_file_load"), LANG("UI/error_file_load_failed"));
+            return;
+        }
+        
+        CrashHandler::getInstance().logInfo("MainWindow", "PE file loaded successfully, starting parsing");
+        
+        // Perform security analysis (commented out until security analysis is fully implemented)
+        // if (m_securityAnalyzer) {
+        //     SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(filePath);
+        //     if (result.riskLevel != SecurityRiskLevel::LOW) {
+        //         // Show security warning
+        //         QString riskLevelText = (result.riskLevel == SecurityRiskLevel::HIGH) ? LANG("UI/security_high_risk") : LANG("UI/security_medium_risk");
+        //         QMap<QString, QString> warningParams;
+        //         warningParams["risk_level"] = riskLevelText;
+        //         warningParams["summary"] = LANG_PARAM("UI/security_risk_score", "score", QString::number(result.riskScore));
+        //         QString warningMsg = LANG_PARAMS("UI/security_warning", warningParams);
+        //         statusBar()->showMessage(warningMsg, 10000); // Show for 10 seconds
+        //         
+        //         // Highlight suspicious sections in hex viewer
+        //         highlightSuspiciousSections(result);
+        //     }
+        // }
+    } catch (const std::exception& e) {
+        CrashHandler::getInstance().logError("MainWindow", "Exception during file loading", QString("Exception: %1").arg(e.what()));
+        showError(LANG("UI/error_file_load"), QString("Exception: %1").arg(e.what()));
+    } catch (...) {
+        CrashHandler::getInstance().logError("MainWindow", "Unknown exception during file loading", "Unknown exception type");
+        showError(LANG("UI/error_file_load"), "Unknown exception occurred");
     }
-    
-    // Perform security analysis (commented out until security analysis is fully implemented)
-    // if (m_securityAnalyzer) {
-    //     SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(filePath);
-    //     if (result.riskLevel != SecurityRiskLevel::LOW) {
-    //         // Show security warning
-    //         QString riskLevelText = (result.riskLevel == SecurityRiskLevel::HIGH) ? LANG("UI/security_high_risk") : LANG("UI/security_medium_risk");
-    //         QMap<QString, QString> warningParams;
-    //         warningParams["risk_level"] = riskLevelText;
-    //         warningParams["summary"] = LANG_PARAM("UI/security_risk_score", "score", QString::number(result.riskScore));
-    //         QString warningMsg = LANG_PARAMS("UI/security_warning", warningParams);
-    //         statusBar()->showMessage(warningMsg, 10000); // Show for 10 seconds
-    //         
-    //         // Highlight suspicious sections in hex viewer
-    //         highlightSuspiciousSections(result);
-    //     }
-    // }
 }
 
 void MainWindow::clearDisplay()

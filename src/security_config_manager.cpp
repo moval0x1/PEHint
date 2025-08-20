@@ -33,11 +33,15 @@ SecurityConfigManager::SecurityConfigManager(const QString &configFilePath, QObj
     
     // Set up file watching for hot-reloading
     m_fileWatcher = new QFileSystemWatcher(this);
-    if (m_fileWatcher->addPath(m_configFilePath)) {
-        connect(m_fileWatcher, &QFileSystemWatcher::fileChanged, this, &SecurityConfigManager::onConfigFileChanged);
-        qDebug() << "File watching enabled for:" << m_configFilePath;
+    if (!m_configFilePath.isEmpty() && QFile::exists(m_configFilePath)) {
+        if (m_fileWatcher->addPath(m_configFilePath)) {
+            connect(m_fileWatcher, &QFileSystemWatcher::fileChanged, this, &SecurityConfigManager::onConfigFileChanged);
+            qDebug() << "File watching enabled for:" << m_configFilePath;
+        } else {
+            qWarning() << "Failed to set up file watching for:" << m_configFilePath;
+        }
     } else {
-        qWarning() << "Failed to set up file watching for:" << m_configFilePath;
+        qDebug() << "File watching disabled - no valid config file path";
     }
 }
 
@@ -474,24 +478,24 @@ QString SecurityConfigManager::findConfigFile(const QString &fileName) const
 {
     QStringList possibleConfigPaths;
     
-    // 1. Try relative to executable (for deployed builds)
+    // 1. Try relative to executable (for deployed builds) - PRIORITY 1
     QString appDir = QCoreApplication::applicationDirPath();
     possibleConfigPaths << QDir(appDir).absoluteFilePath("config/" + fileName);
     
-    // 2. Try relative to executable but go up to project root (for development builds)
+    // 2. Try current working directory - PRIORITY 2
+    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
+    
+    // 3. Try relative to executable but go up to project root (for development builds) - PRIORITY 3
     QDir appDirObj(appDir);
     if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
         possibleConfigPaths << appDirObj.absoluteFilePath("config/" + fileName);
     }
     
-    // 3. Try current working directory
-    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
-    
-    // 4. Try source directory (for development builds)
+    // 4. Try source directory (for development builds) - PRIORITY 4
     possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config/" + fileName);
     
     qDebug() << "Searching for config file:" << fileName;
-    qDebug() << "Possible paths:" << possibleConfigPaths;
+    qDebug() << "Possible paths (in priority order):" << possibleConfigPaths;
     
     // Find the first valid config file
     for (const QString &path : possibleConfigPaths) {

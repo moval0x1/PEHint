@@ -26,6 +26,8 @@
 #include <QTimer>
 #include <QColor>
 
+
+
 #include "pe_parser_new.h"
 #include "hexviewer.h"
 #include "pe_ui_manager.h"
@@ -91,6 +93,8 @@ private:
     QString m_currentFilePath;
     bool m_fileLoaded;
     
+
+    
     // UI Setup
     void setupUI();
     void setupConnections();
@@ -98,6 +102,10 @@ private:
     void setupToolbar();
     void setupStatusBar();
     void setupHexViewer();
+    
+
+    
+
     
     // File operations
     void loadPEFile(const QString &filePath);

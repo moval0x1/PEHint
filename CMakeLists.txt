@@ -15,10 +15,21 @@ project(PEHint VERSION ${PEHINT_VERSION_MAJOR}.${PEHINT_VERSION_MINOR}.${PEHINT_
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Set output directories
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# Set output directories - handle both single-config and multi-config generators
+if(CMAKE_GENERATOR MATCHES "Visual Studio")
+    # For Visual Studio generator, use configuration-specific paths
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/Debug)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/Release)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release)
+else()
+    # For single-config generators, use the standard paths
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+endif()
 
 # Enable Qt features
 set(CMAKE_AUTOUIC ON)
@@ -91,6 +102,8 @@ set(PROJECT_SOURCES
     src/security_config_manager.h
     src/language_manager.h
     src/language_manager.cpp
+    src/crash_handler.h
+    src/crash_handler.cpp
     resources/resource.qrc
 )
 
@@ -116,6 +129,11 @@ target_link_libraries(PEHint PRIVATE
     Qt6::Widgets 
     Qt6::Concurrent
 )
+
+# Link Windows-specific libraries
+if(WIN32)
+    target_link_libraries(PEHint PRIVATE dbghelp)
+endif()
 
 # Include directories
 target_include_directories(PEHint PRIVATE src)

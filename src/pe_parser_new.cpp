@@ -576,6 +576,22 @@ QPair<quint32, quint32> PEParserNew::getFieldOffset(const QString &fieldName)
     fieldOffsets["LoaderFlags"] = QPair<quint32, quint32>(optionalHeaderOffset + 88, sizeof(quint32));
     fieldOffsets["NumberOfRvaAndSizes"] = QPair<quint32, quint32>(optionalHeaderOffset + 92, sizeof(quint32));
     
+    // Add container items for major PE sections
+    fieldOffsets["DOS Header"] = QPair<quint32, quint32>(0, static_cast<quint32>(sizeof(IMAGE_DOS_HEADER)));
+    fieldOffsets["PE Header"] = QPair<quint32, quint32>(peHeaderOffset, sizeof(quint32));
+    fieldOffsets["File Header"] = QPair<quint32, quint32>(fileHeaderOffset, static_cast<quint32>(sizeof(IMAGE_FILE_HEADER)));
+    fieldOffsets["Optional Header"] = QPair<quint32, quint32>(optionalHeaderOffset, static_cast<quint32>(fileHeader->SizeOfOptionalHeader));
+    
+    // Calculate sections container offset and size
+    quint32 sectionsOffset = optionalHeaderOffset + fileHeader->SizeOfOptionalHeader;
+    quint32 sectionsSize = fileHeader->NumberOfSections * sizeof(IMAGE_SECTION_HEADER);
+    fieldOffsets["Sections"] = QPair<quint32, quint32>(sectionsOffset, sectionsSize);
+    
+    // Add Data Directories container
+    quint32 dataDirectoriesOffset = optionalHeaderOffset + 96; // Standard offset for data directories
+    quint32 dataDirectoriesSize = 16 * sizeof(IMAGE_DATA_DIRECTORY); // 16 data directories
+    fieldOffsets["Data Directories"] = QPair<quint32, quint32>(dataDirectoriesOffset, dataDirectoriesSize);
+    
     // Section fields - these will be calculated dynamically based on section index
     // For now, we'll add common section field names that can be used for lookup
     if (fieldName == "VirtualAddress" || fieldName == "SizeOfRawData" || 
@@ -856,24 +872,24 @@ QString PEParserNew::findConfigFile(const QString &fileName) const
 {
     QStringList possibleConfigPaths;
     
-    // 1. Try relative to executable (for deployed builds)
+    // 1. Try relative to executable (for deployed builds) - PRIORITY 1
     QString appDir = QCoreApplication::applicationDirPath();
     possibleConfigPaths << QDir(appDir).absoluteFilePath("config/" + fileName);
     
-    // 2. Try relative to executable but go up to project root (for development builds)
+    // 2. Try current working directory - PRIORITY 2
+    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
+    
+    // 3. Try relative to executable but go up to project root (for development builds) - PRIORITY 3
     QDir appDirObj(appDir);
     if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
         possibleConfigPaths << appDirObj.absoluteFilePath("config/" + fileName);
     }
     
-    // 3. Try current working directory
-    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
-    
-    // 4. Try source directory (for development builds)
+    // 4. Try source directory (for development builds) - PRIORITY 4
     possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config/" + fileName);
     
     qDebug() << "Searching for config file:" << fileName;
-    qDebug() << "Possible paths:" << possibleConfigPaths;
+    qDebug() << "Possible paths (in priority order):" << possibleConfigPaths;
     
     // Find the first valid config file
     for (const QString &path : possibleConfigPaths) {
