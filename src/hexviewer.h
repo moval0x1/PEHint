@@ -31,7 +31,7 @@ public:
     void setShowOffset(bool show);
     
     // Highlighting
-    void highlightRange(quint32 startOffset, quint32 length, const QColor &color = QColor(255, 255, 0, 100));
+    void highlightRange(quint32 startOffset, quint32 length, const QColor &color = QColor(220, 20, 60));
     void clearHighlights();
     
     // Search functionality
@@ -53,6 +53,13 @@ public:
     bool showAscii() const { return m_showAscii; }
     int bytesPerLine() const { return m_bytesPerLine; }
 
+signals:
+    void byteClicked(qint64 offset, int length);
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+    void focusInEvent(QFocusEvent *event) override;
+
 private slots:
     void onOffsetChanged(int value);
     void onBytesPerLineChanged(int value);
@@ -60,6 +67,7 @@ private slots:
     void onShowOffsetToggled(bool checked);
     void onCopySelection();
     void onFindText();
+    void onHexTextClicked();
 
 private:
     // Data
@@ -118,6 +126,7 @@ private:
     // Utility
     QByteArray getLineData(qint64 offset, int maxBytes);
     void highlightOffset(qint64 offset);
+    qint64 calculateOffsetFromPosition(const QPoint &pos);
 };
 
 #endif // HEXVIEWER_H

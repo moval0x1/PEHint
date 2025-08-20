@@ -15,6 +15,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QMouseEvent>
+#include <QFocusEvent>
 
 HexViewer::HexViewer(QWidget *parent)
     : QWidget(parent)
@@ -102,6 +104,11 @@ void HexViewer::setupUI()
     m_hexText->setLineWrapMode(QTextEdit::NoWrap);
     m_hexText->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_hexText->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // Customize selection appearance to remove blue selection line and ensure proper interaction
+    m_hexText->setStyleSheet(
+        "QTextEdit::selection { background-color: transparent; }"
+        "QTextEdit { selection-background-color: transparent; }"
+    );
     
     mainLayout->addWidget(m_hexText);
     
@@ -116,22 +123,34 @@ void HexViewer::setupUI()
 
 void HexViewer::setupConnections()
 {
+    // Connect offset control
     connect(m_offsetSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &HexViewer::onOffsetChanged);
+    
+    // Connect bytes per line control
     connect(m_bytesPerLineSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &HexViewer::onBytesPerLineChanged);
-    connect(m_showAsciiButton, &QPushButton::toggled,
-            this, &HexViewer::onShowAsciiToggled);
+    
+    // Connect display option buttons
     connect(m_showOffsetButton, &QPushButton::toggled,
             this, &HexViewer::onShowOffsetToggled);
+    connect(m_showAsciiButton, &QPushButton::toggled,
+            this, &HexViewer::onShowAsciiToggled);
+    
+    // Connect action buttons
     connect(m_copyButton, &QPushButton::clicked,
             this, &HexViewer::onCopySelection);
     connect(m_findButton, &QPushButton::clicked,
             this, &HexViewer::onFindText);
+    
+    // Connect search navigation buttons
     connect(m_findNextButton, &QPushButton::clicked,
             this, &HexViewer::findNext);
     connect(m_findPrevButton, &QPushButton::clicked,
             this, &HexViewer::findPrevious);
+    
+    // Install event filter for mouse clicks
+    m_hexText->installEventFilter(this);
 }
 
 void HexViewer::setData(const QByteArray &data)
@@ -547,8 +566,24 @@ void HexViewer::applyHighlights()
                 
                 // Position after offset display (if enabled)
                 qint64 hexStartPos = m_showOffset ? 10 : 0; // "00000000  " format
-                qint64 charStart = hexStartPos + (offsetInLine * 3); // 3 chars per byte (XX )
-                qint64 charEnd = charStart + (lengthInLine * 3) - 1; // Don't include trailing space
+                
+                // Calculate character position accounting for extra spaces every 8 bytes
+                qint64 charStart = hexStartPos;
+                for (qint64 i = 0; i < offsetInLine; ++i) {
+                    charStart += 3; // Each byte takes 3 chars (XX )
+                    if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
+                        charStart += 1; // Extra space every 8 bytes
+                    }
+                }
+                
+                qint64 charEnd = charStart;
+                for (qint64 i = 0; i < lengthInLine; ++i) {
+                    charEnd += 3; // Each byte takes 3 chars (XX )
+                    if ((offsetInLine + i + 1) % 8 == 0 && (offsetInLine + i) < m_bytesPerLine - 1) {
+                        charEnd += 1; // Extra space every 8 bytes
+                    }
+                }
+                charEnd -= 1; // Don't include trailing space
                 
                 // Ensure we don't exceed line bounds
                 if (charStart < currentLine.length() && charEnd < currentLine.length()) {
@@ -566,15 +601,25 @@ void HexViewer::applyHighlights()
                     cursor.setPosition(static_cast<int>(absoluteEnd), QTextCursor::KeepAnchor);
                     
                     QTextCharFormat highlightFormat;
-                    highlightFormat.setBackground(highlight.color);
-                    highlightFormat.setForeground(QColor(0, 0, 0)); // Black text for better contrast
-                    highlightFormat.setFontWeight(QFont::Bold); // Make highlighted text bold
+                    highlightFormat.setBackground(QColor(255, 255, 255, 80)); // Light white background for better persistence
+                    highlightFormat.setForeground(QColor(220, 20, 60)); // Crimson red text
+                    highlightFormat.setFontWeight(QFont::Bold); // Keep bold text
+                    // Make the format more persistent
+                    highlightFormat.setProperty(QTextFormat::UserProperty, true);
                     cursor.mergeCharFormat(highlightFormat);
                     
                     // Also highlight the ASCII portion if enabled
                     if (m_showAscii) {
                         // Calculate ASCII position (after hex portion + separator)
                         qint64 asciiStartPos = hexStartPos + (m_bytesPerLine * 3) + 2; // +2 for "  " separator
+                        
+                        // Add extra spaces for the offsetInLine bytes
+                        for (qint64 i = 0; i < offsetInLine; ++i) {
+                            if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
+                                asciiStartPos += 1; // Extra space every 8 bytes
+                            }
+                        }
+                        
                         qint64 asciiCharStart = asciiStartPos + offsetInLine;
                         qint64 asciiCharEnd = asciiCharStart + lengthInLine - 1;
                         
@@ -788,4 +833,101 @@ void HexViewer::goToSearchResult(int index)
             break;
         }
     }
+}
+
+void HexViewer::onHexTextClicked()
+{
+    // This method is called when the hex text is clicked
+    // The actual click handling is done in the eventFilter
+}
+
+bool HexViewer::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_hexText && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            qint64 offset = calculateOffsetFromPosition(mouseEvent->pos());
+            if (offset >= 0 && offset < m_data.size()) {
+                // Emit signal with clicked byte offset and length (1 byte for single click)
+                emit byteClicked(offset, 1);
+                
+                // Highlight the clicked byte
+                clearHighlights();
+                highlightRange(static_cast<quint32>(offset), 1, Qt::transparent); // Use transparent background
+            }
+        }
+    }
+    
+    // Call the parent event filter
+    return QWidget::eventFilter(obj, event);
+}
+
+qint64 HexViewer::calculateOffsetFromPosition(const QPoint &pos)
+{
+    if (!m_hexText || m_data.isEmpty()) {
+        return -1;
+    }
+    
+    // Get the text cursor at the clicked position
+    QTextCursor cursor = m_hexText->cursorForPosition(pos);
+    int cursorPos = cursor.position();
+    
+    // Calculate the line number from cursor position
+    QString text = m_hexText->toPlainText();
+    int lineStart = 0;
+    int lineNumber = 0;
+    
+    for (int i = 0; i < cursorPos && i < text.length(); ++i) {
+        if (text[i] == '\n') {
+            lineStart = i + 1;
+            lineNumber++;
+        }
+    }
+    
+    // Calculate offset from line number
+    qint64 offset = lineNumber * m_bytesPerLine;
+    
+    // Calculate position within the line
+    int posInLine = cursorPos - lineStart;
+    
+    // Account for offset display if enabled
+    if (m_showOffset) {
+        // Skip offset part (8 characters + space)
+        posInLine -= 9;
+    }
+    
+    // Calculate byte position within the line
+    // Each byte takes 3 characters (2 hex + space), but there are extra spaces every 8 bytes
+    int bytePos = 0;
+    int charCount = 0;
+    for (int i = 0; i < m_bytesPerLine && charCount < posInLine; ++i) {
+        charCount += 3; // Each byte takes 3 chars (XX )
+        if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
+            charCount += 1; // Extra space every 8 bytes
+        }
+        if (charCount <= posInLine) {
+            bytePos = i + 1;
+        }
+    }
+    
+    // Final offset
+    qint64 finalOffset = offset + bytePos;
+    
+    // Ensure offset is within bounds
+    if (finalOffset >= 0 && finalOffset < m_data.size()) {
+        return finalOffset;
+    }
+    
+    return -1;
+}
+
+void HexViewer::focusInEvent(QFocusEvent *event)
+{
+    // When the hex viewer gains focus, reapply highlights to ensure they're visible
+    if (!m_highlights.isEmpty()) {
+        applyHighlights();
+    }
+    
+    // Call the parent implementation
+    QWidget::focusInEvent(event);
 }

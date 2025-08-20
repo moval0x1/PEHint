@@ -59,6 +59,7 @@ public slots:
     
     // UI interaction slots
     void onTreeItemClicked(QTreeWidgetItem *item, int column);
+    void onHexViewerByteClicked(qint64 offset, int length);
     void onLanguageChanged(const QString &language);
     void onCopyToClipboard();
     void onExpandAll();

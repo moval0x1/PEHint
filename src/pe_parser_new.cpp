@@ -578,7 +578,7 @@ QPair<quint32, quint32> PEParserNew::getFieldOffset(const QString &fieldName)
     
     // Add container items for major PE sections
     fieldOffsets["DOS Header"] = QPair<quint32, quint32>(0, static_cast<quint32>(sizeof(IMAGE_DOS_HEADER)));
-    fieldOffsets["PE Header"] = QPair<quint32, quint32>(peHeaderOffset, sizeof(quint32));
+    fieldOffsets["PE Header"] = QPair<quint32, quint32>(peHeaderOffset, static_cast<quint32>(sizeof(quint32) + sizeof(IMAGE_FILE_HEADER)));
     fieldOffsets["File Header"] = QPair<quint32, quint32>(fileHeaderOffset, static_cast<quint32>(sizeof(IMAGE_FILE_HEADER)));
     fieldOffsets["Optional Header"] = QPair<quint32, quint32>(optionalHeaderOffset, static_cast<quint32>(fileHeader->SizeOfOptionalHeader));
     
@@ -629,7 +629,7 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     dosHeaderItem->setText(0, LANG("UI/pe_structure_dos_header"));
     dosHeaderItem->setText(1, "");
     dosHeaderItem->setText(2, "0x00000000");
-    dosHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "64"));
+    dosHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0x40"));
     
     const IMAGE_DOS_HEADER *dosHeader = m_dataModel.getDOSHeader();
     if (dosHeader) {
@@ -642,7 +642,7 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     peHeaderItem->setText(0, LANG("UI/pe_structure_pe_header"));
     peHeaderItem->setText(1, "");
     peHeaderItem->setText(2, QString("0x%1").arg(dosHeader ? dosHeader->e_lfanew : 0, 8, 16, QChar('0')).toUpper());
-    peHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "24"));
+    peHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0x18"));
     
     const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
     if (fileHeader) {
@@ -655,7 +655,7 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     optionalHeaderItem->setText(0, LANG("UI/pe_structure_optional_header"));
     optionalHeaderItem->setText(1, "");
     optionalHeaderItem->setText(2, QString("0x%1").arg((dosHeader ? dosHeader->e_lfanew : 0) + 24, 8, 16, QChar('0')).toUpper());
-    optionalHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "224"));
+    optionalHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0xE0"));
     
     const IMAGE_OPTIONAL_HEADER *optionalHeader = m_dataModel.getOptionalHeader();
     if (optionalHeader) {
@@ -865,7 +865,7 @@ void PEParserNew::addTreeField(QTreeWidgetItem *parent, const QString &name, con
     fieldItem->setText(0, name);
     fieldItem->setText(1, value);
     fieldItem->setText(2, QString("0x%1").arg(offset, 8, 16, QChar('0')).toUpper());
-    fieldItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString::number(size)));
+    fieldItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString("0x%1").arg(size, 0, 16).toUpper()));
 }
 
 QString PEParserNew::findConfigFile(const QString &fileName) const

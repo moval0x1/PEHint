@@ -398,6 +398,11 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     connect(m_saveButton, &QPushButton::clicked, mainWindow, &MainWindow::on_action_Save_Report_triggered);
     // connect(m_securityButton, &QPushButton::clicked, mainWindow, &MainWindow::onSecurityAnalysis); // HIDDEN
     connect(m_peTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onTreeItemClicked);
+    
+    // Connect hex viewer signals
+    if (m_hexViewer) {
+        connect(m_hexViewer, &HexViewer::byteClicked, mainWindow, &MainWindow::onHexViewerByteClicked);
+    }
 }
 
 /**

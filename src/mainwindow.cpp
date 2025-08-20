@@ -595,19 +595,18 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                 QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
                 
                 // Debug: Show the field offset information
-                QMap<QString, QString> debugParams;
-                debugParams["field_name"] = fieldName;
-                debugParams["offset"] = QString("0x%1").arg(fieldOffset.first, 0, 16);
-                debugParams["size"] = QString::number(fieldOffset.second);
-                QString debugInfo = LANG_PARAMS("UI/field_debug_info", debugParams);
+                QString debugInfo = QString("Field: %1 | Offset: 0x%2 | Size: 0x%3 bytes")
+                    .arg(fieldName)
+                    .arg(fieldOffset.first, 0, 16)
+                    .arg(fieldOffset.second, 0, 16);
                 statusBar()->showMessage(debugInfo, 5000);
                 
-                if (fieldOffset.first > 0 || fieldOffset.second > 0) {
+                if (fieldOffset.first >= 0 && fieldOffset.second > 0) {
                     // Clear previous highlights
                     m_uiManager->m_hexViewer->clearHighlights();
                     
-                    // Highlight the field with a bright yellow color
-                    QColor highlightColor(255, 255, 0, 200); // Bright yellow with more opacity
+                    // Highlight the field with no background color (transparent)
+                    QColor highlightColor = Qt::transparent; // No background, just bold text
                     m_uiManager->m_hexViewer->highlightRange(fieldOffset.first, fieldOffset.second, highlightColor);
                     
                     // Go to the offset in hex viewer
@@ -626,7 +625,15 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
     }
 }
 
-
+void MainWindow::onHexViewerByteClicked(qint64 offset, int length)
+{
+    // Update status bar to show clicked byte information
+    QString debugInfo = QString("Field: %1 | Offset: 0x%2 | Size: 0x%3 bytes")
+        .arg(QString("Byte at 0x%1").arg(offset, 0, 16))
+        .arg(offset, 0, 16)
+        .arg(length, 0, 16);
+    statusBar()->showMessage(debugInfo, 3000);
+}
 
 void MainWindow::onLanguageChanged(const QString &language)
 {
@@ -1080,7 +1087,7 @@ void MainWindow::highlightSuspiciousFieldsInTree(const SecurityAnalysisResult &r
                 tooltip = LANG_PARAMS("UI/security_field_medium_risk_tooltip", params);
             } else {
                 // Low risk - light yellow
-                highlightColor = QColor(255, 255, 200, 180); // Light yellow with transparency
+                highlightColor = QColor(220, 20, 60); // Crimson red
                 QMap<QString, QString> params;
                 params["field_name"] = fieldName;
                 tooltip = LANG_PARAMS("UI/security_field_low_risk_tooltip", params);
