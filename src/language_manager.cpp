@@ -4,6 +4,7 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QLibraryInfo>
+#include <QFileInfo>
 
 /**
  * @file language_manager.cpp
@@ -62,9 +63,32 @@ bool LanguageManager::initialize(const QString &configPath)
     m_defaultLanguage = m_settings->value("General/default_language", "en").toString();
     m_currentLanguage = m_defaultLanguage;
     
-    // Get available languages
+    // Get available languages from config and validate they exist
     QString availableLanguagesStr = m_settings->value("General/available_languages", "en").toString();
-    m_availableLanguages = availableLanguagesStr.split(",", Qt::SkipEmptyParts);
+    QStringList configLanguages = availableLanguagesStr.split(",", Qt::SkipEmptyParts);
+    
+    // Check which language files actually exist
+    QDir configDir = QFileInfo(configPath).dir();
+    m_availableLanguages.clear();
+    
+    for (const QString &langCode : configLanguages) {
+        QString langFile;
+        if (langCode == "en") {
+            langFile = "language_config.ini";
+        } else {
+            langFile = QString("language_config_%1.ini").arg(langCode);
+        }
+        
+        QString fullPath = configDir.absoluteFilePath(langFile);
+        if (QFile::exists(fullPath)) {
+            m_availableLanguages.append(langCode);
+            qDebug() << "Found language file for" << langCode << "at" << fullPath;
+        } else {
+            qDebug() << "Language file not found for" << langCode << "at" << fullPath;
+        }
+    }
+    
+    qDebug() << "Available languages after validation:" << m_availableLanguages;
     
     // Validate default language
     if (!m_availableLanguages.contains(m_defaultLanguage)) {
@@ -99,10 +123,30 @@ bool LanguageManager::setLanguage(const QString &languageCode)
         return true; // Already set
     }
     
+    // Load language-specific configuration file
+    QString oldConfigPath = m_configPath;
+    QDir configDir = QFileInfo(m_configPath).dir();
+    QString langFile;
+    if (languageCode == "en") {
+        langFile = "language_config.ini";
+    } else {
+        langFile = QString("language_config_%1.ini").arg(languageCode);
+    }
+    
+    QString newConfigPath = configDir.absoluteFilePath(langFile);
+    qDebug() << "Loading language config from:" << newConfigPath;
+    
+    // Temporarily change config path and reload configuration
+    m_configPath = newConfigPath;
+    if (!loadLanguageConfiguration()) {
+        qWarning() << "Failed to load language configuration for" << languageCode;
+        m_configPath = oldConfigPath; // Restore old path
+        return false;
+    }
+    
     // Load Qt translations for new language
     if (!loadQtTranslations(languageCode)) {
         qWarning() << "Failed to load Qt translations for" << languageCode;
-        return false;
     }
     
     m_currentLanguage = languageCode;
@@ -294,8 +338,11 @@ bool LanguageManager::loadLanguageConfiguration()
     for (const QString &key : uiKeys) {
         QString value = m_settings->value(key).toString();
         if (!value.isEmpty()) {
+            // Store both with and without UI/ prefix for compatibility
             m_strings[key] = value;
+            m_strings["UI/" + key] = value; // Also store with UI/ prefix
             qDebug() << "  Loaded UI string:" << key << "=" << value;
+            qDebug() << "  Also stored as: UI/" << key << "=" << value;
         } else {
             qDebug() << "  Empty UI string for key:" << key;
         }

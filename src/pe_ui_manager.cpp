@@ -77,9 +77,11 @@ void UIManager::setupMainUI(QWidget *centralWidget)
     setupTreeSection(mainLayout);
     setupButtonSection(mainLayout);
     
-    // Create hex viewer component
+    // Create hex viewer component and add it to the layout
     m_hexViewer = new HexViewer(centralWidget);
-    m_hexViewer->setVisible(false); // Hidden by default, shown when needed
+    m_hexViewer->setVisible(true); // Make hex viewer visible
+    m_hexViewer->setMinimumHeight(200); // Set minimum height for better visibility
+    mainLayout->addWidget(m_hexViewer);
 }
 
 /**
@@ -352,9 +354,17 @@ void UIManager::setupButtonSection(QVBoxLayout *mainLayout)
     m_saveButton->setStyleSheet("QPushButton { padding: 5px 10px; font-size: 11px; }");
     m_saveButton->setEnabled(false); // Initially disabled until file is loaded
     
+    // Create Security Analysis button
+    m_securityButton = new QPushButton("🔒 Security Analysis");
+    m_securityButton->setIcon(QIcon(":/images/imgs/security.png")); // Use security icon
+    m_securityButton->setStyleSheet("QPushButton { padding: 5px 10px; font-size: 11px; background-color: #ff6b6b; color: white; border-radius: 3px; } QPushButton:hover { background-color: #ff5252; } QPushButton:pressed { background-color: #d32f2f; }");
+    m_securityButton->setEnabled(false); // Initially disabled until file is loaded
+    m_securityButton->setToolTip("Analyze file for security threats and suspicious patterns");
+    
     // Add buttons to horizontal layout
     buttonLayout->addWidget(m_copyButton);
     buttonLayout->addWidget(m_saveButton);
+    buttonLayout->addWidget(m_securityButton);
     buttonLayout->addStretch(); // Push buttons to the left
     
     // Add the button section to the main layout
@@ -385,6 +395,7 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     connect(m_refreshButton, &QPushButton::clicked, mainWindow, &MainWindow::on_action_Refresh_triggered);
     connect(m_copyButton, &QPushButton::clicked, mainWindow, &MainWindow::onCopyToClipboard);
     connect(m_saveButton, &QPushButton::clicked, mainWindow, &MainWindow::on_action_Save_Report_triggered);
+    connect(m_securityButton, &QPushButton::clicked, mainWindow, &MainWindow::onSecurityAnalysis);
     connect(m_peTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onTreeItemClicked);
 }
 

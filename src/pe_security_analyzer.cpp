@@ -102,7 +102,7 @@ SecurityAnalysisResult PESecurityAnalyzer::analyzeFile(const QString &filePath)
     // Load file data for analysis
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        result.detectedIssues.append("Failed to open file for analysis");
+        result.detectedIssues.append(LANG("UI/error_file_open_analysis"));
         result.riskLevel = SecurityRiskLevel::CRITICAL;
         result.riskScore = 100;
         return result;
@@ -546,7 +546,7 @@ QString PESecurityAnalyzer::analyzeFileEntropy(const QString &filePath)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        return "Failed to open file for entropy analysis";
+        return LANG("UI/error_file_open_entropy");
     }
     
     QByteArray data = file.readAll();

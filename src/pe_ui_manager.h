@@ -84,6 +84,7 @@ public:
     QPushButton *m_refreshButton;   ///< Refreshes the current analysis
     QPushButton *m_copyButton;      ///< Copies current content to clipboard
     QPushButton *m_saveButton;      ///< Saves analysis report to file
+    QPushButton *m_securityButton;  ///< Performs security analysis
     QTreeWidget *m_peTree;         ///< Displays PE structure hierarchy
     QTextEdit *m_fieldExplanationText; ///< Shows field explanations
     QMenu *m_contextMenu;           ///< Right-click context menu

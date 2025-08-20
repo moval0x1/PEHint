@@ -27,16 +27,30 @@ bool PEParserNew::loadFile(const QString &filePath)
     
     m_file.setFileName(filePath);
     if (!m_file.open(QIODevice::ReadOnly)) {
-        emit errorOccurred(QString("Failed to open file: %1").arg(filePath));
+        emit errorOccurred(LANG_PARAM("UI/error_file_open_generic", "filepath", filePath));
         return false;
     }
     
     m_dataModel.setFilePath(filePath);
     m_dataModel.setFileSize(m_file.size());
+    
+    // For large files, use streaming approach to avoid memory issues
+    if (m_file.size() > LARGE_FILE_THRESHOLD) {
+        emit parsingProgress(5, LANG("UI/progress_large_file_detected"));
+        bool success = loadLargeFileStreaming();
+        if (success) {
+            m_dataModel.setValid(true);
+            m_isValid = true;
+            emit parsingProgress(100, LANG("UI/progress_large_file_complete"));
+            emit parsingComplete(true);
+        }
+        return success;
+    }
+    
+    // For small files, load everything (current approach)
+    emit parsingProgress(5, LANG("UI/progress_file_loaded"));
     m_fileData = m_file.readAll();
     m_file.close();
-    
-    emit parsingProgress(5, LANG("UI/progress_file_loaded"));
     
     // Parse DOS header
     if (!parseDOSHeader()) {
@@ -65,11 +79,6 @@ bool PEParserNew::loadFile(const QString &filePath)
     }
     
     emit parsingProgress(50, LANG("UI/progress_data_directories"));
-    
-    // For large files, skip detailed parsing
-    if (isLargeFile()) {
-        emit parsingProgress(75, LANG("UI/progress_large_file"));
-    }
     
     m_dataModel.setValid(true);
     m_isValid = true;
@@ -315,11 +324,118 @@ bool PEParserNew::isLargeFile() const
     return m_dataModel.getFileSize() > LARGE_FILE_THRESHOLD;
 }
 
+bool PEParserNew::isVeryLargeFile() const
+{
+    return m_dataModel.getFileSize() > VERY_LARGE_FILE_THRESHOLD;
+}
+
+bool PEParserNew::loadLargeFileStreaming()
+{
+    // For large files, we only read essential headers and structure information
+    // This avoids loading the entire file into memory
+    
+    emit parsingProgress(10, LANG("UI/progress_reading_dos_header"));
+    
+    // Read DOS header (64 bytes)
+    IMAGE_DOS_HEADER dosHeader;
+    if (m_file.read(reinterpret_cast<char*>(&dosHeader), sizeof(IMAGE_DOS_HEADER)) != sizeof(IMAGE_DOS_HEADER)) {
+        emit errorOccurred(LANG("UI/error_reading_dos_header"));
+        return false;
+    }
+    
+    // Validate DOS header
+    if (!PEUtils::isValidDOSHeader(dosHeader)) {
+        emit errorOccurred(LANG("UI/error_invalid_dos_header"));
+        return false;
+    }
+    
+    m_dataModel.setDOSHeader(&dosHeader);
+    
+    emit parsingProgress(20, LANG("UI/progress_reading_pe_headers"));
+    
+    // Read PE signature and file header
+    if (!m_file.seek(dosHeader.e_lfanew)) {
+        emit errorOccurred(LANG("UI/error_seeking_pe_header"));
+        return false;
+    }
+    
+    // Read PE signature
+    quint32 peSignature;
+    if (m_file.read(reinterpret_cast<char*>(&peSignature), sizeof(quint32)) != sizeof(quint32)) {
+        emit errorOccurred(LANG("UI/error_reading_pe_signature"));
+        return false;
+    }
+    
+    if (!PEUtils::isValidPESignature(peSignature)) {
+        emit errorOccurred(LANG("UI/error_invalid_pe_signature"));
+        return false;
+    }
+    
+    // Read file header
+    IMAGE_FILE_HEADER fileHeader;
+    if (m_file.read(reinterpret_cast<char*>(&fileHeader), sizeof(IMAGE_FILE_HEADER)) != sizeof(IMAGE_FILE_HEADER)) {
+        emit errorOccurred(LANG("UI/error_reading_file_header"));
+        return false;
+    }
+    
+    m_dataModel.setFileHeader(&fileHeader);
+    
+    emit parsingProgress(30, LANG("UI/progress_reading_optional_header"));
+    
+    // Read optional header
+    IMAGE_OPTIONAL_HEADER optionalHeader;
+    if (m_file.read(reinterpret_cast<char*>(&optionalHeader), sizeof(IMAGE_OPTIONAL_HEADER)) != sizeof(IMAGE_OPTIONAL_HEADER)) {
+        emit errorOccurred(LANG("UI/error_reading_optional_header"));
+        return false;
+    }
+    
+    if (!PEUtils::isValidOptionalHeaderMagic(optionalHeader.Magic)) {
+        emit errorOccurred(LANG("UI/error_invalid_optional_magic"));
+        return false;
+    }
+    
+    m_dataModel.setOptionalHeader(&optionalHeader);
+    
+    emit parsingProgress(40, LANG("UI/progress_reading_sections"));
+    
+    // Read section table (typically < 1KB even for large files)
+    quint32 sectionTableOffset = dosHeader.e_lfanew + sizeof(IMAGE_FILE_HEADER) + fileHeader.SizeOfOptionalHeader;
+    if (!m_file.seek(sectionTableOffset)) {
+        emit errorOccurred(LANG("UI/error_seeking_section_table"));
+        return false;
+    }
+    
+    // Read each section header
+    for (quint16 i = 0; i < fileHeader.NumberOfSections; ++i) {
+        IMAGE_SECTION_HEADER sectionHeader;
+        if (m_file.read(reinterpret_cast<char*>(&sectionHeader), sizeof(IMAGE_SECTION_HEADER)) != sizeof(IMAGE_SECTION_HEADER)) {
+            emit errorOccurred(LANG("UI/error_reading_section_header"));
+            return false;
+        }
+        m_dataModel.addSection(&sectionHeader);
+    }
+    
+    emit parsingProgress(60, LANG("UI/progress_analyzing_structure"));
+    
+    // For large files, we skip detailed data directory parsing
+    // as it would require reading large portions of the file
+    emit parsingProgress(80, LANG("UI/progress_large_file_optimization"));
+    
+    // Don't close the file yet - we might need it for specific field access
+    // m_file.close(); // Keep file open for streaming access
+    
+    emit parsingProgress(90, LANG("UI/progress_large_file_complete"));
+    
+    return true;
+}
+
 // Field explanation and offset methods (for UI compatibility)
 QString PEParserNew::getFieldExplanation(const QString &fieldName)
 {
-    // Load explanations from the JSON file
-    QFile explanationsFile("config/explanations.json");
+    // Load explanations from the JSON file in the binary directory
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString explanationsPath = QDir(appDir).absoluteFilePath("config/explanations.json");
+    QFile explanationsFile(explanationsPath);
     if (explanationsFile.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(explanationsFile.readAll());
         QJsonObject root = doc.object();
@@ -552,7 +668,31 @@ void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
         const IMAGE_SECTION_HEADER *section = sections[i];
         if (section) {
             QTreeWidgetItem *sectionItem = new QTreeWidgetItem(parent);
-            QString sectionName = QString::fromLatin1(reinterpret_cast<const char*>(section->Name), 8).trimmed();
+            // Parse section name properly - handle both ASCII and non-ASCII characters
+            QString sectionName;
+            const char* namePtr = reinterpret_cast<const char*>(section->Name);
+            
+            // Check if the name is null-terminated or contains only printable characters
+            bool hasValidChars = false;
+            for (int j = 0; j < 8; ++j) {
+                if (namePtr[j] >= 32 && namePtr[j] <= 126) { // Printable ASCII range
+                    hasValidChars = true;
+                    break;
+                }
+            }
+            
+            if (hasValidChars) {
+                // Try to find null terminator
+                int nameLength = 0;
+                while (nameLength < 8 && namePtr[nameLength] != '\0' && namePtr[nameLength] >= 32) {
+                    nameLength++;
+                }
+                sectionName = QString::fromLatin1(namePtr, nameLength);
+            } else {
+                // If no valid ASCII characters, show as hex
+                QByteArray nameBytes(namePtr, 8);
+                sectionName = QString("0x%1").arg(QString(nameBytes.toHex()).toUpper());
+            }
             QMap<QString, QString> params;
             params["number"] = QString::number(i + 1);
             params["name"] = sectionName;
@@ -567,9 +707,9 @@ void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
             addTreeField(sectionItem, "PointerToRawData", QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper(), 8, sizeof(quint32));
             addTreeField(sectionItem, "PointerToRelocations", QString("0x%1").arg(section->PointerToRelocations, 8, 16, QChar('0')).toUpper(), 12, sizeof(quint32));
             // Note: PointerToLineNumbers and NumberOfLineNumbers are deprecated in modern PE format
-            addTreeField(sectionItem, "PointerToLineNumbers", "0x00000000 (deprecated)", 16, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToLineNumbers", LANG("UI/field_deprecated_pointer"), 16, sizeof(quint32));
             addTreeField(sectionItem, "NumberOfRelocations", QString::number(section->NumberOfRelocations), 20, sizeof(quint16));
-            addTreeField(sectionItem, "NumberOfLineNumbers", "0 (deprecated)", 22, sizeof(quint16));
+            addTreeField(sectionItem, "NumberOfLineNumbers", LANG("UI/field_deprecated_count"), 22, sizeof(quint16));
             addTreeField(sectionItem, "Characteristics", QString("0x%1").arg(section->Characteristics, 8, 16, QChar('0')).toUpper(), 24, sizeof(quint32));
         }
     }
@@ -587,8 +727,8 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
         QTreeWidgetItem *dirItem = new QTreeWidgetItem(parent);
         dirItem->setText(0, dirNames[i]);
         dirItem->setText(1, "");
-        dirItem->setText(2, QString("Directory %1").arg(i));
-        dirItem->setText(3, "Variable");
+        dirItem->setText(2, LANG_PARAM("UI/data_directory_format", "number", QString::number(i)));
+        dirItem->setText(3, LANG("UI/data_directory_size_variable"));
     }
 }
 

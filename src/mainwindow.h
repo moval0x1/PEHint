@@ -29,6 +29,7 @@
 #include "pe_parser_new.h"
 #include "hexviewer.h"
 #include "pe_ui_manager.h"
+#include "pe_security_analyzer.h"
 
 class MainWindow : public QMainWindow
 {
@@ -61,6 +62,7 @@ public slots:
     void onExpandAll();
     void onCollapseAll();
     void onHexViewerOptions();
+    void onSecurityAnalysis();
     
     // Language management
     void setupLanguageMenu();
@@ -72,6 +74,9 @@ private:
     
     // PE Parser
     PEParserNew *m_peParser;
+    
+    // Security Analyzer
+    PESecurityAnalyzer *m_securityAnalyzer;
     
     // UI Manager
     UIManager *m_uiManager;
@@ -103,6 +108,9 @@ private:
     void showError(const QString &title, const QString &message);
     void showInfo(const QString &title, const QString &message);
     QString getFileSizeString(qint64 size);
+    
+    // Security analysis
+    void highlightSuspiciousSections(const SecurityAnalysisResult &result);
     
     // Context menu
     QMenu *m_contextMenu;

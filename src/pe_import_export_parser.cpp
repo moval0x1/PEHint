@@ -126,7 +126,7 @@ QString PEImportExportParser::getFunctionName(quint32 nameRVA)
 
 QString PEImportExportParser::getFunctionNameByOrdinal(quint16 ordinal)
 {
-    return QString("Ordinal_%1").arg(ordinal);
+    return LANG_PARAM("UI/ordinal_format", "value", QString::number(ordinal));
 }
 
 bool PEImportExportParser::parseExports(quint32 exportDirectoryRVA, quint32 size, PEDataModel &dataModel)
@@ -178,7 +178,7 @@ bool PEImportExportParser::parseExportDirectory(const IMAGE_EXPORT_DIRECTORY *ex
             const quint32 *functionRVAs = reinterpret_cast<const quint32*>(m_fileData.data() + functionsOffset);
             
             for (quint32 i = 0; i < exportDir->NumberOfFunctions && i < MAX_EXPORT_FUNCTIONS; ++i) {
-                QString functionName = QString("Ordinal_%1").arg(exportDir->OrdinalBase + i);
+                QString functionName = LANG_PARAM("UI/ordinal_format", "value", QString::number(exportDir->OrdinalBase + i));
                 if (!exports.contains(functionName)) {
                     exports.append(functionName);
                     exportDetails.append(functionName);

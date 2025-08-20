@@ -364,6 +364,24 @@ private:
      */
     bool isLargeFile() const;
     
+    /**
+     * @brief Checks if the current file is considered "very large"
+     * @return true if file exceeds the very large file threshold
+     * 
+     * This method helps determine parsing strategy for very large files,
+     * allowing aggressive optimization of memory usage and parsing performance.
+     */
+    bool isVeryLargeFile() const;
+    
+    /**
+     * @brief Loads large files using streaming approach to avoid memory issues
+     * @return true if loading succeeded, false otherwise
+     * 
+     * This method reads only essential headers and structure information
+     * without loading the entire file into memory.
+     */
+    bool loadLargeFileStreaming();
+    
     // Tree building methods - For UI compatibility
     
     /**
@@ -416,6 +434,9 @@ private:
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
     
+    // Utility methods
+    qint64 getFileSize() const { return m_dataModel.getFileSize(); }
+    
     // Async parsing support - For non-blocking file processing
     
     bool m_isValid;                  ///< Flag indicating if the current file is valid
@@ -425,8 +446,8 @@ private:
     
     // Constants - Configuration values for parsing behavior
     
-    static const qint64 LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;      ///< 10MB threshold for large files
-    static const qint64 VERY_LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; ///< 50MB threshold for very large files
+    static const qint64 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;      ///< 5MB threshold for large files
+    static const qint64 VERY_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024; ///< 20MB threshold for very large files
 };
 
 #endif // PE_PARSER_NEW_H

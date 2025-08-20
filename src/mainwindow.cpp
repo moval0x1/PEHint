@@ -66,6 +66,9 @@ MainWindow::MainWindow(QWidget *parent)
     // This replaces the old monolithic PEParser that violated SRP
     m_peParser = new PEParserNew(this);
     
+    // Initialize Security Analyzer - NEW: For security analysis and malicious detection
+    m_securityAnalyzer = new PESecurityAnalyzer(this);
+    
     // Initialize UI Manager - NEW: Extracted UI setup logic to separate class
     // This reduces MainWindow complexity and follows Single Responsibility Principle
     m_uiManager = new UIManager(this);
@@ -82,6 +85,16 @@ MainWindow::MainWindow(QWidget *parent)
         qDebug() << "Config file found at:" << configPath;
         if (LanguageManager::getInstance().initialize(configPath)) {
             qDebug() << "LanguageManager initialized successfully";
+            qDebug() << "Available languages:" << LanguageManager::getInstance().getAvailableLanguages();
+            qDebug() << "Current language:" << LanguageManager::getInstance().getCurrentLanguage();
+            
+            // Debug: List config directory contents
+            QDir configDir = QFileInfo(configPath).dir();
+            qDebug() << "Config directory:" << configDir.absolutePath();
+            QStringList filters;
+            filters << "language_config*.ini";
+            QStringList langFiles = configDir.entryList(filters, QDir::Files);
+            qDebug() << "Language files found:" << langFiles;
         } else {
             qWarning() << "LanguageManager initialization failed";
         }
@@ -360,7 +373,7 @@ void MainWindow::on_action_Open_triggered()
     QString filePath = QFileDialog::getOpenFileName(
         this,
         LANG("UI/file_open_dialog_title"),
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        QCoreApplication::applicationDirPath(), // Use current binary directory
         QString("%1;;%2").arg(LANG("UI/file_filter_pe"), LANG("UI/file_filter_all"))
     );
     
@@ -384,8 +397,8 @@ void MainWindow::on_action_Save_Report_triggered()
     QString filePath = QFileDialog::getSaveFileName(
         this,
         LANG("UI/dialog_save_analysis_report"),
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/PEHint_Report.txt",
-        "Text Files (*.txt);;All Files (*.*)"
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + LANG("UI/file_default_report_name"),
+        QString("%1;;%2").arg(LANG("UI/file_filter_text"), LANG("UI/file_filter_all"))
     );
     
     if (!filePath.isEmpty()) {
@@ -395,7 +408,7 @@ void MainWindow::on_action_Save_Report_triggered()
             // Save current field explanation or generate a summary
             QString content = m_uiManager->m_fieldExplanationText->toPlainText();
             if (content.isEmpty()) {
-                content = "No field explanation available to save.";
+                content = LANG("UI/field_no_explanation");
             }
             stream << content;
             file.close();
@@ -433,7 +446,7 @@ void MainWindow::onParsingComplete(bool success)
     } else {
         m_fileLoaded = false;
         clearDisplay();
-        statusBar()->showMessage("Failed to load file", 3000);
+        statusBar()->showMessage(LANG("UI/file_load_failed"), 3000);
     }
 }
 
@@ -468,9 +481,10 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
         }
         
         // Show detailed information in status bar
-        QString info = QString("Field: %1 | Value: %2")
-                      .arg(item->text(0))
-                      .arg(item->text(1));
+        QMap<QString, QString> infoParams;
+        infoParams["field_name"] = item->text(0);
+        infoParams["field_value"] = item->text(1);
+        QString info = LANG_PARAMS("UI/field_info_format", infoParams);
         statusBar()->showMessage(info, 3000);
         
         // Highlight the field in hex viewer
@@ -479,10 +493,11 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
             QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
             
             // Debug: Show the field offset information
-            QString debugInfo = QString("Field: %1 | Offset: 0x%2 | Size: %3 bytes")
-                               .arg(fieldName)
-                               .arg(fieldOffset.first, 0, 16)
-                               .arg(fieldOffset.second);
+            QMap<QString, QString> debugParams;
+            debugParams["field_name"] = fieldName;
+            debugParams["offset"] = QString("0x%1").arg(fieldOffset.first, 0, 16);
+            debugParams["size"] = QString::number(fieldOffset.second);
+            QString debugInfo = LANG_PARAMS("UI/field_debug_info", debugParams);
             statusBar()->showMessage(debugInfo, 5000);
             
             if (fieldOffset.first > 0 || fieldOffset.second > 0) {
@@ -496,7 +511,7 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
         // Go to the offset in hex viewer
         m_uiManager->m_hexViewer->goToOffset(fieldOffset.first);
             } else {
-                statusBar()->showMessage(QString("No offset found for field: %1").arg(fieldName), 3000);
+                statusBar()->showMessage(LANG_PARAM("UI/field_no_offset", "field_name", fieldName), 3000);
     }
         }
     }
@@ -528,10 +543,10 @@ void MainWindow::onCopyToClipboard()
         // Copy the current field explanation or a summary
         QString textToCopy = m_uiManager->m_fieldExplanationText->toPlainText();
         if (textToCopy.isEmpty()) {
-            textToCopy = "No field selected for copying.";
+            textToCopy = LANG("UI/field_no_selection");
         }
         QApplication::clipboard()->setText(textToCopy);
-        statusBar()->showMessage("Content copied to clipboard", 2000);
+        statusBar()->showMessage(LANG("UI/content_copied"), 2000);
     }
 }
 
@@ -599,6 +614,89 @@ void MainWindow::onHexViewerOptions()
     }
 }
 
+void MainWindow::onSecurityAnalysis()
+{
+    if (!m_fileLoaded || m_currentFilePath.isEmpty()) {
+        showError(LANG("UI/security_analysis_error_title"), LANG("UI/security_analysis_error_no_file"));
+        return;
+    }
+    
+    if (!m_securityAnalyzer) {
+        showError(LANG("UI/security_analysis_error_title"), LANG("UI/security_analysis_error_no_analyzer"));
+        return;
+    }
+    
+    // Show progress
+    statusBar()->showMessage(LANG("UI/security_performing_analysis"));
+    if (m_uiManager) {
+        m_uiManager->m_progressBar->setVisible(true);
+        m_uiManager->m_progressBar->setRange(0, 100);
+        m_uiManager->m_progressBar->setValue(0);
+    }
+    
+    // Perform security analysis
+    SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(m_currentFilePath);
+    
+    // Hide progress
+    if (m_uiManager) {
+        m_uiManager->m_progressBar->setVisible(false);
+    }
+    
+    // Display results
+    QString analysisText = QString("<h3>%1</h3>").arg(LANG("UI/security_analysis_title"));
+    analysisText += QString("<p><b>%1:</b> ").arg(LANG("UI/security_risk_level"));
+    
+    switch (result.riskLevel) {
+        case SecurityRiskLevel::LOW:
+            analysisText += QString("<span style='color: green;'>🟢 %1</span>").arg(LANG("UI/security_low_risk"));
+            break;
+        case SecurityRiskLevel::MEDIUM:
+            analysisText += QString("<span style='color: orange;'>🟡 %1</span>").arg(LANG("UI/security_medium_risk"));
+            break;
+        case SecurityRiskLevel::HIGH:
+            analysisText += QString("<span style='color: red;'>🔴 %1</span>").arg(LANG("UI/security_high_risk"));
+            break;
+    }
+    
+    analysisText += "</p>";
+    // Add risk score information
+    analysisText += QString("<p><b>%1:</b> %2/100</p>").arg(LANG("UI/security_risk_score_label")).arg(result.riskScore);
+    
+    if (!result.detectedIssues.isEmpty()) {
+        analysisText += QString("<p><b>%1:</b></p><ul>").arg(LANG("UI/security_issues_found"));
+        for (const QString &issue : result.detectedIssues) {
+            analysisText += QString("<li>%1</li>").arg(issue);
+        }
+        analysisText += "</ul>";
+    }
+    
+    if (!result.recommendations.isEmpty()) {
+        analysisText += QString("<p><b>%1:</b></p><ul>").arg(LANG("UI/security_recommendations"));
+        for (const QString &recommendation : result.recommendations) {
+            analysisText += QString("<li>%1</li>").arg(recommendation);
+        }
+        analysisText += "</ul>";
+    }
+    
+    // Display in the explanation text area
+    if (m_uiManager && m_uiManager->m_fieldExplanationText) {
+        m_uiManager->m_fieldExplanationText->setHtml(analysisText);
+    }
+    
+    // Highlight suspicious sections in hex viewer
+    highlightSuspiciousSections(result);
+    
+    // Update status
+    QString riskLevelText;
+    switch (result.riskLevel) {
+        case SecurityRiskLevel::HIGH: riskLevelText = LANG("UI/security_high_risk"); break;
+        case SecurityRiskLevel::MEDIUM: riskLevelText = LANG("UI/security_medium_risk"); break;
+        case SecurityRiskLevel::LOW: riskLevelText = LANG("UI/security_low_risk"); break;
+    }
+    QString statusMsg = LANG_PARAM("UI/security_analysis_complete_risk", "risk_level", riskLevelText);
+    statusBar()->showMessage(statusMsg, 5000);
+}
+
 // Private helper methods
 void MainWindow::loadPEFile(const QString &filePath)
 {
@@ -617,6 +715,24 @@ void MainWindow::loadPEFile(const QString &filePath)
             m_uiManager->m_progressBar->setVisible(false);
         }
         showError(LANG("UI/error_file_load"), LANG("UI/error_file_load_failed"));
+        return;
+    }
+    
+    // Perform security analysis
+    if (m_securityAnalyzer) {
+        SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(filePath);
+        if (result.riskLevel != SecurityRiskLevel::LOW) {
+            // Show security warning
+            QString riskLevelText = (result.riskLevel == SecurityRiskLevel::HIGH) ? LANG("UI/security_high_risk") : LANG("UI/security_medium_risk");
+            QMap<QString, QString> warningParams;
+            warningParams["risk_level"] = riskLevelText;
+            warningParams["summary"] = LANG_PARAM("UI/security_risk_score", "score", QString::number(result.riskScore));
+            QString warningMsg = LANG_PARAMS("UI/security_warning", warningParams);
+        statusBar()->showMessage(warningMsg, 10000); // Show for 10 seconds
+            
+            // Highlight suspicious sections in hex viewer
+            highlightSuspiciousSections(result);
+        }
     }
 }
 
@@ -631,6 +747,7 @@ void MainWindow::clearDisplay()
         m_uiManager->m_refreshButton->setEnabled(false);
         m_uiManager->m_copyButton->setEnabled(false);
         m_uiManager->m_saveButton->setEnabled(false);
+        if (m_uiManager->m_securityButton) m_uiManager->m_securityButton->setEnabled(false);
     }
 }
 
@@ -648,6 +765,7 @@ void MainWindow::updateFileInfo()
     m_uiManager->m_refreshButton->setEnabled(true);
     m_uiManager->m_copyButton->setEnabled(true);
     m_uiManager->m_saveButton->setEnabled(true);
+    if (m_uiManager->m_securityButton) m_uiManager->m_securityButton->setEnabled(true);
 }
 
 void MainWindow::updateAnalysisDisplay()
@@ -677,12 +795,30 @@ void MainWindow::updateAnalysisDisplay()
     
     // Update hex viewer with file data
     if (m_peParser->isValid()) {
-        // Get the raw file data for hex viewing
-        QFile file(m_currentFilePath);
-        if (file.open(QIODevice::ReadOnly)) {
-            QByteArray fileData = file.readAll();
-            file.close();
-            m_uiManager->m_hexViewer->setData(fileData);
+        if (m_peParser->isLargeFile()) {
+            // For large files, only show first 1MB in hex viewer to avoid memory issues
+            QFile file(m_currentFilePath);
+            if (file.open(QIODevice::ReadOnly)) {
+                QByteArray fileData = file.read(1024 * 1024); // Read only 1MB
+                file.close();
+                m_uiManager->m_hexViewer->setData(fileData);
+                
+                // Show warning about large file mode using language system
+                QString largeFileWarning = QString("<div style='color: orange; font-weight: bold; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;'>%1</div>")
+                                         .arg(LANG_PARAM("UI/large_file_mode_warning", "size", QString::number(m_peParser->getFileSize() / (1024.0 * 1024.0), 'f', 1)));
+                
+                // Append warning to the explanation text
+                QString currentText = m_uiManager->m_fieldExplanationText->toHtml();
+                m_uiManager->m_fieldExplanationText->setHtml(currentText + largeFileWarning);
+            }
+        } else {
+            // For small files, load everything
+            QFile file(m_currentFilePath);
+            if (file.open(QIODevice::ReadOnly)) {
+                QByteArray fileData = file.readAll();
+                file.close();
+                m_uiManager->m_hexViewer->setData(fileData);
+            }
         }
     }
 }
@@ -705,6 +841,39 @@ QString MainWindow::getFileSizeString(qint64 size)
         return LANG_PARAM("UI/size_kb", "size", QString::number(size / 1024.0, 'f', 1));
     } else {
         return LANG_PARAM("UI/size_mb", "size", QString::number(size / (1024.0 * 1024.0), 'f', 1));
+    }
+}
+
+void MainWindow::highlightSuspiciousSections(const SecurityAnalysisResult &result)
+{
+    if (!m_uiManager || !m_uiManager->m_hexViewer) {
+        return;
+    }
+    
+    // Clear previous highlights
+    m_uiManager->m_hexViewer->clearHighlights();
+    
+    // Highlight suspicious sections with different colors based on risk
+    QColor highRiskColor(255, 0, 0, 150);    // Red for high risk
+    QColor mediumRiskColor(255, 165, 0, 150); // Orange for medium risk
+    
+    for (const QString &issue : result.detectedIssues) {
+        // Parse issue to find offset and size if available
+        // This is a simplified approach - in a real implementation, you'd parse the issue details
+        if (issue.contains("suspicious", Qt::CaseInsensitive) || issue.contains("malicious", Qt::CaseInsensitive)) {
+            // For now, highlight a range around the PE header as an example
+            // In a real implementation, you'd extract actual offsets from the security analysis
+            quint32 offset = 0;
+            quint32 size = 64; // Default to DOS header size
+            
+            QColor highlightColor = (result.riskLevel == SecurityRiskLevel::HIGH) ? highRiskColor : mediumRiskColor;
+            m_uiManager->m_hexViewer->highlightRange(offset, size, highlightColor);
+            
+            // Add a tooltip or status message
+            QString statusMsg = LANG_PARAM("UI/security_suspicious_section_highlighted", "offset", QString("0x%1").arg(offset, 8, 16, QChar('0')));
+            statusBar()->showMessage(statusMsg, 5000);
+            break; // Just highlight one for now
+        }
     }
 }
 
@@ -737,9 +906,14 @@ void MainWindow::setupLanguageMenu()
     QStringList languages = LanguageManager::getInstance().getAvailableLanguages();
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
     
+    qDebug() << "Available languages:" << languages;
+    qDebug() << "Current language:" << currentLanguage;
+    
     // Create language actions
     for (const QString &langCode : languages) {
         QString displayName = LanguageManager::getInstance().getLanguageDisplayName(langCode);
+        qDebug() << "Creating language action for" << langCode << "with display name:" << displayName;
+        
         QAction *langAction = new QAction(displayName, this);
         langAction->setCheckable(true);
         langAction->setChecked(langCode == currentLanguage);
