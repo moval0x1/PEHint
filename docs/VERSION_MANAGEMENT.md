@@ -1,26 +1,43 @@
 # Version Management in PEHint
 
-This document explains how version numbers are managed in the PEHint project.
+> **How to update version numbers in PEHint**
 
-## Overview
+## 🎯 Quick Update
 
-PEHint now uses a centralized version management system where all version information is stored in a single file (`src/version.h`) and automatically propagated throughout the project.
+### Method 1: Manual Update
+1. Edit `src/version.h`
+2. Update version numbers
+3. Rebuild project
 
-## Files Involved
+### Method 2: Using Script (Recommended)
+```bash
+# Update to version 0.4.0
+python update_version.py 0.4.0
 
-- **`src/version.h`** - Central version definitions (MAJOR, MINOR, PATCH)
-- **`CMakeLists.txt`** - Reads version from header and configures project
-- **`resources/app.rc`** - Windows resource file with version placeholders
-- **`update_version.py`** - Script to update version numbers
+# Preview changes without making them
+python update_version.py 0.4.0 --dry-run
+```
 
-## How It Works
+## 📝 Version File
 
-1. **Version Definition**: All version numbers are defined in `src/version.h`
-2. **CMake Integration**: CMake reads the version header and sets project version
-3. **Resource Configuration**: CMake configures `app.rc` with actual version numbers
-4. **Code Usage**: C++ code includes `version.h` and uses version macros
+### `src/version.h`
+```cpp
+#define PEHINT_VERSION_MAJOR 0
+#define PEHINT_VERSION_MINOR 4
+#define PEHINT_VERSION_PATCH 0
 
-## Version Macros Available
+#define PEHINT_VERSION_STRING "0.4.0"
+#define PEHINT_VERSION_STRING_FULL "v0.4.0"
+```
+
+## 🔧 How It Works
+
+1. **Version Definition** - All numbers in `src/version.h`
+2. **CMake Integration** - Automatically reads version header
+3. **Resource Configuration** - Updates `app.rc` with version
+4. **Code Usage** - Include `version.h` and use macros
+
+## 📚 Available Macros
 
 ```cpp
 #include "version.h"
@@ -28,94 +45,48 @@ PEHint now uses a centralized version management system where all version inform
 // Numeric versions
 PEHINT_VERSION_MAJOR    // 0
 PEHINT_VERSION_MINOR    // 4
-PEHINT_VERSION_PATCH    // 1
+PEHINT_VERSION_PATCH    // 0
 
 // String versions
-PEHINT_VERSION_STRING       // "0.4.1"
-PEHINT_VERSION_STRING_FULL  // "v0.4.1"
-
-// Build information
-PEHINT_BUILD_DATE           // __DATE__ macro
-PEHINT_BUILD_TIME           // __TIME__ macro
+PEHINT_VERSION_STRING       // "0.4.0"
+PEHINT_VERSION_STRING_FULL  // "v0.4.0"
 
 // Version comparison
 PEHINT_VERSION_AT_LEAST(0, 4, 0)  // true
-PEHINT_VERSION_EQUAL(0, 4, 1)     // true
+PEHINT_VERSION_EQUAL(0, 4, 0)     // true
 ```
 
-## Updating Version Numbers
+## 🎨 Usage Examples
 
-### Method 1: Manual Update
-1. Edit `src/version.h`
-2. Update the version numbers
-3. Rebuild the project
-
-### Method 2: Using the Update Script (Recommended)
-```bash
-# Update to version 0.4.2
-python update_version.py 0.4.2
-
-# Preview changes without making them
-python update_version.py 0.4.2 --dry-run
-```
-
-## Benefits
-
-1. **Single Source of Truth**: Version is defined in one place
-2. **Automatic Propagation**: CMake automatically updates all files
-3. **Consistency**: All version references stay in sync
-4. **Easy Updates**: Simple script to update versions
-5. **Build Integration**: Version is automatically embedded in executables
-
-## Version Numbering Convention
-
-- **MAJOR**: Breaking changes, major feature additions
-- **MINOR**: New features, backward compatible
-- **PATCH**: Bug fixes, minor improvements
-
-## Example Usage in Code
-
+### Window Title
 ```cpp
-// Window title
 setWindowTitle(QString("PEHint %1 - PE Header Learning Tool")
                .arg(PEHINT_VERSION_STRING_FULL));
-
-// About dialog
-QString version = QString("Version: %1").arg(PEHINT_VERSION_STRING);
-
-// Conditional compilation
-#if PEHINT_VERSION_AT_LEAST(0, 4, 0)
-    // Use features available in 0.4.0+
-#endif
 ```
 
-## Troubleshooting
+### About Dialog
+```cpp
+QString version = QString("Version: %1").arg(PEHINT_VERSION_STRING);
+```
+
+## 🐛 Troubleshooting
 
 ### Version Not Updating
-1. Make sure you've rebuilt the project after changing `version.h`
-2. Check that `version.h` is included in your source files
-3. Verify CMake is reading the version correctly
+1. **Rebuild** project after changing `version.h`
+2. **Check** that `version.h` is included in source files
+3. **Verify** CMake is reading version correctly
 
 ### Build Errors
-1. Ensure `version.h` exists in the `src/` directory
-2. Check that the version format in `version.h` is correct
-3. Verify CMake can parse the version numbers
+1. **Ensure** `version.h` exists in `src/` directory
+2. **Check** version format is correct
+3. **Verify** CMake can parse version numbers
 
-## Migration from Hardcoded Versions
+## 📋 Version Convention
 
-If you find any remaining hardcoded version numbers in the codebase:
+- **MAJOR** - Breaking changes, major features
+- **MINOR** - New features, backward compatible
+- **PATCH** - Bug fixes, minor improvements
 
-1. Replace them with the appropriate version macro
-2. Include `version.h` in the file
-3. Test that the version displays correctly
+---
 
-Example:
-```cpp
-// OLD (hardcoded)
-setWindowTitle("PEHint v0.4.1 - PE Header Learning Tool");
-
-// NEW (using version header)
-#include "version.h"
-setWindowTitle(QString("PEHint %1 - PE Header Learning Tool")
-               .arg(PEHINT_VERSION_STRING_FULL));
-```
+**Need help?** Check the main developer guide or create an issue.

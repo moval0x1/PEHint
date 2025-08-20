@@ -31,8 +31,8 @@ PEHINT_VERSION_MINOR    // 4
 PEHINT_VERSION_PATCH    // 1
 
 // String versions
-PEHINT_VERSION_STRING       // "0.4.1"
-PEHINT_VERSION_STRING_FULL  // "v0.4.1"
+PEHINT_VERSION_STRING       // "0.3.1"
+PEHINT_VERSION_STRING_FULL  // "v0.3.1"
 
 // Build information
 PEHINT_BUILD_DATE           // __DATE__ macro
@@ -112,7 +112,7 @@ If you find any remaining hardcoded version numbers in the codebase:
 Example:
 ```cpp
 // OLD (hardcoded)
-setWindowTitle("PEHint v0.4.1 - PE Header Learning Tool");
+        setWindowTitle("PEHint v0.3.1 - PE Header Learning Tool");
 
 // NEW (using version header)
 #include "version.h"

@@ -161,7 +161,7 @@ For build issues:
 
 ## Version Information
 
-- **Current Version**: 0.4.1
+- **Current Version**: 0.3.1
 - **Build System**: CMake
 - **Qt Version**: 6.8.0
 - **Compiler**: MSVC 2022

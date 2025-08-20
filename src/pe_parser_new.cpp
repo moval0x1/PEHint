@@ -660,7 +660,14 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     QTreeWidgetItem *dataDirsItem = new QTreeWidgetItem();
     dataDirsItem->setText(0, LANG("UI/pe_structure_data_directories"));
     dataDirsItem->setText(1, "");
-    dataDirsItem->setText(2, "Variable");
+    // Use LANG with fallback for table value
+    QString variableText = LANG("UI/table_value_variable");
+    if (variableText == "UI/table_value_variable") {
+        // Fallback - use current language to determine text
+        QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
+        variableText = (currentLang == "pt") ? "Variável" : "Variable";
+    }
+    dataDirsItem->setText(2, variableText);
     dataDirsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", "16"));
     
     addDataDirectoryFields(dataDirsItem);
@@ -807,8 +814,31 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
         QTreeWidgetItem *dirItem = new QTreeWidgetItem(parent);
         dirItem->setText(0, dirNames[i]);
         dirItem->setText(1, "");
-        dirItem->setText(2, LANG_PARAM("UI/data_directory_format", "number", QString::number(i)));
-        dirItem->setText(3, LANG("UI/data_directory_size_variable"));
+        
+        // Create directory format with fallback
+        QString directoryFormat = LANG_PARAM("UI/data_directory_format", "number", QString::number(i));
+        if (directoryFormat.contains("%1")) {
+            // If LANG_PARAM didn't work, do manual replacement
+            QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
+            if (currentLang == "pt") {
+                directoryFormat = QString("Diretório %1").arg(i);
+            } else {
+                directoryFormat = QString("Directory %1").arg(i);
+            }
+        }
+        dirItem->setText(2, directoryFormat);
+        
+        // Create size variable with fallback
+        QString sizeVariable = LANG("UI/data_directory_size_variable");
+        if (sizeVariable == "UI/data_directory_size_variable") {
+            QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
+            if (currentLang == "pt") {
+                sizeVariable = "Variável";
+            } else {
+                sizeVariable = "Variable";
+            }
+        }
+        dirItem->setText(3, sizeVariable);
     }
 }
 

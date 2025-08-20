@@ -1,6 +1,6 @@
 # PEHint - PE Header Learning Tool
 
-[![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)](https://github.com/moval0x1/PEHint)
+[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/moval0x1/PEHint)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![Architecture](https://img.shields.io/badge/architecture-SOLID-green.svg)](docs/REFACTORING_GUIDE.md)
@@ -8,7 +8,7 @@
 
 > **Interactive PE Header Analysis Tool for Malware Analysis and Reverse Engineering Education**
 
-## 🚀 Latest Updates (v0.4.1)
+## 🚀 Latest Updates (v0.3.1)
 
 ### ✨ Major New Features
 - **🌍 Full Internationalization System** - Complete support for English, Portuguese, Spanish, French, and German
@@ -339,6 +339,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**PEHint v0.4.1** - Making PE Header Analysis Accessible, Educational, and Professional
+**PEHint v0.3.1** - Making PE Header Analysis Accessible, Educational, and Professional
 
 *Built with ❤️ using modern C++, Qt 6, and SOLID architecture principles*

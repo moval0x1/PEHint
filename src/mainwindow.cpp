@@ -43,6 +43,7 @@
 #include <QGroupBox>
 #include <QTimer>
 #include <QCoreApplication>
+#include <QLocale>
 
 /**
  * @brief Constructor for MainWindow
@@ -76,13 +77,29 @@ MainWindow::MainWindow(QWidget *parent)
     // Initialize Language Manager for internationalization
     // Look for config file in the same directory as the executable
     QString appDir = QCoreApplication::applicationDirPath();
-    QString configPath = QDir(appDir).absoluteFilePath("config/language_config.ini");
+    QString configDir = QDir(appDir).absoluteFilePath("config");
     
     qDebug() << "Application directory:" << appDir;
-    qDebug() << "Config path:" << configPath;
+    qDebug() << "Config directory:" << configDir;
     qDebug() << "Current working directory:" << QDir::currentPath();
-    qDebug() << "Config directory exists:" << QDir("config").exists();
-    qDebug() << "Config directory absolute path:" << QDir("config").absolutePath();
+    qDebug() << "Config directory exists:" << QDir(configDir).exists();
+    
+    // Try to detect system language and load appropriate config
+    QString configPath;
+    QString systemLocale = QLocale::system().name().left(2).toLower(); // Get system language code (e.g., "pt", "en")
+    
+    qDebug() << "System locale detected:" << systemLocale;
+    
+    // Check if we have a language-specific config file for the system language
+    QString languageSpecificConfig = QDir(configDir).absoluteFilePath(QString("language_config_%1.ini").arg(systemLocale));
+    if (QFile::exists(languageSpecificConfig)) {
+        configPath = languageSpecificConfig;
+        qDebug() << "Using language-specific config for" << systemLocale << "at:" << configPath;
+    } else {
+        // Fallback to default English config
+        configPath = QDir(configDir).absoluteFilePath("language_config.ini");
+        qDebug() << "Language-specific config not found, using default English config at:" << configPath;
+    }
     
     if (QFile::exists(configPath)) {
         qDebug() << "Config file found at:" << configPath;
@@ -92,11 +109,11 @@ MainWindow::MainWindow(QWidget *parent)
             qDebug() << "Current language:" << LanguageManager::getInstance().getCurrentLanguage();
             
             // Debug: List config directory contents
-            QDir configDir = QFileInfo(configPath).dir();
-            qDebug() << "Config directory:" << configDir.absolutePath();
+            QDir configDirObj = QFileInfo(configPath).dir();
+            qDebug() << "Config directory:" << configDirObj.absolutePath();
             QStringList filters;
             filters << "language_config*.ini";
-            QStringList langFiles = configDir.entryList(filters, QDir::Files);
+            QStringList langFiles = configDirObj.entryList(filters, QDir::Files);
             qDebug() << "Language files found:" << langFiles;
         } else {
             qWarning() << "LanguageManager initialization failed";
@@ -1143,7 +1160,6 @@ void MainWindow::setupLanguageMenu()
         
         QAction *langAction = new QAction(displayName, this);
         langAction->setCheckable(true);
-        langAction->setChecked(langCode == currentLanguage);
         langAction->setData(langCode);
         
         languageMenu->addAction(langAction);
@@ -1151,11 +1167,18 @@ void MainWindow::setupLanguageMenu()
             this->onLanguageMenuTriggered(langAction);
         });
         
-        qDebug() << "Created action for" << langCode << "checked:" << (langCode == currentLanguage);
+        qDebug() << "Created action for" << langCode << "with data:" << langCode;
     }
     
-    // Ensure only one action is checked initially
-    updateLanguageMenu();
+    // Now set the checked state for only the current language
+    for (QAction *langAction : languageMenu->actions()) {
+        QString langCode = langAction->data().toString();
+        if (langCode == currentLanguage) {
+            langAction->setChecked(true);
+            qDebug() << "Checked action for current language:" << langCode;
+            break; // Only one should be checked
+        }
+    }
 }
 
 void MainWindow::onLanguageMenuTriggered(QAction *action)
@@ -1307,23 +1330,30 @@ void MainWindow::updateLanguageMenu()
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
     qDebug() << "Updating language menu, current language:" << currentLanguage;
     
-    // First, uncheck ALL actions
-    for (QAction *langAction : languageMenu->actions()) {
-        langAction->setChecked(false);
-        qDebug() << "Unchecked action:" << langAction->data().toString();
-    }
-    
-    // Then, check ONLY the current language action
+    // Ensure mutual exclusivity: only one action can be checked
+    bool foundCurrentLanguage = false;
     for (QAction *langAction : languageMenu->actions()) {
         QString langCode = langAction->data().toString();
-        if (langCode == currentLanguage) {
-            langAction->setChecked(true);
-            qDebug() << "Checked action:" << langCode;
-            break; // Only one should be checked
+        bool shouldBeChecked = (langCode == currentLanguage);
+        
+        if (shouldBeChecked) {
+            if (!foundCurrentLanguage) {
+                langAction->setChecked(true);
+                foundCurrentLanguage = true;
+                qDebug() << "✓ Checked action for current language:" << langCode;
+            } else {
+                // This shouldn't happen, but just in case
+                langAction->setChecked(false);
+                qDebug() << "⚠ Unchecked duplicate action for:" << langCode;
+            }
+        } else {
+            langAction->setChecked(false);
+            qDebug() << "✗ Unchecked action for:" << langCode;
         }
     }
     
     // Force menu update
     languageMenu->update();
+    qDebug() << "Language menu update complete. Current language:" << currentLanguage;
 }
 

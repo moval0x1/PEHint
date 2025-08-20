@@ -215,7 +215,7 @@ LanguageManager::getInstance().setLanguage("de");
 
 // Verify strings are updated
 QString title = LANG("UI/window_title");
-// Result: "PEHint 0.4.1 - PE-Header Lernwerkzeug"
+// Result: "PEHint 0.3.1 - PE-Header Lernwerkzeug"
 ```
 
 ## Troubleshooting

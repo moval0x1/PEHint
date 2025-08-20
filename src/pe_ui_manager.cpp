@@ -158,7 +158,7 @@ void UIManager::setupProgressSection(QVBoxLayout *mainLayout)
     m_progressBar->setTextVisible(true);
     
     // Create status label for progress messages
-    m_progressLabel = new QLabel(LANG("UI/status_ready"));
+    m_progressLabel = new QLabel(""); // Empty initially, will be updated during progress
     m_progressLabel->setStyleSheet("QLabel { color: #666; font-style: italic; }");
     
     // Create horizontal layout for progress section
