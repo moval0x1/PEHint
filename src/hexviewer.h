@@ -31,7 +31,7 @@ public:
     void setShowOffset(bool show);
     
     // Highlighting
-    void highlightRange(quint32 startOffset, quint32 length, const QColor &color = QColor(220, 20, 60));
+    void highlightRange(quint32 startOffset, quint32 length, const QColor &color = QColor(255, 255, 0, 100));
     void clearHighlights();
     
     // Search functionality
@@ -59,6 +59,7 @@ signals:
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
 
 private slots:
     void onOffsetChanged(int value);

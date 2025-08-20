@@ -645,9 +645,11 @@ void MainWindow::onLanguageChanged(const QString &language)
             m_peParser->setLanguage(langCode);
             
             // Update current explanation if there's a selected item
-            QTreeWidgetItem *currentItem = m_peTree->currentItem();
-            if (currentItem) {
-                onTreeItemClicked(currentItem, 0);
+            if (m_uiManager && m_uiManager->m_peTree) {
+                QTreeWidgetItem *currentItem = m_uiManager->m_peTree->currentItem();
+                if (currentItem) {
+                    onTreeItemClicked(currentItem, 0);
+                }
             }
         }
     }
@@ -668,12 +670,16 @@ void MainWindow::onCopyToClipboard()
 
 void MainWindow::onExpandAll()
 {
-    m_peTree->expandAll();
+    if (m_uiManager && m_uiManager->m_peTree) {
+        m_uiManager->m_peTree->expandAll();
+    }
 }
 
 void MainWindow::onCollapseAll()
 {
-    m_peTree->collapseAll();
+    if (m_uiManager && m_uiManager->m_peTree) {
+        m_uiManager->m_peTree->collapseAll();
+    }
 }
 
 void MainWindow::onHexViewerOptions()
@@ -1085,13 +1091,13 @@ void MainWindow::highlightSuspiciousFieldsInTree(const SecurityAnalysisResult &r
                 QMap<QString, QString> params;
                 params["field_name"] = fieldName;
                 tooltip = LANG_PARAMS("UI/security_field_medium_risk_tooltip", params);
-            } else {
-                // Low risk - light yellow
-                highlightColor = QColor(220, 20, 60); // Crimson red
-                QMap<QString, QString> params;
-                params["field_name"] = fieldName;
-                tooltip = LANG_PARAMS("UI/security_field_low_risk_tooltip", params);
-            }
+                    } else {
+            // Low risk - light yellow
+            highlightColor = QColor(255, 255, 200, 180); // Light yellow with transparency
+            QMap<QString, QString> params;
+            params["field_name"] = fieldName;
+            tooltip = LANG_PARAMS("UI/security_field_low_risk_tooltip", params);
+        }
             
             // Apply highlighting to the item
             item->setBackground(0, highlightColor);
@@ -1325,8 +1331,11 @@ void MainWindow::updateUILanguage()
     // Update window title
     setWindowTitle(LANG_PARAM("UI/window_title", "version", PEHINT_VERSION_STRING_FULL));
     
-    // Update status bar
-    statusBar()->showMessage(LANG("UI/status_ready"));
+    // Update status bar - only show "Ready" if no file is loaded
+    if (!m_fileLoaded) {
+        statusBar()->showMessage(LANG("UI/status_ready"));
+    }
+    // If a file is loaded, the status should show file information instead
     
     // Update menu texts
     updateMenuLanguage();

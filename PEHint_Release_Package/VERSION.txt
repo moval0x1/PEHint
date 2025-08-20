@@ -1,5 +1,0 @@
-﻿PEHint Release Package
-Built on: 2025-08-20 05:46:59
-Build Type: Release
-Qt Version: 6.8.0
-Compiler: MSVC 2022

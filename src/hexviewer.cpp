@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QTimer>
 #include <QLabel>
 #include <QPushButton>
 #include <QMouseEvent>
@@ -114,7 +115,8 @@ void HexViewer::setupUI()
     
     // Status bar
     QHBoxLayout *statusLayout = new QHBoxLayout();
-    QLabel *statusLabel = new QLabel(LANG("UI/status_ready"), this);
+    QLabel *statusLabel = new QLabel("", this); // Start with empty status
+    statusLabel->setObjectName("hexViewerStatusLabel"); // Add object name for easier identification
     statusLayout->addWidget(statusLabel);
     statusLayout->addStretch();
     
@@ -601,10 +603,10 @@ void HexViewer::applyHighlights()
                     cursor.setPosition(static_cast<int>(absoluteEnd), QTextCursor::KeepAnchor);
                     
                     QTextCharFormat highlightFormat;
-                    highlightFormat.setBackground(QColor(255, 255, 255, 80)); // Light white background for better persistence
+                    highlightFormat.setBackground(Qt::transparent); // No background color
                     highlightFormat.setForeground(QColor(220, 20, 60)); // Crimson red text
                     highlightFormat.setFontWeight(QFont::Bold); // Keep bold text
-                    // Make the format more persistent
+                    // Make the format persistent
                     highlightFormat.setProperty(QTextFormat::UserProperty, true);
                     cursor.mergeCharFormat(highlightFormat);
                     
@@ -825,13 +827,10 @@ void HexViewer::goToSearchResult(int index)
     params["offset"] = QString::number(result.offset, 16);
     QString status = LANG_PARAMS("UI/hex_search_result_status", params);
     
-    // Find status label and update it
-    QList<QLabel*> labels = findChildren<QLabel*>();
-    for (QLabel *label : labels) {
-        if (label->text().contains(LANG("UI/status_ready_contains")) || label->text().contains(LANG("UI/status_pronto_contains"))) {
-            label->setText(status);
-            break;
-        }
+    // Find status label and update it using object name
+    QLabel *statusLabel = findChild<QLabel*>("hexViewerStatusLabel");
+    if (statusLabel) {
+        statusLabel->setText(status);
     }
 }
 
@@ -924,10 +923,33 @@ qint64 HexViewer::calculateOffsetFromPosition(const QPoint &pos)
 void HexViewer::focusInEvent(QFocusEvent *event)
 {
     // When the hex viewer gains focus, reapply highlights to ensure they're visible
+    // But only if we're not in the middle of processing a click event
     if (!m_highlights.isEmpty()) {
-        applyHighlights();
+        // Use a timer to avoid conflicts with click event processing
+        QTimer::singleShot(10, this, [this]() {
+            if (!m_highlights.isEmpty()) {
+                applyHighlights();
+            }
+        });
     }
     
     // Call the parent implementation
     QWidget::focusInEvent(event);
+}
+
+void HexViewer::focusOutEvent(QFocusEvent *event)
+{
+    // When losing focus, preserve the highlights by ensuring they stay applied
+    // This prevents the QTextEdit from clearing our custom formatting
+    if (!m_highlights.isEmpty()) {
+        // Force preserve highlights when losing focus
+        QTimer::singleShot(5, this, [this]() {
+            if (!m_highlights.isEmpty()) {
+                applyHighlights();
+            }
+        });
+    }
+    
+    // Call the parent implementation
+    QWidget::focusOutEvent(event);
 }

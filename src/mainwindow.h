@@ -88,7 +88,7 @@ private:
     // UI Components (now managed by UIManager)
     // HexViewer is now managed by UIManager
     // Access it via m_uiManager->m_hexViewer
-    QTreeWidget *m_peTree;
+    // m_peTree is managed by UIManager
     
     // Current file info
     QString m_currentFilePath;
