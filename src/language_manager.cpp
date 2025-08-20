@@ -57,11 +57,22 @@ bool LanguageManager::initialize(const QString &configPath)
         return true;
     }
     
-    m_configPath = configPath;
+    // If no config path provided, try to find it automatically
+    if (configPath.isEmpty()) {
+        m_configPath = findConfigFile("language_config.ini");
+        qDebug() << "Auto-detected language config path:" << m_configPath;
+    } else {
+        m_configPath = configPath;
+    }
+    
+    if (m_configPath.isEmpty()) {
+        qWarning() << "No language config file found";
+        return false;
+    }
     
     // Load language configuration
     if (!loadLanguageConfiguration()) {
-        qWarning() << "Failed to load language configuration from" << configPath;
+        qWarning() << "Failed to load language configuration from" << m_configPath;
         return false;
     }
     
@@ -452,4 +463,39 @@ QTranslator* LanguageManager::getQtTranslator(const QString &languageCode)
 bool LanguageManager::isInitialized() const
 {
     return m_initialized;
+}
+
+QString LanguageManager::findConfigFile(const QString &fileName) const
+{
+    QStringList possibleConfigPaths;
+    
+    // 1. Try relative to executable (for deployed builds)
+    QString appDir = QCoreApplication::applicationDirPath();
+    possibleConfigPaths << QDir(appDir).absoluteFilePath("config/" + fileName);
+    
+    // 2. Try relative to executable but go up to project root (for development builds)
+    QDir appDirObj(appDir);
+    if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
+        possibleConfigPaths << appDirObj.absoluteFilePath("config/" + fileName);
+    }
+    
+    // 3. Try current working directory
+    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
+    
+    // 4. Try source directory (for development builds)
+    possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config/" + fileName);
+    
+    qDebug() << "Searching for config file:" << fileName;
+    qDebug() << "Possible paths:" << possibleConfigPaths;
+    
+    // Find the first valid config file
+    for (const QString &path : possibleConfigPaths) {
+        if (QFile::exists(path)) {
+            qDebug() << "Found config file at:" << path;
+            return path;
+        }
+    }
+    
+    qWarning() << "Config file not found in any of these locations:" << possibleConfigPaths;
+    return QString();
 }

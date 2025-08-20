@@ -201,7 +201,7 @@ public:
      * the specified configuration file and sets up file watching
      * for hot-reloading capabilities.
      */
-    explicit SecurityConfigManager(const QString &configFilePath = "config/security_config.ini", QObject *parent = nullptr);
+    explicit SecurityConfigManager(const QString &configFilePath = QString(), QObject *parent = nullptr);
     
     /**
      * @brief Destructor for SecurityConfigManager
@@ -482,6 +482,19 @@ private:
      * file, supporting both decimal and hex notation.
      */
     qint64 parseHexValue(const QString &value) const;
+    
+    /**
+     * @brief Finds a configuration file in multiple possible locations
+     * @param fileName Name of the configuration file to find
+     * @return Full path to the found configuration file, or empty string if not found
+     * 
+     * This method searches for configuration files in multiple locations:
+     * 1. Relative to executable (for deployed builds)
+     * 2. Relative to executable but going up to project root (for development builds)
+     * 3. Current working directory
+     * 4. Source directory (for development builds)
+     */
+    QString findConfigFile(const QString &fileName) const;
     
     // Data members
     

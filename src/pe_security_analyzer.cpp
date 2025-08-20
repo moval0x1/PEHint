@@ -38,7 +38,7 @@
  */
 PESecurityAnalyzer::PESecurityAnalyzer(QObject *parent)
     : QObject(parent)
-    , m_configManager(new SecurityConfigManager("config/security_config.ini", this))
+    , m_configManager(new SecurityConfigManager(QString(), this))
 {
     // Configuration is now managed by SecurityConfigManager
     // All security analysis parameters are read from config.ini

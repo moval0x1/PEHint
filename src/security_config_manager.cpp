@@ -6,6 +6,7 @@
 #include "security_config_manager.h"
 #include <QDebug>
 #include <QDir>
+#include <QCoreApplication>
 
 SecurityConfigManager::SecurityConfigManager(const QString &configFilePath, QObject *parent)
     : QObject(parent)
@@ -17,20 +18,26 @@ SecurityConfigManager::SecurityConfigManager(const QString &configFilePath, QObj
     // Initialize default configuration
     setDefaultConfiguration();
     
+    // If no config file path provided, try to find it automatically
+    if (m_configFilePath.isEmpty()) {
+        m_configFilePath = findConfigFile("security_config.ini");
+        qDebug() << "Auto-detected config file path:" << m_configFilePath;
+    }
+    
     // Try to load configuration from file
     if (loadConfiguration()) {
-        qDebug() << "Configuration loaded successfully from:" << configFilePath;
+        qDebug() << "Configuration loaded successfully from:" << m_configFilePath;
     } else {
-        qWarning() << "Failed to load configuration from:" << configFilePath << "- using defaults";
+        qWarning() << "Failed to load configuration from:" << m_configFilePath << "- using defaults";
     }
     
     // Set up file watching for hot-reloading
     m_fileWatcher = new QFileSystemWatcher(this);
-    if (m_fileWatcher->addPath(configFilePath)) {
+    if (m_fileWatcher->addPath(m_configFilePath)) {
         connect(m_fileWatcher, &QFileSystemWatcher::fileChanged, this, &SecurityConfigManager::onConfigFileChanged);
-        qDebug() << "File watching enabled for:" << configFilePath;
+        qDebug() << "File watching enabled for:" << m_configFilePath;
     } else {
-        qWarning() << "Failed to set up file watching for:" << configFilePath;
+        qWarning() << "Failed to set up file watching for:" << m_configFilePath;
     }
 }
 
@@ -461,4 +468,39 @@ qint64 SecurityConfigManager::parseHexValue(const QString &value) const
     } else {
         return value.toLongLong(&ok, 10);
     }
+}
+
+QString SecurityConfigManager::findConfigFile(const QString &fileName) const
+{
+    QStringList possibleConfigPaths;
+    
+    // 1. Try relative to executable (for deployed builds)
+    QString appDir = QCoreApplication::applicationDirPath();
+    possibleConfigPaths << QDir(appDir).absoluteFilePath("config/" + fileName);
+    
+    // 2. Try relative to executable but go up to project root (for development builds)
+    QDir appDirObj(appDir);
+    if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
+        possibleConfigPaths << appDirObj.absoluteFilePath("config/" + fileName);
+    }
+    
+    // 3. Try current working directory
+    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
+    
+    // 4. Try source directory (for development builds)
+    possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config/" + fileName);
+    
+    qDebug() << "Searching for config file:" << fileName;
+    qDebug() << "Possible paths:" << possibleConfigPaths;
+    
+    // Find the first valid config file
+    for (const QString &path : possibleConfigPaths) {
+        if (QFile::exists(path)) {
+            qDebug() << "Found config file at:" << path;
+            return path;
+        }
+    }
+    
+    qWarning() << "Config file not found in any of these locations:" << possibleConfigPaths;
+    return QString();
 }

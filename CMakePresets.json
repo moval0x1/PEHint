@@ -19,7 +19,9 @@
       "displayName": "Qt-Debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON"
+        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON",
+        "CMAKE_CXX_FLAGS_DEBUG": "/Zi /Od /RTC1",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "/DEBUG"
       }
     },
     {
@@ -28,7 +30,9 @@
       "displayName": "Qt-Release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON"
+        "CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS": "ON",
+        "CMAKE_CXX_FLAGS_RELEASE": "/O2 /DNDEBUG",
+        "CMAKE_EXE_LINKER_FLAGS_RELEASE": "/LTCG"
       }
     },
     {
@@ -56,7 +60,7 @@
   ],
   "vendor": {
     "qt-project.org/Presets": {
-      "checksum": "3fH3tawrjetlM9SR+m+r8Wrk0yw="
+      "checksum": "lRmd7rIen0cLXo5GPYE6SrIVJyE="
     }
   }
 }

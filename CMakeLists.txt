@@ -58,22 +58,9 @@ if(WIN32)
     # Check if we're using MSVC or GCC/MinGW
     if(MSVC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
-        
-        # Set build-specific flags for MSVC
-        if(CMAKE_BUILD_TYPE STREQUAL "Release")
-            set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG")
-            set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
-        elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
-            set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi /Od /RTC1")
-        endif()
     else()
         # GCC/MinGW specific flags
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-        
-        # Set build-specific flags for GCC
-        if(CMAKE_BUILD_TYPE STREQUAL "Release")
-            set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
-        endif()
     endif()
 endif()
 

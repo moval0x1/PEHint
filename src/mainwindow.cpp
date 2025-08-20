@@ -75,13 +75,44 @@ MainWindow::MainWindow(QWidget *parent)
     m_uiManager = new UIManager(this);
     
     // Initialize Language Manager for internationalization
-    // Look for config file in the same directory as the executable
+    // Look for config file in multiple possible locations
+    QString configDir;
+    QStringList possibleConfigPaths;
+    
+    // 1. Try relative to executable (for deployed builds)
     QString appDir = QCoreApplication::applicationDirPath();
-    QString configDir = QDir(appDir).absoluteFilePath("config");
+    possibleConfigPaths << QDir(appDir).absoluteFilePath("config");
+    
+    // 2. Try relative to executable but go up to project root (for development builds)
+    QDir appDirObj(appDir);
+    if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
+        possibleConfigPaths << appDirObj.absoluteFilePath("config");
+    }
+    
+    // 3. Try current working directory
+    possibleConfigPaths << QDir::currentPath() + "/config";
+    
+    // 4. Try source directory (for development builds)
+    possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config");
     
     qDebug() << "Application directory:" << appDir;
-    qDebug() << "Config directory:" << configDir;
-    qDebug() << "Current working directory:" << QDir::currentPath();
+    qDebug() << "Possible config paths:" << possibleConfigPaths;
+    
+    // Find the first valid config directory
+    for (const QString &path : possibleConfigPaths) {
+        if (QDir(path).exists()) {
+            configDir = path;
+            qDebug() << "Found valid config directory:" << configDir;
+            break;
+        }
+    }
+    
+    if (configDir.isEmpty()) {
+        qWarning() << "No valid config directory found. Tried:" << possibleConfigPaths;
+        configDir = QDir::currentPath() + "/config"; // Fallback
+    }
+    
+    qDebug() << "Using config directory:" << configDir;
     qDebug() << "Config directory exists:" << QDir(configDir).exists();
     
     // Try to detect system language and load appropriate config
@@ -120,6 +151,15 @@ MainWindow::MainWindow(QWidget *parent)
         }
     } else {
         qWarning() << "Config file does not exist at:" << configPath;
+        // Try to initialize with auto-detection
+        qDebug() << "Trying to initialize LanguageManager with auto-detection...";
+        if (LanguageManager::getInstance().initialize()) {
+            qDebug() << "LanguageManager initialized successfully with auto-detection";
+            qDebug() << "Available languages:" << LanguageManager::getInstance().getAvailableLanguages();
+            qDebug() << "Current language:" << LanguageManager::getInstance().getCurrentLanguage();
+        } else {
+            qWarning() << "LanguageManager auto-detection also failed";
+        }
     }
     
     // Setup UI components - REFACTORED: Now delegates to UIManager

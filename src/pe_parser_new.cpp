@@ -7,6 +7,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
+#include <QCoreApplication>
+#include <QDir>
 
 PEParserNew::PEParserNew(QObject *parent)
     : QObject(parent)
@@ -425,14 +427,13 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
     // Get current language from language manager
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
     
-    // Load explanations from the language-specific JSON file in the binary directory
-    QString appDir = QCoreApplication::applicationDirPath();
+    // Load explanations from the language-specific JSON file
     QString explanationsPath;
     
     if (currentLanguage == "pt") {
-        explanationsPath = QDir(appDir).absoluteFilePath("config/explanations_pt.json");
+        explanationsPath = findConfigFile("explanations_pt.json");
     } else {
-        explanationsPath = QDir(appDir).absoluteFilePath("config/explanations.json");
+        explanationsPath = findConfigFile("explanations.json");
     }
     
     QFile explanationsFile(explanationsPath);
@@ -849,4 +850,39 @@ void PEParserNew::addTreeField(QTreeWidgetItem *parent, const QString &name, con
     fieldItem->setText(1, value);
     fieldItem->setText(2, QString("0x%1").arg(offset, 8, 16, QChar('0')).toUpper());
     fieldItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString::number(size)));
+}
+
+QString PEParserNew::findConfigFile(const QString &fileName) const
+{
+    QStringList possibleConfigPaths;
+    
+    // 1. Try relative to executable (for deployed builds)
+    QString appDir = QCoreApplication::applicationDirPath();
+    possibleConfigPaths << QDir(appDir).absoluteFilePath("config/" + fileName);
+    
+    // 2. Try relative to executable but go up to project root (for development builds)
+    QDir appDirObj(appDir);
+    if (appDirObj.cdUp() && appDirObj.cdUp() && appDirObj.cdUp()) {
+        possibleConfigPaths << appDirObj.absoluteFilePath("config/" + fileName);
+    }
+    
+    // 3. Try current working directory
+    possibleConfigPaths << QDir::currentPath() + "/config/" + fileName;
+    
+    // 4. Try source directory (for development builds)
+    possibleConfigPaths << QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("../../../config/" + fileName);
+    
+    qDebug() << "Searching for config file:" << fileName;
+    qDebug() << "Possible paths:" << possibleConfigPaths;
+    
+    // Find the first valid config file
+    for (const QString &path : possibleConfigPaths) {
+        if (QFile::exists(path)) {
+            qDebug() << "Found config file at:" << path;
+            return path;
+        }
+    }
+    
+    qWarning() << "Config file not found in any of these locations:" << possibleConfigPaths;
+    return QString();
 }
