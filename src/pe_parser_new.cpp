@@ -441,19 +441,89 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
         QJsonObject root = doc.object();
         
         // Search for the field in the explanations
-        // The new structure has field names directly under the language key
-        if (root.contains(fieldName)) {
-            QJsonObject fieldObj = root[fieldName].toObject();
-            QString description = fieldObj["description"].toString();
-            QString purpose = fieldObj["purpose"].toString();
-            QString securityNotes = fieldObj["security_notes"].toString();
-            
-            QString explanation = QString("%1\n\nPurpose: %2\n\nSecurity Notes: %3")
-                               .arg(description)
-                               .arg(purpose)
-                               .arg(securityNotes);
-            
-            return explanation;
+        // The structure has field names under language keys ("en", "pt")
+        if (root.contains(currentLanguage)) {
+            QJsonObject languageObj = root[currentLanguage].toObject();
+            if (languageObj.contains(fieldName)) {
+                QJsonObject fieldObj = languageObj[fieldName].toObject();
+                QString description = fieldObj["description"].toString();
+                QString purpose = fieldObj["purpose"].toString();
+                QString securityNotes = fieldObj["security_notes"].toString();
+                QString value = fieldObj["value"].toString();
+                QString note = fieldObj["note"].toString();
+                QString commonNames = fieldObj["common_names"].toString();
+                
+                // Format the explanation with HTML for better presentation
+                QString explanation;
+                
+                // Main description
+                explanation += QString("<div style='margin-bottom: 16px; line-height: 1.6; color: #1f2937;'>%1</div>").arg(description);
+                
+                // Value field (if exists)
+                if (!value.isEmpty()) {
+                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #059669;'>Value:</b> <span style='font-family: monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;'>%1</span></div>").arg(value);
+                }
+                
+                // Purpose field
+                if (!purpose.isEmpty()) {
+                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #1d4ed8;'>Purpose:</b> %1</div>").arg(purpose);
+                }
+                
+                // Note field (if exists)
+                if (!note.isEmpty()) {
+                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #7c3aed;'>Note:</b> %1</div>").arg(note);
+                }
+                
+                // Common names field (if exists)
+                if (!commonNames.isEmpty()) {
+                    explanation += QString("<div style='margin-bottom: 12px;'><b style='color: #dc2626;'>Common Names:</b> <span style='font-family: monospace; background: #fef2f2; padding: 2px 6px; border-radius: 4px; color: #991b1b;'>%1</span></div>").arg(commonNames);
+                }
+                
+                // Security notes with enhanced fancy styling
+                if (!securityNotes.isEmpty()) {
+                    explanation += QString(
+                        "<div style='"
+                        "margin-top: 20px; "
+                        "padding: 16px; "
+                        "background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 50%, #fecaca 100%); "
+                        "border: 2px solid #fecaca; "
+                        "border-left: 6px solid #dc2626; "
+                        "border-radius: 12px; "
+                        "box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1); "
+                        "position: relative; "
+                        "transform: translateY(-2px); "
+                        "transition: all 0.3s ease; "
+                        "'>"
+                        "<div style='"
+                        "position: absolute; "
+                        "top: -12px; "
+                        "left: 16px; "
+                        "background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); "
+                        "color: white; "
+                        "padding: 6px 12px; "
+                        "border-radius: 16px; "
+                        "font-size: 11px; "
+                        "font-weight: bold; "
+                        "text-transform: uppercase; "
+                        "letter-spacing: 0.8px; "
+                        "box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); "
+                        "border: 2px solid #fecaca; "
+                        "'>"
+                        "Security Tip"
+                        "</div>"
+                        "<div style='"
+                        "margin-top: 12px; "
+                        "color: #7f1d1d; "
+                        "font-weight: 500; "
+                        "line-height: 1.6; "
+                        "font-size: 13px; "
+                        "'>%1</div>"
+                        "</div>"
+                    ).arg(securityNotes);
+                }
+                
+                return explanation;
+            }
         }
     }
     
@@ -706,6 +776,9 @@ void PEParserNew::addOptionalHeaderFields(QTreeWidgetItem *parent, const IMAGE_O
 void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
 {
     const QList<const IMAGE_SECTION_HEADER*> &sections = m_dataModel.getSections();
+    const IMAGE_DOS_HEADER *dosHeader = m_dataModel.getDOSHeader();
+    const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
+    
     for (int i = 0; i < sections.size(); ++i) {
         const IMAGE_SECTION_HEADER *section = sections[i];
         if (section) {
@@ -743,16 +816,19 @@ void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
             sectionItem->setText(2, QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper());
             sectionItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString::number(section->SizeOfRawData)));
             
-            // Add section details
-            addTreeField(sectionItem, "VirtualAddress", QString("0x%1").arg(section->VirtualAddress, 8, 16, QChar('0')).toUpper(), 0, sizeof(quint32));
-            addTreeField(sectionItem, "SizeOfRawData", QString::number(section->SizeOfRawData), 4, sizeof(quint32));
-            addTreeField(sectionItem, "PointerToRawData", QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper(), 8, sizeof(quint32));
-            addTreeField(sectionItem, "PointerToRelocations", QString("0x%1").arg(section->PointerToRelocations, 8, 16, QChar('0')).toUpper(), 12, sizeof(quint32));
+            // Add section details with proper file offsets
+            // Calculate the actual file offset for this section header
+            quint32 sectionHeaderOffset = (dosHeader ? dosHeader->e_lfanew : 0) + 24 + (fileHeader ? fileHeader->SizeOfOptionalHeader : 0) + (i * sizeof(IMAGE_SECTION_HEADER));
+            
+            addTreeField(sectionItem, "VirtualAddress", QString("0x%1").arg(section->VirtualAddress, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset, sizeof(quint32));
+            addTreeField(sectionItem, "SizeOfRawData", QString::number(section->SizeOfRawData), sectionHeaderOffset + 4, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToRawData", QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 8, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToRelocations", QString("0x%1").arg(section->PointerToRelocations, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 12, sizeof(quint32));
             // Note: PointerToLineNumbers and NumberOfLineNumbers are deprecated in modern PE format
-            addTreeField(sectionItem, "PointerToLineNumbers", LANG("UI/field_deprecated_pointer"), 16, sizeof(quint32));
-            addTreeField(sectionItem, "NumberOfRelocations", QString::number(section->NumberOfRelocations), 20, sizeof(quint16));
-            addTreeField(sectionItem, "NumberOfLineNumbers", LANG("UI/field_deprecated_count"), 22, sizeof(quint16));
-            addTreeField(sectionItem, "Characteristics", QString("0x%1").arg(section->Characteristics, 8, 16, QChar('0')).toUpper(), 24, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToLineNumbers", LANG("UI/field_deprecated_pointer"), sectionHeaderOffset + 16, sizeof(quint32));
+            addTreeField(sectionItem, "NumberOfRelocations", QString::number(section->NumberOfRelocations), sectionHeaderOffset + 20, sizeof(quint16));
+            addTreeField(sectionItem, "NumberOfLineNumbers", LANG("UI/field_deprecated_count"), sectionHeaderOffset + 22, sizeof(quint16));
+            addTreeField(sectionItem, "Characteristics", QString("0x%1").arg(section->Characteristics, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 24, sizeof(quint32));
         }
     }
 }

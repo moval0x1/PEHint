@@ -365,6 +365,102 @@
       "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
       "security_notes": "Suspicious section names: UPX0/UPX1 (packed), .aspack, .vmp0 (VMProtect), .themida. Unusual names might indicate obfuscation or malware."
     },
+    "Export Directory": {
+      "title": "Export Directory",
+      "description": "Contains information about functions and data that the module exports for use by other modules. This directory points to the export address table (EAT) which lists all exported symbols.",
+      "purpose": "Enable other modules to import functions and data from this executable",
+      "security_notes": "Critical for analysis - check for suspicious exported functions, unexpected exports, or missing exports that might indicate obfuscation"
+    },
+    "Import Directory": {
+      "title": "Import Directory",
+      "description": "Lists all modules and functions that this executable imports from other modules. Each import entry specifies the module name and the functions being imported.",
+      "purpose": "Resolve dependencies on external functions and libraries at runtime",
+      "security_notes": "Critical for security analysis - check for suspicious imports, unexpected DLLs, or imports from non-standard locations"
+    },
+    "Resource Directory": {
+      "title": "Resource Directory",
+      "description": "Contains application resources such as icons, bitmaps, strings, and version information. Resources are organized in a hierarchical structure.",
+      "purpose": "Store application resources and assets for runtime use",
+      "security_notes": "Check for hidden resources, suspicious embedded content, or resources that might contain malicious code"
+    },
+    "Exception Directory": {
+      "title": "Exception Directory",
+      "description": "Contains exception handling information for the executable. This directory is used by the Windows Structured Exception Handling (SEH) mechanism.",
+      "purpose": "Handle runtime exceptions and errors gracefully",
+      "security_notes": "Check for exception handlers that might be used for anti-debugging or code injection techniques"
+    },
+    "Certificate Directory": {
+      "title": "Certificate Directory",
+      "description": "Contains digital signature information and certificates for code signing. This verifies the authenticity and integrity of the executable.",
+      "purpose": "Verify the identity of the software publisher and ensure code hasn't been tampered with",
+      "security_notes": "Critical for security - unsigned executables or invalid certificates may indicate malicious software"
+    },
+    "Base Relocation Directory": {
+      "title": "Base Relocation Directory",
+      "description": "Contains relocation information for when the executable needs to be loaded at a different base address than its preferred base.",
+      "purpose": "Enable the loader to relocate the executable to different memory addresses if needed",
+      "security_notes": "Check for excessive relocations that might indicate ASLR bypass attempts or suspicious loading behavior"
+    },
+    "Debug Directory": {
+      "title": "Debug Directory",
+      "description": "Contains debug information such as line numbers, symbol tables, and other debugging data. This information is used by debuggers and development tools.",
+      "purpose": "Provide debugging information for development and troubleshooting",
+      "security_notes": "Debug information can reveal internal structure - its presence or absence might indicate obfuscation or stripping"
+    },
+    "Architecture Directory": {
+      "title": "Architecture Directory",
+      "description": "Contains architecture-specific data and information. This directory is used for specialized architectures or extended features.",
+      "purpose": "Provide architecture-specific functionality and data",
+      "security_notes": "Check for unexpected architecture data that might indicate cross-compilation or suspicious modifications"
+    },
+    "Global Pointer Directory": {
+      "title": "Global Pointer Directory",
+      "description": "Contains information about global pointers used by the executable. This is primarily used in RISC architectures.",
+      "purpose": "Manage global pointer references for efficient memory access",
+      "security_notes": "Unusual global pointer usage might indicate suspicious memory access patterns"
+    },
+    "TLS Directory": {
+      "title": "TLS Directory",
+      "description": "Contains Thread Local Storage information. TLS allows each thread to have its own copy of certain variables.",
+      "purpose": "Provide thread-specific storage for multi-threaded applications",
+      "security_notes": "Check for TLS callbacks that might be used for anti-debugging or initialization of malicious code"
+    },
+    "Load Configuration Directory": {
+      "title": "Load Configuration Directory",
+      "description": "Contains configuration information for how the executable should be loaded, including security features like Control Flow Guard and SEHOP.",
+      "purpose": "Configure security features and loading behavior",
+      "security_notes": "Critical for security analysis - check for disabled security features that might indicate malicious intent"
+    },
+    "Bound Import Directory": {
+      "title": "Bound Import Directory",
+      "description": "Contains pre-bound import information that can speed up loading by avoiding runtime import resolution.",
+      "purpose": "Optimize loading performance by pre-binding imports",
+      "security_notes": "Check for bound imports that might be used to hide suspicious import behavior"
+    },
+    "Import Address Table Directory": {
+      "title": "Import Address Table Directory",
+      "description": "Contains the Import Address Table (IAT) which stores the actual addresses of imported functions after they are resolved at runtime.",
+      "purpose": "Store resolved addresses of imported functions for efficient calling",
+      "security_notes": "Check for IAT hooking or suspicious import resolution that might indicate code injection"
+    },
+    "Delay Import Directory": {
+      "title": "Delay Import Directory",
+      "description": "Contains information about functions that are imported but not resolved until they are first called. This can improve startup performance.",
+      "purpose": "Defer import resolution until functions are actually needed",
+      "security_notes": "Check for delayed imports that might be used to hide suspicious behavior until runtime"
+    },
+    "COM+ Runtime Header Directory": {
+      "title": "COM+ Runtime Header Directory",
+      "description": "Contains COM+ runtime information and metadata. This directory is used by COM+ applications and services.",
+      "purpose": "Provide COM+ runtime support and metadata for COM+ applications",
+      "security_notes": "Check for COM+ runtime data that might be used for COM hijacking or suspicious COM object creation"
+    },
+    "Reserved": {
+      "title": "Reserved Directory",
+      "description": "Reserved for future use by Microsoft. This directory entry is not currently used but may be defined in future Windows versions.",
+      "purpose": "Reserved for future Windows features and extensions",
+      "security_notes": "Check for any data in reserved directories as this might indicate experimental or suspicious features"
+    },
     "VirtualSize": {
       "title": "Virtual Size",
       "description": "The size of the section when loaded into memory. This may be different from the raw data size due to alignment requirements and padding.",
@@ -533,6 +629,20 @@
       "description": "RVA to the array of ordinal numbers.",
       "purpose": "Locate export ordinal mapping",
       "security_notes": "Verify ordinals are within valid range."
+    },
+    "SectionName": {
+      "title": "Section Name",
+      "description": "An 8-character name that identifies the section. Common names include .text (code), .data (data), .rdata (read-only data), .idata (imports), .edata (exports), .rsrc (resources), .reloc (relocations).",
+      "purpose": "Identify section purpose and content",
+      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
+      "security_notes": "Suspicious section names: UPX0/UPX1 (packed), .aspack, .vmp0 (VMProtect), .themida. Names incomuns podem indicar ofuscação ou malware."
+    },
+    "VirtualSize": {
+      "title": "Virtual Size",
+      "description": "The size of the section when loaded into memory. This may be different from the raw data size due to alignment requirements.",
+      "purpose": "Define memory allocation requirements",
+      "note": "Must be aligned to memory alignment boundary",
+      "security_notes": "Suspicious if virtual size is much larger than raw size - could indicate uninitialized data section used for code injection. Zero virtual size with non-zero raw size is highly suspicious."
     }
   },
   "security_highlights": {

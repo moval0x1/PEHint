@@ -721,22 +721,22 @@ void MainWindow::loadPEFile(const QString &filePath)
         return;
     }
     
-    // Perform security analysis
-    if (m_securityAnalyzer) {
-        SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(filePath);
-        if (result.riskLevel != SecurityRiskLevel::LOW) {
-            // Show security warning
-            QString riskLevelText = (result.riskLevel == SecurityRiskLevel::HIGH) ? LANG("UI/security_high_risk") : LANG("UI/security_medium_risk");
-            QMap<QString, QString> warningParams;
-            warningParams["risk_level"] = riskLevelText;
-            warningParams["summary"] = LANG_PARAM("UI/security_risk_score", "score", QString::number(result.riskScore));
-            QString warningMsg = LANG_PARAMS("UI/security_warning", warningParams);
-        statusBar()->showMessage(warningMsg, 10000); // Show for 10 seconds
-            
-            // Highlight suspicious sections in hex viewer
-            highlightSuspiciousSections(result);
-        }
-    }
+    // Perform security analysis (commented out until security analysis is fully implemented)
+    // if (m_securityAnalyzer) {
+    //     SecurityAnalysisResult result = m_securityAnalyzer->analyzeFile(filePath);
+    //     if (result.riskLevel != SecurityRiskLevel::LOW) {
+    //         // Show security warning
+    //         QString riskLevelText = (result.riskLevel == SecurityRiskLevel::HIGH) ? LANG("UI/security_high_risk") : LANG("UI/security_medium_risk");
+    //         QMap<QString, QString> warningParams;
+    //         warningParams["risk_level"] = riskLevelText;
+    //         warningParams["summary"] = LANG_PARAM("UI/security_risk_score", "score", QString::number(result.riskScore));
+    //         QString warningMsg = LANG_PARAMS("UI/security_warning", warningParams);
+    //         statusBar()->showMessage(warningMsg, 10000); // Show for 10 seconds
+    //         
+    //         // Highlight suspicious sections in hex viewer
+    //         highlightSuspiciousSections(result);
+    //     }
+    // }
 }
 
 void MainWindow::clearDisplay()
@@ -1090,8 +1090,9 @@ void MainWindow::setupLanguageMenu()
         toolsMenu = menuBar()->addMenu("&Tools");
     }
     
-    // Add language submenu
+    // Add language submenu with icon
     QMenu *languageMenu = toolsMenu->addMenu(LANG("UI/menu_language"));
+    languageMenu->setIcon(QIcon(":/images/imgs/language.png")); // Use language icon
     
     // Get available languages from Language Manager
     QStringList languages = LanguageManager::getInstance().getAvailableLanguages();

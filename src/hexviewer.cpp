@@ -601,25 +601,6 @@ void HexViewer::applyHighlights()
     
     // Restore cursor position
     m_hexText->setTextCursor(cursor);
-} asciiStart = hexStartPos + (m_bytesPerLine * 3) + 2 + offsetInLine;
-                        qint64 asciiEnd = asciiStart + lengthInLine;
-                        
-                        if (asciiStart < currentLine.length() && asciiEnd < currentLine.length()) {
-                            qint64 asciiAbsoluteStart = absoluteStart - charStart + asciiStart;
-                            qint64 asciiAbsoluteEnd = asciiAbsoluteStart + lengthInLine;
-                            
-                            cursor.setPosition(static_cast<int>(asciiAbsoluteStart));
-                            cursor.setPosition(static_cast<int>(asciiAbsoluteEnd), QTextCursor::KeepAnchor);
-                            cursor.mergeCharFormat(highlightFormat);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // Force a repaint to ensure highlights are visible
-    m_hexText->viewport()->update();
 }
 
 // ============================================================================

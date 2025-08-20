@@ -533,6 +533,20 @@
       "description": "RVA para o array de números ordinais.",
       "purpose": "Localizar mapeamento ordinal de exportação",
       "security_notes": "Verifique se os ordinais estão dentro do intervalo válido."
+    },
+    "SectionName": {
+      "title": "Nome da Seção",
+      "description": "Um nome de 8 caracteres que identifica a seção. Nomes comuns incluem .text (código), .data (dados), .rdata (dados somente leitura), .idata (importações), .edata (exportações), .rsrc (recursos), .reloc (relocações).",
+      "purpose": "Identificar o propósito e o conteúdo da seção",
+      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
+      "security_notes": "Nomes de seção suspeitos: UPX0/UPX1 (empacotado), .aspack, .vmp0 (VMProtect), .themida. Nomes incomuns podem indicar ofuscação ou malware."
+    },
+    "VirtualSize": {
+      "title": "Tamanho Virtual",
+      "description": "O tamanho da seção quando carregada na memória. Pode ser diferente do tamanho dos dados brutos devido aos requisitos de alinhamento.",
+      "purpose": "Definir requisitos de alocação de memória",
+      "note": "Deve ser alinhado ao limite de alinhamento de memória",
+      "security_notes": "Suspeito se o tamanho virtual for muito maior que o tamanho bruto - pode indicar seção de dados não inicializada usada para injeção de código. Tamanho virtual zero com tamanho bruto não-zero é altamente suspeito."
     }
   },
   "security_highlights": {

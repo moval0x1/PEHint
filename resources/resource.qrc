@@ -15,5 +15,6 @@
         <file>imgs/expand.png</file>
         <file>imgs/collapse.png</file>
         <file>imgs/settings.png</file>
+        <file>imgs/language.png</file>
     </qresource>
 </RCC>
