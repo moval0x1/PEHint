@@ -25,6 +25,10 @@
 #include <QContextMenuEvent>
 #include <QTimer>
 #include <QColor>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
 
 
 
@@ -43,6 +47,8 @@ public:
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 public slots:
     void on_action_PEHint_triggered();
@@ -73,6 +79,8 @@ public slots:
     void updateUILanguage();
     void updateMenuLanguage();
     void updateLanguageMenu();
+    void updateHexViewerLanguage();
+    void updateWindowTitle();
 
 private:
     

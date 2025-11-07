@@ -235,14 +235,14 @@ bool PEDataDirectoryParser::parseResourceDirectory(quint32 rva, quint32 size, PE
             m_fileData.data() + entryOffset
         );
         
-        QString resourceType = PEUtils::getResourceTypeName(entry->Name);
+        QString resourceType = PEUtils::getResourceTypeName(entry->getName());
         resourceTypes.append(resourceType);
         
-        // Parse the resource data
-        if (entry->OffsetToData & 0x80000000) {
-            // Named entry - Name contains offset to string
-            if (entry->Name != 0) {
-                quint32 nameOffset = fileOffset + (entry->Name & 0x7FFFFFFF);
+        // Check if this is a directory or data entry
+        if (entry->getOffsetToData() & 0x80000000) {
+            // Directory entry
+            if (entry->getName() != 0) {
+                quint32 nameOffset = fileOffset + (entry->getName() & 0x7FFFFFFF);
                 if (nameOffset + 2 <= m_fileData.size()) {
                     quint16 nameLength = *reinterpret_cast<const quint16*>(m_fileData.data() + nameOffset);
                     if (nameOffset + 2 + nameLength * 2 <= m_fileData.size()) {
@@ -259,8 +259,8 @@ bool PEDataDirectoryParser::parseResourceDirectory(quint32 rva, quint32 size, PE
                 resources[resourceType][QString("Empty Name")] = LANG("UI/resource_named");
             }
         } else {
-            // ID entry
-            QString resourceId = QString::number(entry->Name);
+            // Data entry
+            QString resourceId = QString::number(entry->getName());
             resources[resourceType][resourceId] = LANG("UI/resource_id");
         }
         
@@ -376,7 +376,7 @@ quint32 PEDataDirectoryParser::rvaToFileOffset(quint32 rva, const QList<const IM
     // Find the section that contains this RVA
     for (const IMAGE_SECTION_HEADER *section : sections) {
         quint32 sectionStart = section->VirtualAddress;
-        quint32 sectionEnd = sectionStart + section->VirtualSize;
+        quint32 sectionEnd = sectionStart + section->getVirtualSize();
         
         if (rva >= sectionStart && rva < sectionEnd) {
             // Calculate file offset

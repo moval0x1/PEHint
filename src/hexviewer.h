@@ -52,6 +52,9 @@ public:
     bool showOffset() const { return m_showOffset; }
     bool showAscii() const { return m_showAscii; }
     int bytesPerLine() const { return m_bytesPerLine; }
+    
+    // Language update
+    void updateLanguage();
 
 signals:
     void byteClicked(qint64 offset, int length);
@@ -88,6 +91,8 @@ private:
     QPushButton *m_findButton;
     QPushButton *m_findNextButton;
     QPushButton *m_findPrevButton;
+    QLabel *m_offsetLabel;
+    QLabel *m_bytesLabel;
     
     // Display options
     bool m_showAscii;

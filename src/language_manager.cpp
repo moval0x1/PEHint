@@ -119,9 +119,9 @@ bool LanguageManager::initialize(const QString &configPath)
         
         if (QFile::exists(fullPath)) {
             m_availableLanguages.append(langCode);
-            qDebug() << "✓ Found language file for" << langCode << "at:" << fullPath;
+            qDebug() << "Found language file for" << langCode << "at:" << fullPath;
         } else {
-            qDebug() << "✗ Language file not found for" << langCode;
+            qDebug() << "Language file not found for" << langCode;
         }
     }
     
@@ -139,7 +139,7 @@ bool LanguageManager::initialize(const QString &configPath)
             QString langCode = match.captured(1);
             if (!m_availableLanguages.contains(langCode)) {
                 m_availableLanguages.append(langCode);
-                qDebug() << "✓ Found additional language file for" << langCode << ":" << fileName;
+                qDebug() << "Found additional language file for" << langCode << ":" << fileName;
             }
         }
     }

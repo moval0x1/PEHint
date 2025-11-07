@@ -31,6 +31,7 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QApplication>
+#include <QScreen>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QClipboard>
@@ -49,6 +50,7 @@
 #include <QDir>
 #include <QTextStream>
 #include <QSysInfo>
+#include <QMimeData>
 
 /**
  * @brief Constructor for MainWindow
@@ -68,6 +70,9 @@ MainWindow::MainWindow(QWidget *parent)
     , m_contextMenu(nullptr)
 {
     
+    // Accept drag-and-drop operations for PE files
+    setAcceptDrops(true);
+
     // Initialize PE Parser - NEW ARCHITECTURE: Using modular PEParserNew
     // This replaces the old monolithic PEParser that violated SRP
     m_peParser = new PEParserNew(this);
@@ -193,9 +198,16 @@ MainWindow::MainWindow(QWidget *parent)
     setupContextMenu();
     setupHexViewer();
     
-    // Set window properties - optimized for laptop screens
-    this->setFixedSize(1200, 800);
+    // Set window properties - reasonable size
+    this->resize(1400, 900); // Reduced from 1800x1200 to more reasonable size
+    this->setMinimumSize(1200, 800); // Reduced minimum size
     this->setWindowTitle(LANG_PARAM("UI/window_title", "version", PEHINT_VERSION_STRING_FULL));
+    
+    // Center window on screen
+    QRect screenGeometry = QApplication::primaryScreen()->geometry();
+    int x = (screenGeometry.width() - this->width()) / 2;
+    int y = (screenGeometry.height() - this->height()) / 2;
+    this->move(x, y);
     
     // Set icon
     QIcon icon;
@@ -312,7 +324,7 @@ void MainWindow::setupMenus()
     fileMenu->addAction(exitAction);
     
     // Tools menu
-    QMenu *toolsMenu = menuBar()->addMenu("&Tools");
+    QMenu *toolsMenu = menuBar()->addMenu(LANG("UI/menu_tools"));
     
     QAction *refreshAction = new QAction(LANG("UI/menu_refresh"), this);
     refreshAction->setIcon(QIcon(":/images/imgs/refresh.png"));
@@ -324,7 +336,7 @@ void MainWindow::setupMenus()
     toolsMenu->addAction(hexViewerAction);
     
     // About menu
-    QMenu *aboutMenu = menuBar()->addMenu("&About");
+    QMenu *aboutMenu = menuBar()->addMenu(LANG("UI/menu_about"));
     
     QAction *aboutAction = new QAction(LANG("UI/menu_about"), this);
     aboutAction->setIcon(QIcon(":/images/imgs/about.ico"));
@@ -429,6 +441,50 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
     if (m_contextMenu) {
         m_contextMenu->exec(event->globalPos());
     }
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (!event->mimeData() || !event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+
+    for (const QUrl &url : event->mimeData()->urls()) {
+        if (url.isLocalFile() && !url.toLocalFile().isEmpty()) {
+            event->acceptProposedAction();
+            return;
+        }
+    }
+
+    event->ignore();
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    if (!event->mimeData() || !event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+
+    const QList<QUrl> urls = event->mimeData()->urls();
+    for (const QUrl &url : urls) {
+        if (!url.isLocalFile()) {
+            continue;
+        }
+
+        const QString filePath = url.toLocalFile();
+        if (filePath.isEmpty()) {
+            continue;
+        }
+
+        CrashHandler::getInstance().logInfo("MainWindow", QString("File dropped: %1").arg(filePath));
+        loadPEFile(filePath);
+        event->acceptProposedAction();
+        return;
+    }
+
+    event->ignore();
 }
 
 // Menu action handlers
@@ -653,6 +709,11 @@ void MainWindow::onLanguageChanged(const QString &language)
             }
         }
     }
+    
+    // Update all UI elements when language changes
+    updateMenuLanguage();
+    updateHexViewerLanguage();
+    updateWindowTitle();
 }
 
 void MainWindow::onCopyToClipboard()
@@ -889,6 +950,8 @@ void MainWindow::clearDisplay()
         m_uiManager->m_copyButton->setEnabled(false);
         m_uiManager->m_saveButton->setEnabled(false);
         if (m_uiManager->m_securityButton) m_uiManager->m_securityButton->setEnabled(false);
+        if (m_uiManager->m_expandAllButton) m_uiManager->m_expandAllButton->setEnabled(false);
+        if (m_uiManager->m_collapseAllButton) m_uiManager->m_collapseAllButton->setEnabled(false);
         
         // Also clear hex viewer highlights
         if (m_uiManager->m_hexViewer) {
@@ -924,6 +987,10 @@ void MainWindow::updateAnalysisDisplay()
     for (QTreeWidgetItem *item : items) {
         m_uiManager->m_peTree->addTopLevelItem(item);
     }
+
+    bool hasItems = !items.isEmpty();
+    if (m_uiManager->m_expandAllButton) m_uiManager->m_expandAllButton->setEnabled(hasItems);
+    if (m_uiManager->m_collapseAllButton) m_uiManager->m_collapseAllButton->setEnabled(hasItems);
     
     // Clear explanation text and show welcome message
     QMap<QString, QString> params;
@@ -1016,7 +1083,8 @@ void MainWindow::highlightSuspiciousSections(const SecurityAnalysisResult &resul
             m_uiManager->m_hexViewer->highlightRange(offset, size, highlightColor);
             
             // Add a tooltip or status message
-            QString statusMsg = LANG_PARAM("UI/security_suspicious_section_highlighted", "offset", QString("0x%1").arg(offset, 8, 16, QChar('0')));
+            QString hexOffset = QStringLiteral("0x") + QString::number(static_cast<quint64>(offset), 16).toUpper().rightJustified(8, '0');
+            QString statusMsg = LANG_PARAM("UI/security_suspicious_section_highlighted", "offset", hexOffset);
             statusBar()->showMessage(statusMsg, 5000);
             break; // Just highlight one for now
         }
@@ -1352,7 +1420,11 @@ void MainWindow::updateUILanguage()
     // Update tree headers
     if (m_uiManager && m_uiManager->m_peTree) {
         QStringList headers;
-        headers << LANG("UI/tree_header_field") << LANG("UI/tree_header_value") << LANG("UI/tree_header_offset") << LANG("UI/tree_header_size");
+        headers << LANG("UI/tree_header_field")
+                << LANG("UI/tree_header_value")
+                << LANG("UI/tree_header_offset")
+                << LANG("UI/tree_header_size")
+                << LANG("UI/tree_header_meaning");
         m_uiManager->m_peTree->setHeaderLabels(headers);
     }
     
@@ -1365,6 +1437,8 @@ void MainWindow::updateUILanguage()
     if (m_uiManager && m_uiManager->m_refreshButton) m_uiManager->m_refreshButton->setText(LANG("UI/button_refresh"));
     if (m_uiManager && m_uiManager->m_copyButton) m_uiManager->m_copyButton->setText(LANG("UI/button_copy"));
     if (m_uiManager && m_uiManager->m_saveButton) m_uiManager->m_saveButton->setText(LANG("UI/button_save"));
+    if (m_uiManager && m_uiManager->m_expandAllButton) m_uiManager->m_expandAllButton->setText(LANG("UI/context_expand_all"));
+    if (m_uiManager && m_uiManager->m_collapseAllButton) m_uiManager->m_collapseAllButton->setText(LANG("UI/context_collapse_all"));
 }
 
 void MainWindow::updateMenuLanguage()
@@ -1376,33 +1450,60 @@ void MainWindow::updateMenuLanguage()
         if (menuAction->menu()) {
             QMenu *menu = menuAction->menu();
             
-            // Update menu title based on text content
-            if (menu->title().contains("File", Qt::CaseInsensitive)) {
+            // Update menu title - use object name or text matching
+            QString menuTitle = menu->title();
+            QString cleanTitle = menuTitle.replace("&", "");
+            
+            if (cleanTitle.contains("File", Qt::CaseInsensitive) || 
+                cleanTitle.contains("Arquivo", Qt::CaseInsensitive)) {
                 menu->setTitle(LANG("UI/menu_file"));
-            } else if (menu->title().contains("Tools", Qt::CaseInsensitive)) {
-                menu->setTitle("&" + LANG("UI/menu_tools"));
-            } else if (menu->title().contains("About", Qt::CaseInsensitive)) {
-                menu->setTitle("&" + LANG("UI/menu_about"));
+            } else if (cleanTitle.contains("Tools", Qt::CaseInsensitive) || 
+                       cleanTitle.contains("Ferramentas", Qt::CaseInsensitive)) {
+                menu->setTitle(LANG("UI/menu_tools"));
+            } else if (cleanTitle.contains("About", Qt::CaseInsensitive) || 
+                       cleanTitle.contains("Sobre", Qt::CaseInsensitive)) {
+                menu->setTitle(LANG("UI/menu_about"));
             }
             
             // Update menu item texts
             for (QAction *action : menu->actions()) {
-                if (action->text().contains("Open", Qt::CaseInsensitive)) {
+                QString actionText = action->text();
+                QString cleanActionText = actionText.replace("&", "");
+                
+                if (cleanActionText.contains("Open", Qt::CaseInsensitive) || 
+                    cleanActionText.contains("Abrir", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_open"));
-                } else if (action->text().contains("Save Report", Qt::CaseInsensitive)) {
+                } else if (cleanActionText.contains("Save Report", Qt::CaseInsensitive) || 
+                           cleanActionText.contains("Salvar Relatório", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_save_report"));
-                } else if (action->text().contains("Exit", Qt::CaseInsensitive)) {
+                } else if (cleanActionText.contains("Exit", Qt::CaseInsensitive) || 
+                           cleanActionText.contains("Sair", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_exit"));
-                } else if (action->text().contains("Refresh", Qt::CaseInsensitive)) {
+                } else if (cleanActionText.contains("Refresh", Qt::CaseInsensitive) || 
+                           cleanActionText.contains("Atualizar", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_refresh"));
-                } else if (action->text().contains("Hex", Qt::CaseInsensitive)) {
+                } else if (cleanActionText.contains("Hex", Qt::CaseInsensitive) || 
+                           cleanActionText.contains("Opções Hex", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_hex_options"));
-                } else if (action->text().contains("PEHint", Qt::CaseInsensitive)) {
+                } else if (cleanActionText.contains("PEHint", Qt::CaseInsensitive) || 
+                           cleanActionText.contains("Sobre PEHint", Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_about"));
                 }
             }
         }
     }
+}
+
+void MainWindow::updateHexViewerLanguage()
+{
+    if (m_uiManager && m_uiManager->m_hexViewer) {
+        m_uiManager->m_hexViewer->updateLanguage();
+    }
+}
+
+void MainWindow::updateWindowTitle()
+{
+    this->setWindowTitle(LANG_PARAM("UI/window_title", "version", PEHINT_VERSION_STRING_FULL));
 }
 
 void MainWindow::updateLanguageMenu()
@@ -1411,12 +1512,14 @@ void MainWindow::updateLanguageMenu()
     QMenu *toolsMenu = nullptr;
     QMenu *languageMenu = nullptr;
     
-    // Find Tools menu
+    // Find Tools menu - check both English and Portuguese
     for (QAction *action : menuBar()->actions()) {
         if (action->menu()) {
             QString menuTitle = action->menu()->title();
             QString cleanTitle = menuTitle.replace("&", "");
-            if (cleanTitle == "Tools") {
+            if (cleanTitle == "Tools" || cleanTitle == "Ferramentas" || 
+                cleanTitle.contains("Tools", Qt::CaseInsensitive) || 
+                cleanTitle.contains("Ferramentas", Qt::CaseInsensitive)) {
                 toolsMenu = action->menu();
                 break;
             }
@@ -1455,15 +1558,15 @@ void MainWindow::updateLanguageMenu()
             if (!foundCurrentLanguage) {
                 langAction->setChecked(true);
                 foundCurrentLanguage = true;
-                qDebug() << "✓ Checked action for current language:" << langCode;
+                qDebug() << "Checked action for current language:" << langCode;
             } else {
                 // This shouldn't happen, but just in case
                 langAction->setChecked(false);
-                qDebug() << "⚠ Unchecked duplicate action for:" << langCode;
+                qDebug() << "Warning: Unchecked duplicate action for:" << langCode;
             }
         } else {
             langAction->setChecked(false);
-            qDebug() << "✗ Unchecked action for:" << langCode;
+            qDebug() << "Unchecked action for:" << langCode;
         }
     }
     

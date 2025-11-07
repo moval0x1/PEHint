@@ -19,6 +19,7 @@
 #include "language_manager.h"
 #include <QApplication>
 #include <QIcon>
+#include <QSplitter>
 
 /**
  * @brief Constructor for UIManager
@@ -40,6 +41,8 @@ UIManager::UIManager(MainWindow *parent)
     , m_refreshButton(nullptr)
     , m_copyButton(nullptr)
     , m_saveButton(nullptr)
+    , m_expandAllButton(nullptr)
+    , m_collapseAllButton(nullptr)
     , m_peTree(nullptr)
     , m_fieldExplanationText(nullptr)
     , m_contextMenu(nullptr)
@@ -69,6 +72,11 @@ void UIManager::setupMainUI(QWidget *centralWidget)
 {
     // Create the main vertical layout that will contain all UI sections
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
+    mainLayout->setSpacing(8);
+    
+    // Set size policy for central widget to allow proper resizing
+    centralWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     
     // REFACTORING: Each section is now handled by a focused method
     // This makes the code easier to read, understand, and maintain
@@ -80,8 +88,9 @@ void UIManager::setupMainUI(QWidget *centralWidget)
     // Create hex viewer component and add it to the layout
     m_hexViewer = new HexViewer(centralWidget);
     m_hexViewer->setVisible(true); // Make hex viewer visible
-    m_hexViewer->setMinimumHeight(120); // Smaller, more compact hex viewer
-    mainLayout->addWidget(m_hexViewer);
+    m_hexViewer->setMinimumHeight(200); // Reduced from 250 to allow better resizing
+    m_hexViewer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    mainLayout->addWidget(m_hexViewer, 0); // Add with stretch factor 0 so it doesn't take too much space
 }
 
 /**
@@ -195,7 +204,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     // Create PE Structure Tree with comprehensive columns
     m_peTree = new QTreeWidget();
     QStringList headers;
-    headers << LANG("UI/tree_header_field") << LANG("UI/tree_header_value") << LANG("UI/tree_header_offset") << LANG("UI/tree_header_size");
+    headers << LANG("UI/tree_header_field") << LANG("UI/tree_header_value") << LANG("UI/tree_header_offset") << LANG("UI/tree_header_size") << LANG("UI/tree_header_meaning");
     m_peTree->setHeaderLabels(headers);
     m_peTree->setAlternatingRowColors(true); // Improves readability
     
@@ -238,60 +247,62 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     // Set cursor to indicate clickable items
     m_peTree->setCursor(Qt::PointingHandCursor);
     
-    // Set column widths for optimal display
-    m_peTree->setColumnWidth(0, 200); // Field name
-    m_peTree->setColumnWidth(1, 300); // Field value
-    m_peTree->setColumnWidth(2, 100); // Field offset
+    // Set column widths for optimal display - increased field name width significantly to show full names
+    m_peTree->setColumnWidth(0, 320); // Field name (increased from 250 to show full names like "COM+ Runtime Header Directory RVA")
+    m_peTree->setColumnWidth(1, 150); // Field value
+    m_peTree->setColumnWidth(2, 110); // Field offset
     m_peTree->setColumnWidth(3, 80);  // Field size
+    m_peTree->setColumnWidth(4, 400); // Field meaning (wider for longer meanings)
     
-    mainLayout->addWidget(m_peTree);
+    // Set minimum height for tree to show more fields
+    m_peTree->setMinimumHeight(300); // Reduced from 600 to allow better resizing
+    // Set size policy to allow proper resizing
+    m_peTree->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_peTree->setMinimumWidth(600); // Reduced from 800 to prevent layout breaking
     
-    // Add help text below the tree
-    QLabel *helpLabel = new QLabel(LANG("UI/help_click_tip"));
-    helpLabel->setStyleSheet(
-        "QLabel { "
-        "   color: #0078d4; "
-        "   font-size: 10px; "
-        "   font-style: italic; "
-        "   padding: 6px; "
-        "   background-color: #e3f2fd; "
-        "   border: 1px solid #bbdefb; "
-        "   border-radius: 4px; "
-        "   margin: 6px 0px; "
-        "   border-left: 3px solid #0078d4; "
-        "   transition: all 0.3s ease; "
-        "} "
-        "QLabel:hover { "
-        "   background-color: #bbdefb; "
-        "   border-color: #0078d4; "
-        "   transform: translateY(-1px); "
-        "   box-shadow: 0 2px 6px rgba(0, 120, 212, 0.2); "
-        "}"
-    );
-    helpLabel->setAlignment(Qt::AlignCenter);
-    mainLayout->addWidget(helpLabel);
+    // Create a splitter to allow resizing between tree and explanation
+    QSplitter *treeSplitter = new QSplitter(Qt::Vertical);
+    treeSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    treeSplitter->setChildrenCollapsible(false); // Prevent collapsing sections completely
+    treeSplitter->setHandleWidth(5); // Make splitter handle more visible
+    
+    // Create a container widget for the tree and help label
+    QWidget *treeContainer = new QWidget();
+    treeContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout *treeContainerLayout = new QVBoxLayout(treeContainer);
+    treeContainerLayout->setContentsMargins(0, 0, 0, 0);
+    treeContainerLayout->setSpacing(0);
+    
+    QWidget *treeControlsWidget = new QWidget(treeContainer);
+    QHBoxLayout *treeControlsLayout = new QHBoxLayout(treeControlsWidget);
+    treeControlsLayout->setContentsMargins(0, 0, 0, 4);
+    treeControlsLayout->setSpacing(6);
+
+    treeControlsLayout->addStretch();
+
+    m_expandAllButton = new QPushButton(LANG("UI/context_expand_all"));
+    m_expandAllButton->setObjectName("expandAllButton");
+    m_expandAllButton->setEnabled(false);
+    m_expandAllButton->setCursor(Qt::PointingHandCursor);
+    m_expandAllButton->setStyleSheet("QPushButton { padding: 4px 10px; font-size: 10px; } QPushButton:disabled { color: #999; }");
+    treeControlsLayout->addWidget(m_expandAllButton);
+
+    m_collapseAllButton = new QPushButton(LANG("UI/context_collapse_all"));
+    m_collapseAllButton->setObjectName("collapseAllButton");
+    m_collapseAllButton->setEnabled(false);
+    m_collapseAllButton->setCursor(Qt::PointingHandCursor);
+    m_collapseAllButton->setStyleSheet("QPushButton { padding: 4px 10px; font-size: 10px; } QPushButton:disabled { color: #999; }");
+    treeControlsLayout->addWidget(m_collapseAllButton);
+
+    treeContainerLayout->addWidget(treeControlsWidget);
+    treeContainerLayout->addWidget(m_peTree, 1); // Tree takes all available space
     
     // Create Field Explanation Text area
-    m_fieldExplanationText = new QTextEdit();
-    m_fieldExplanationText->setMaximumHeight(250); // Bigger for better readability
-    m_fieldExplanationText->setReadOnly(true);     // User can't edit explanations
-    m_fieldExplanationText->setStyleSheet(
-        "QTextEdit { "
-        "   font-size: 11px; "
-        "   background-color: #f8f8f8; "
-        "   border: 1px solid #ddd; "
-        "   border-radius: 4px; "
-        "   padding: 8px; "
-        "   border-left: 4px solid #0078d4; "
-        "} "
-        "QTextEdit:focus { "
-        "   background-color: #ffffff; "
-        "   border: 1px solid #0078d4; "
-        "   border-left: 4px solid #0078d4; "
-        "   box-shadow: 0 0 5px rgba(0, 120, 212, 0.3); "
-        "}"
-    );
-    m_fieldExplanationText->setPlaceholderText(LANG("UI/placeholder_explanation"));
+    QWidget *explanationContainer = new QWidget();
+    explanationContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    QVBoxLayout *explanationLayout = new QVBoxLayout(explanationContainer);
+    explanationLayout->setContentsMargins(0, 0, 0, 0);
+    explanationLayout->setSpacing(4);
     
     // Add a small info label above the explanation area
     QLabel *explanationLabel = new QLabel(LANG("UI/explanation_label"));
@@ -315,9 +326,50 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
         "   box-shadow: 0 3px 6px rgba(0, 120, 212, 0.25); "
         "}"
     );
-    mainLayout->addWidget(explanationLabel);
+    explanationLayout->addWidget(explanationLabel);
     
-    mainLayout->addWidget(m_fieldExplanationText);
+    m_fieldExplanationText = new QTextEdit();
+    m_fieldExplanationText->setMinimumHeight(100); // Reduced further to allow better resizing
+    m_fieldExplanationText->setMaximumHeight(250); // Reduced maximum to prevent layout issues
+    m_fieldExplanationText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    m_fieldExplanationText->setReadOnly(true);     // User can't edit explanations
+    m_fieldExplanationText->setStyleSheet(
+        "QTextEdit { "
+        "   font-size: 11px; "
+        "   background-color: #f8f8f8; "
+        "   border: 1px solid #ddd; "
+        "   border-radius: 4px; "
+        "   padding: 8px; "
+        "   border-left: 4px solid #0078d4; "
+        "} "
+        "QTextEdit:focus { "
+        "   background-color: #ffffff; "
+        "   border: 1px solid #0078d4; "
+        "   border-left: 4px solid #0078d4; "
+        "   box-shadow: 0 0 5px rgba(0, 120, 212, 0.3); "
+        "}"
+    );
+    m_fieldExplanationText->setPlaceholderText(LANG("UI/placeholder_explanation"));
+    explanationLayout->addWidget(m_fieldExplanationText, 1);
+    
+    // Add containers to splitter
+    treeSplitter->addWidget(treeContainer);
+    treeSplitter->addWidget(explanationContainer);
+    
+    // Set splitter sizes: 75% for tree, 25% for explanation
+    // This gives more space to the parsing tree to show all fields
+    // Use proportional sizes that work with smaller windows
+    treeSplitter->setSizes({600, 150});
+    treeSplitter->setStretchFactor(0, 3); // Tree gets 3x more space (reduced from 4)
+    treeSplitter->setStretchFactor(1, 1);  // Explanation gets 1x space
+    
+    // Set minimum sizes to prevent layout breaking on resize
+    // Ensure splitter maintains proper proportions - reduced to allow smaller windows
+    treeContainer->setMinimumSize(600, 200); // Reduced minimum size for tree container
+    explanationContainer->setMinimumSize(600, 100); // Reduced minimum size for explanation container
+    
+    // Add splitter to main layout with stretch factor so it takes available space
+    mainLayout->addWidget(treeSplitter, 1); // Stretch factor 1 means it takes available space
 }
 
 /**
@@ -396,6 +448,12 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     connect(m_refreshButton, &QPushButton::clicked, mainWindow, &MainWindow::on_action_Refresh_triggered);
     connect(m_copyButton, &QPushButton::clicked, mainWindow, &MainWindow::onCopyToClipboard);
     connect(m_saveButton, &QPushButton::clicked, mainWindow, &MainWindow::on_action_Save_Report_triggered);
+    if (m_expandAllButton) {
+        connect(m_expandAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onExpandAll);
+    }
+    if (m_collapseAllButton) {
+        connect(m_collapseAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onCollapseAll);
+    }
     // connect(m_securityButton, &QPushButton::clicked, mainWindow, &MainWindow::onSecurityAnalysis); // HIDDEN
     connect(m_peTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onTreeItemClicked);
     

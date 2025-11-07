@@ -522,6 +522,13 @@
       "common_flags": "0x20 (code), 0x40 (data), 0x80 (BSS), 0x20000000 (executable), 0x80000000 (readable), 0x40000000 (writable)",
       "security_notes": "CRITICAL: Executable data sections (0x40 + 0x20000000) are highly suspicious - indicates code injection. Writable code sections (0x20 + 0x40000000) suggest self-modifying code or malware."
     },
+    "Section": {
+      "title": "PE Section",
+      "description": "A section in a Portable Executable file represents a logical division of the executable's content. Each section contains specific types of data (code, initialized data, resources, etc.) and has defined characteristics that determine how it's loaded into memory and what operations are allowed.",
+      "purpose": "Organize executable content into logical, loadable segments with specific permissions and attributes",
+      "note": "Common section names include .text (executable code), .data (initialized data), .rdata (read-only data), .rsrc (resources), .reloc (relocations), .idata (imports), and .edata (exports)",
+      "security_notes": "Critical for security analysis - check section characteristics for suspicious permissions (especially W+X combinations), look for hidden or obfuscated sections, verify section alignment, and examine unusual section names that might indicate packing or obfuscation."
+    },
     "VirtualAddress_DataDir": {
       "title": "Data Directory RVA",
       "description": "The relative virtual address (RVA) of the data directory entry.",
@@ -630,19 +637,236 @@
       "purpose": "Locate export ordinal mapping",
       "security_notes": "Verify ordinals are within valid range."
     },
-    "SectionName": {
-      "title": "Section Name",
-      "description": "An 8-character name that identifies the section. Common names include .text (code), .data (data), .rdata (read-only data), .idata (imports), .edata (exports), .rsrc (resources), .reloc (relocations).",
-      "purpose": "Identify section purpose and content",
-      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
-      "security_notes": "Suspicious section names: UPX0/UPX1 (packed), .aspack, .vmp0 (VMProtect), .themida. Names incomuns podem indicar ofuscação ou malware."
+    "NT Headers": {
+      "title": "NT Headers",
+      "description": "The NT Headers (also known as PE Headers) contain the core information about the Portable Executable file format. This section includes the PE signature, File Header, Optional Header, and Section Headers.",
+      "purpose": "Provide the essential PE file structure information for the Windows loader",
+      "note": "NT Headers structure: PE Signature (4 bytes) + File Header (20 bytes) + Optional Header (variable size) + Section Headers (40 bytes each)",
+      "security_notes": "The NT Headers are critical for understanding the executable's structure. Malware often modifies these headers to hide malicious behavior or evade detection. Pay special attention to the EntryPoint, ImageBase, and DllCharacteristics fields in the Optional Header."
     },
-    "VirtualSize": {
-      "title": "Virtual Size",
-      "description": "The size of the section when loaded into memory. This may be different from the raw data size due to alignment requirements.",
-      "purpose": "Define memory allocation requirements",
-      "note": "Must be aligned to memory alignment boundary",
-      "security_notes": "Suspicious if virtual size is much larger than raw size - could indicate uninitialized data section used for code injection. Zero virtual size with non-zero raw size is highly suspicious."
+    "Export Directory RVA": {
+      "title": "Export Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Export Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Export Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Export Directory Size": {
+      "title": "Export Directory Size",
+      "description": "The Size field specifies the size in bytes of the Export Directory structure.",
+      "purpose": "This field indicates how many bytes the Export Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Import Directory RVA": {
+      "title": "Import Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Import Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Import Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Import Directory Size": {
+      "title": "Import Directory Size",
+      "description": "The Size field specifies the size in bytes of the Import Directory structure.",
+      "purpose": "This field indicates how many bytes the Import Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Resource Directory RVA": {
+      "title": "Resource Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Resource Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Resource Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Resource Directory Size": {
+      "title": "Resource Directory Size",
+      "description": "The Size field specifies the size in bytes of the Resource Directory structure.",
+      "purpose": "This field indicates how many bytes the Resource Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Exception Directory RVA": {
+      "title": "Exception Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Exception Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Exception Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Exception Directory Size": {
+      "title": "Exception Directory Size",
+      "description": "The Size field specifies the size in bytes of the Exception Directory structure.",
+      "purpose": "This field indicates how many bytes the Exception Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Certificate Directory RVA": {
+      "title": "Certificate Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Certificate Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Certificate Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Certificate Directory Size": {
+      "title": "Certificate Directory Size",
+      "description": "The Size field specifies the size in bytes of the Certificate Directory structure.",
+      "purpose": "This field indicates how many bytes the Certificate Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Base Relocation Directory RVA": {
+      "title": "Base Relocation Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Base Relocation Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Base Relocation Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Base Relocation Directory Size": {
+      "title": "Base Relocation Directory Size",
+      "description": "The Size field specifies the size in bytes of the Base Relocation Directory structure.",
+      "purpose": "This field indicates how many bytes the Base Relocation Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Debug Directory RVA": {
+      "title": "Debug Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Debug Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Debug Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Debug Directory Size": {
+      "title": "Debug Directory Size",
+      "description": "The Size field specifies the size in bytes of the Debug Directory structure.",
+      "purpose": "This field indicates how many bytes the Debug Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Architecture Directory RVA": {
+      "title": "Architecture Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Architecture Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Architecture Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Architecture Directory Size": {
+      "title": "Architecture Directory Size",
+      "description": "The Size field specifies the size in bytes of the Architecture Directory structure.",
+      "purpose": "This field indicates how many bytes the Architecture Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Global Pointer Directory RVA": {
+      "title": "Global Pointer Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Global Pointer Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Global Pointer Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Global Pointer Directory Size": {
+      "title": "Global Pointer Directory Size",
+      "description": "The Size field specifies the size in bytes of the Global Pointer Directory structure.",
+      "purpose": "This field indicates how many bytes the Global Pointer Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "TLS Directory RVA": {
+      "title": "TLS Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the TLS Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the TLS Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "TLS Directory Size": {
+      "title": "TLS Directory Size",
+      "description": "The Size field specifies the size in bytes of the TLS Directory structure.",
+      "purpose": "This field indicates how many bytes the TLS Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Load Configuration Directory RVA": {
+      "title": "Load Configuration Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Load Configuration Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Load Configuration Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Load Configuration Directory Size": {
+      "title": "Load Configuration Directory Size",
+      "description": "The Size field specifies the size in bytes of the Load Configuration Directory structure.",
+      "purpose": "This field indicates how many bytes the Load Configuration Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Bound Import Directory RVA": {
+      "title": "Bound Import Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Bound Import Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Bound Import Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Bound Import Directory Size": {
+      "title": "Bound Import Directory Size",
+      "description": "The Size field specifies the size in bytes of the Bound Import Directory structure.",
+      "purpose": "This field indicates how many bytes the Bound Import Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Import Address Table Directory RVA": {
+      "title": "Import Address Table Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Import Address Table Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Import Address Table Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Import Address Table Directory Size": {
+      "title": "Import Address Table Directory Size",
+      "description": "The Size field specifies the size in bytes of the Import Address Table Directory structure.",
+      "purpose": "This field indicates how many bytes the Import Address Table Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Delay Import Directory RVA": {
+      "title": "Delay Import Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Delay Import Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Delay Import Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Delay Import Directory Size": {
+      "title": "Delay Import Directory Size",
+      "description": "The Size field specifies the size in bytes of the Delay Import Directory structure.",
+      "purpose": "This field indicates how many bytes the Delay Import Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "COM+ Runtime Header Directory RVA": {
+      "title": "COM+ Runtime Header Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the COM+ Runtime Header Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the COM+ Runtime Header Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "COM+ Runtime Header Directory Size": {
+      "title": "COM+ Runtime Header Directory Size",
+      "description": "The Size field specifies the size in bytes of the COM+ Runtime Header Directory structure.",
+      "purpose": "This field indicates how many bytes the COM+ Runtime Header Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "Reserved Directory RVA": {
+      "title": "Reserved Directory RVA",
+      "description": "The Relative Virtual Address (RVA) field specifies the virtual address where the Reserved Directory data structure begins in memory. RVA is an offset relative to the image base address.",
+      "purpose": "This field points to the location of the Reserved Directory structure within the loaded image. If the value is 0, the directory is not present in this PE file.",
+      "note": "RVA values are relative to the ImageBase. To convert to a file offset, you need to find which section contains this RVA and calculate: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verify that RVA points to valid section content, not to overlay or invalid memory regions."
+    },
+    "Reserved Directory Size": {
+      "title": "Reserved Directory Size",
+      "description": "The Size field specifies the size in bytes of the Reserved Directory structure.",
+      "purpose": "This field indicates how many bytes the Reserved Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
+      "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
+      "security_notes": "Unusual sizes might indicate data injection or manipulation."
     }
   },
   "security_highlights": {

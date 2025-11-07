@@ -221,7 +221,7 @@ quint32 PEImportExportParser::rvaToFileOffset(quint32 rva, const QList<const IMA
     // Find the section that contains this RVA
     for (const IMAGE_SECTION_HEADER *section : sections) {
         quint32 sectionStart = section->VirtualAddress;
-        quint32 sectionEnd = sectionStart + section->VirtualSize;
+        quint32 sectionEnd = sectionStart + section->getVirtualSize();
         
         if (rva >= sectionStart && rva < sectionEnd) {
             // Calculate file offset

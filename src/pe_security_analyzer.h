@@ -46,7 +46,8 @@ class SecurityConfigManager;
 // Forward declarations to avoid circular dependencies
 struct IMAGE_DOS_HEADER;
 struct IMAGE_FILE_HEADER;
-struct IMAGE_OPTIONAL_HEADER;
+struct IMAGE_OPTIONAL_HEADER32;
+struct IMAGE_OPTIONAL_HEADER64;
 struct IMAGE_SECTION_HEADER;
 
 /**

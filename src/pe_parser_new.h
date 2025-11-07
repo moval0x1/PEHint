@@ -241,6 +241,18 @@ public:
      */
     void setLanguage(const QString &language);
     
+    /**
+     * @brief Gets human-readable meaning for a field value
+     * @param fieldName Name of the field
+     * @param value String representation of the field value
+     * @return Human-readable meaning of the value, or empty string if no specific meaning
+     * 
+     * This method interprets field values and provides human-readable meanings,
+     * such as converting machine codes to architecture names, timestamps to dates,
+     * and decoding flag values.
+     */
+    QString getFieldMeaning(const QString &fieldName, const QString &value);
+    
     // Tree building method (for UI compatibility)
     
     /**
@@ -437,6 +449,13 @@ private:
     void addDataDirectoryFields(QTreeWidgetItem *parent);
     
     /**
+     * @brief Adds Rich Header fields to a tree item
+     * @param parent Parent tree item
+     * @param richOffset File offset of the Rich Header
+     */
+    void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
+    
+    /**
      * @brief Adds a field to a tree item
      * @param parent Parent tree item
      * @param name Field name
@@ -450,6 +469,7 @@ private:
     
     QFile m_file;                    ///< File handle for reading PE data
     QByteArray m_fileData;           ///< Raw file data in memory
+    QByteArray m_optionalHeaderBuffer; ///< Buffer for optional header when reading from file
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
     
