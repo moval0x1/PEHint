@@ -26,6 +26,8 @@ HexViewer::HexViewer(QWidget *parent)
     , m_bytesPerLine(16)
     , m_currentSearchIndex(-1)
     , m_lastSearchCaseSensitive(false)
+    , m_offsetLabel(nullptr)
+    , m_bytesLabel(nullptr)
 {
     setupUI();
     setupConnections();
@@ -43,7 +45,7 @@ void HexViewer::setupUI()
     QHBoxLayout *controlLayout = new QHBoxLayout();
     
     // Offset control
-    QLabel *offsetLabel = new QLabel(LANG("UI/hex_go_to_offset"), this);
+    m_offsetLabel = new QLabel(LANG("UI/hex_go_to_offset"), this);
     m_offsetSpinBox = new QSpinBox(this);
     m_offsetSpinBox->setRange(0, 0);
     m_offsetSpinBox->setPrefix(LANG("UI/hex_prefix"));
@@ -51,7 +53,7 @@ void HexViewer::setupUI()
     m_offsetSpinBox->setMaximumWidth(120);
     
     // Bytes per line control
-    QLabel *bytesLabel = new QLabel(LANG("UI/hex_bytes_per_line"), this);
+    m_bytesLabel = new QLabel(LANG("UI/hex_bytes_per_line"), this);
     m_bytesPerLineSpinBox = new QSpinBox(this);
     m_bytesPerLineSpinBox->setRange(8, 64);
     m_bytesPerLineSpinBox->setValue(16);
@@ -83,9 +85,9 @@ void HexViewer::setupUI()
     m_findPrevButton->setMaximumWidth(30);
     m_findPrevButton->setEnabled(false);
     
-    controlLayout->addWidget(offsetLabel);
+    controlLayout->addWidget(m_offsetLabel);
     controlLayout->addWidget(m_offsetSpinBox);
-    controlLayout->addWidget(bytesLabel);
+    controlLayout->addWidget(m_bytesLabel);
     controlLayout->addWidget(m_bytesPerLineSpinBox);
     controlLayout->addStretch();
     controlLayout->addWidget(m_showOffsetButton);
@@ -338,7 +340,9 @@ QString HexViewer::formatAsciiLine(const QByteArray &lineData)
 
 QString HexViewer::formatOffset(qint64 offset)
 {
-    return QString("%1").arg(offset, 8, 16, QChar('0')).toUpper();
+    QString digits = QString::number(static_cast<quint64>(offset), 16).toUpper();
+    digits = digits.rightJustified(8, '0');
+    return QStringLiteral("0x") + digits;
 }
 
 QByteArray HexViewer::getLineData(qint64 offset, int maxBytes)
@@ -952,4 +956,35 @@ void HexViewer::focusOutEvent(QFocusEvent *event)
     
     // Call the parent implementation
     QWidget::focusOutEvent(event);
+}
+
+void HexViewer::updateLanguage()
+{
+    // Update button texts
+    if (m_showOffsetButton) {
+        m_showOffsetButton->setText(LANG("UI/hex_show_offset"));
+    }
+    if (m_showAsciiButton) {
+        m_showAsciiButton->setText(LANG("UI/hex_show_ascii"));
+    }
+    if (m_copyButton) {
+        m_copyButton->setText(LANG("UI/button_copy_hex"));
+    }
+    if (m_findButton) {
+        m_findButton->setText(LANG("UI/button_find"));
+    }
+    if (m_findNextButton) {
+        m_findNextButton->setToolTip(LANG("UI/hex_search_find_next"));
+    }
+    if (m_findPrevButton) {
+        m_findPrevButton->setToolTip(LANG("UI/hex_search_find_previous"));
+    }
+    
+    // Update labels using stored member variables
+    if (m_offsetLabel) {
+        m_offsetLabel->setText(LANG("UI/hex_go_to_offset"));
+    }
+    if (m_bytesLabel) {
+        m_bytesLabel->setText(LANG("UI/hex_bytes_per_line"));
+    }
 }

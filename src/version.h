@@ -3,12 +3,12 @@
 
 // Version information - update this single file for all version changes
 #define PEHINT_VERSION_MAJOR 0
-#define PEHINT_VERSION_MINOR 3
-#define PEHINT_VERSION_PATCH 1
+#define PEHINT_VERSION_MINOR 4
+#define PEHINT_VERSION_PATCH 0
 
 // String versions
-#define PEHINT_VERSION_STRING "0.3.1"
-#define PEHINT_VERSION_STRING_FULL "v0.3.1"
+#define PEHINT_VERSION_STRING "0.4.0"
+#define PEHINT_VERSION_STRING_FULL "v0.4.0"
 
 // Build information
 #define PEHINT_BUILD_DATE __DATE__

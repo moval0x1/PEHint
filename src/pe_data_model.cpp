@@ -11,9 +11,8 @@ PEDataModel::PEDataModel()
     // Initialize all data containers
     m_sections.clear();
     m_imports.clear();
-    m_importDetails.clear();
-    m_exports.clear();
-    m_exportDetails.clear();
+    m_importFunctionDetails.clear();
+    m_exportFunctions.clear();
     m_resourceTypes.clear();
     m_resources.clear();
     m_debugInfo.clear();
@@ -116,9 +115,14 @@ void PEDataModel::setImports(const QStringList &imports)
     m_imports = imports;
 }
 
-void PEDataModel::setImportDetails(const QMap<QString, QList<QString>> &details)
+void PEDataModel::setImportFunctions(const QMap<QString, QList<ImportFunctionEntry>> &details)
 {
-    m_importDetails = details;
+    m_importFunctionDetails = details;
+}
+
+const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& PEDataModel::getImportFunctions() const
+{
+    return m_importFunctionDetails;
 }
 
 QStringList PEDataModel::getImports() const
@@ -126,29 +130,14 @@ QStringList PEDataModel::getImports() const
     return m_imports;
 }
 
-QMap<QString, QList<QString>> PEDataModel::getImportDetails() const
+void PEDataModel::setExportFunctions(const QList<ExportFunctionEntry> &functions)
 {
-    return m_importDetails;
+    m_exportFunctions = functions;
 }
 
-void PEDataModel::setExports(const QStringList &exports)
+const QList<PEDataModel::ExportFunctionEntry>& PEDataModel::getExportFunctions() const
 {
-    m_exports = exports;
-}
-
-void PEDataModel::setExportDetails(const QStringList &details)
-{
-    m_exportDetails = details;
-}
-
-QStringList PEDataModel::getExports() const
-{
-    return m_exports;
-}
-
-QStringList PEDataModel::getExportDetails() const
-{
-    return m_exportDetails;
+    return m_exportFunctions;
 }
 
 // Resources
@@ -446,9 +435,8 @@ void PEDataModel::clear()
     m_optionalHeader = nullptr;
     m_sections.clear();
     m_imports.clear();
-    m_importDetails.clear();
-    m_exports.clear();
-    m_exportDetails.clear();
+    m_importFunctionDetails.clear();
+    m_exportFunctions.clear();
     m_resourceTypes.clear();
     m_resources.clear();
     m_debugInfo.clear();

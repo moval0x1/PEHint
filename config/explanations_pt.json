@@ -426,6 +426,13 @@
       "common_flags": "0x20 (código), 0x40 (dados), 0x80 (BSS), 0x20000000 (executável), 0x80000000 (legível), 0x40000000 (gravável)",
       "security_notes": "CRÍTICO: Seções de dados executáveis (0x40 + 0x20000000) são altamente suspeitas - indica injeção de código. Seções de código graváveis (0x20 + 0x40000000) sugerem código auto-modificável ou malware."
     },
+    "Section": {
+      "title": "Seção PE",
+      "description": "Uma seção em um arquivo Executável Portável representa uma divisão lógica do conteúdo do executável. Cada seção contém tipos específicos de dados (código, dados inicializados, recursos, etc.) e tem características definidas que determinam como é carregada na memória e quais operações são permitidas.",
+      "purpose": "Organizar o conteúdo executável em segmentos lógicos e carregáveis com permissões e atributos específicos",
+      "note": "Nomes comuns de seção incluem .text (código executável), .data (dados inicializados), .rdata (dados somente leitura), .rsrc (recursos), .reloc (relocações), .idata (importações) e .edata (exportações)",
+      "security_notes": "Crítico para análise de segurança - verifique as características das seções para permissões suspeitas (especialmente combinações W+X), procure por seções ocultas ou ofuscadas, verifique o alinhamento das seções e examine nomes de seção incomuns que possam indicar empacotamento ou ofuscação."
+    },
     "VirtualAddress_DataDir": {
       "title": "RVA do Diretório de Dados",
       "description": "O endereço virtual relativo (RVA) da entrada do diretório de dados.",
@@ -534,19 +541,236 @@
       "purpose": "Localizar mapeamento ordinal de exportação",
       "security_notes": "Verifique se os ordinais estão dentro do intervalo válido."
     },
-    "SectionName": {
-      "title": "Nome da Seção",
-      "description": "Um nome de 8 caracteres que identifica a seção. Nomes comuns incluem .text (código), .data (dados), .rdata (dados somente leitura), .idata (importações), .edata (exportações), .rsrc (recursos), .reloc (relocações).",
-      "purpose": "Identificar o propósito e o conteúdo da seção",
-      "common_names": ".text, .data, .rdata, .idata, .edata, .rsrc, .reloc, .pdata, .xdata",
-      "security_notes": "Nomes de seção suspeitos: UPX0/UPX1 (empacotado), .aspack, .vmp0 (VMProtect), .themida. Nomes incomuns podem indicar ofuscação ou malware."
+    "NT Headers": {
+      "title": "Cabeçalhos NT",
+      "description": "Os Cabeçalhos NT (também conhecidos como Cabeçalhos PE) contêm as informações principais sobre o formato de arquivo Executável Portável. Esta seção inclui a assinatura PE, Cabeçalho do Arquivo, Cabeçalho Opcional e Cabeçalhos de Seção.",
+      "purpose": "Fornecer as informações essenciais da estrutura do arquivo PE para o carregador do Windows",
+      "note": "Estrutura dos Cabeçalhos NT: Assinatura PE (4 bytes) + Cabeçalho do Arquivo (20 bytes) + Cabeçalho Opcional (tamanho variável) + Cabeçalhos de Seção (40 bytes cada)",
+      "security_notes": "Os Cabeçalhos NT são críticos para entender a estrutura do executável. Malware frequentemente modifica esses cabeçalhos para ocultar comportamento malicioso ou evitar detecção. Preste atenção especial aos campos EntryPoint, ImageBase e DllCharacteristics no Cabeçalho Opcional."
     },
-    "VirtualSize": {
-      "title": "Tamanho Virtual",
-      "description": "O tamanho da seção quando carregada na memória. Pode ser diferente do tamanho dos dados brutos devido aos requisitos de alinhamento.",
-      "purpose": "Definir requisitos de alocação de memória",
-      "note": "Deve ser alinhado ao limite de alinhamento de memória",
-      "security_notes": "Suspeito se o tamanho virtual for muito maior que o tamanho bruto - pode indicar seção de dados não inicializada usada para injeção de código. Tamanho virtual zero com tamanho bruto não-zero é altamente suspeito."
+    "Export Directory RVA": {
+      "title": "RVA do Diretório de Exportação",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Exportação começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Exportação dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Export Directory Size": {
+      "title": "Tamanho do Diretório de Exportação",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Exportação.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Exportação ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Import Directory RVA": {
+      "title": "RVA do Diretório de Importação",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Importação começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Importação dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Import Directory Size": {
+      "title": "Tamanho do Diretório de Importação",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Importação.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Importação ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Resource Directory RVA": {
+      "title": "RVA do Diretório de Recursos",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Recursos começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Recursos dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Resource Directory Size": {
+      "title": "Tamanho do Diretório de Recursos",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Recursos.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Recursos ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Exception Directory RVA": {
+      "title": "RVA do Diretório de Exceções",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Exceções começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Exceções dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Exception Directory Size": {
+      "title": "Tamanho do Diretório de Exceções",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Exceções.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Exceções ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Certificate Directory RVA": {
+      "title": "RVA do Diretório de Certificados",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Certificados começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Certificados dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Certificate Directory Size": {
+      "title": "Tamanho do Diretório de Certificados",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Certificados.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Certificados ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Base Relocation Directory RVA": {
+      "title": "RVA do Diretório de Relocação Base",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Relocação Base começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Relocação Base dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Base Relocation Directory Size": {
+      "title": "Tamanho do Diretório de Relocação Base",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Relocação Base.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Relocação Base ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Debug Directory RVA": {
+      "title": "RVA do Diretório de Depuração",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Depuração começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Depuração dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Debug Directory Size": {
+      "title": "Tamanho do Diretório de Depuração",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Depuração.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Depuração ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Architecture Directory RVA": {
+      "title": "RVA do Diretório de Arquitetura",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Arquitetura começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Arquitetura dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Architecture Directory Size": {
+      "title": "Tamanho do Diretório de Arquitetura",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Arquitetura.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Arquitetura ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Global Pointer Directory RVA": {
+      "title": "RVA do Diretório de Ponteiro Global",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Ponteiro Global começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Ponteiro Global dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Global Pointer Directory Size": {
+      "title": "Tamanho do Diretório de Ponteiro Global",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Ponteiro Global.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Ponteiro Global ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "TLS Directory RVA": {
+      "title": "RVA do Diretório TLS",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório TLS começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório TLS dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "TLS Directory Size": {
+      "title": "Tamanho do Diretório TLS",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório TLS.",
+      "purpose": "Este campo indica quantos bytes o Diretório TLS ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Load Configuration Directory RVA": {
+      "title": "RVA do Diretório de Configuração de Carregamento",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Configuração de Carregamento começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Configuração de Carregamento dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Load Configuration Directory Size": {
+      "title": "Tamanho do Diretório de Configuração de Carregamento",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Configuração de Carregamento.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Configuração de Carregamento ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Bound Import Directory RVA": {
+      "title": "RVA do Diretório de Importação Vinculada",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Importação Vinculada começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Importação Vinculada dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Bound Import Directory Size": {
+      "title": "Tamanho do Diretório de Importação Vinculada",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Importação Vinculada.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Importação Vinculada ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Import Address Table Directory RVA": {
+      "title": "RVA do Diretório da Tabela de Endereços de Importação",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório da Tabela de Endereços de Importação começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório da Tabela de Endereços de Importação dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Import Address Table Directory Size": {
+      "title": "Tamanho do Diretório da Tabela de Endereços de Importação",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório da Tabela de Endereços de Importação.",
+      "purpose": "Este campo indica quantos bytes o Diretório da Tabela de Endereços de Importação ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Delay Import Directory RVA": {
+      "title": "RVA do Diretório de Importação Atrasada",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório de Importação Atrasada começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório de Importação Atrasada dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Delay Import Directory Size": {
+      "title": "Tamanho do Diretório de Importação Atrasada",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório de Importação Atrasada.",
+      "purpose": "Este campo indica quantos bytes o Diretório de Importação Atrasada ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "COM+ Runtime Header Directory RVA": {
+      "title": "RVA do Diretório do Cabeçalho de Runtime COM+",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório do Cabeçalho de Runtime COM+ começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório do Cabeçalho de Runtime COM+ dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "COM+ Runtime Header Directory Size": {
+      "title": "Tamanho do Diretório do Cabeçalho de Runtime COM+",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório do Cabeçalho de Runtime COM+.",
+      "purpose": "Este campo indica quantos bytes o Diretório do Cabeçalho de Runtime COM+ ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Reserved Directory RVA": {
+      "title": "RVA do Diretório Reservado",
+      "description": "O campo Endereço Virtual Relativo (RVA) especifica o endereço virtual onde a estrutura de dados do Diretório Reservado começa na memória. RVA é um offset relativo ao endereço base da imagem.",
+      "purpose": "Este campo aponta para a localização da estrutura do Diretório Reservado dentro da imagem carregada. Se o valor for 0, o diretório não está presente neste arquivo PE.",
+      "note": "Valores RVA são relativos ao ImageBase. Para converter para um offset de arquivo, você precisa encontrar qual seção contém este RVA e calcular: FileOffset = RVA - Section.VirtualAddress + Section.PointerToRawData",
+      "security_notes": "Verifique se o RVA aponta para conteúdo de seção válido, não para overlay ou regiões de memória inválidas."
+    },
+    "Reserved Directory Size": {
+      "title": "Tamanho do Diretório Reservado",
+      "description": "O campo Tamanho especifica o tamanho em bytes da estrutura do Diretório Reservado.",
+      "purpose": "Este campo indica quantos bytes o Diretório Reservado ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
+      "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
+      "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
     }
   },
   "security_highlights": {

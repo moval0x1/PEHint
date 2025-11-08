@@ -25,6 +25,10 @@
 #include <QContextMenuEvent>
 #include <QTimer>
 #include <QColor>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
 
 
 
@@ -43,6 +47,8 @@ public:
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 public slots:
     void on_action_PEHint_triggered();
@@ -66,6 +72,7 @@ public slots:
     void onCollapseAll();
     void onHexViewerOptions();
     void onSecurityAnalysis();
+    void onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     
     // Language management
     void setupLanguageMenu();
@@ -73,6 +80,8 @@ public slots:
     void updateUILanguage();
     void updateMenuLanguage();
     void updateLanguageMenu();
+    void updateHexViewerLanguage();
+    void updateWindowTitle();
 
 private:
     
@@ -113,6 +122,7 @@ private:
     void clearDisplay();
     void updateFileInfo();
     void updateAnalysisDisplay();
+    void populateImportFunctions(const QString &moduleName);
     
     // Utility functions
     void showError(const QString &title, const QString &message);

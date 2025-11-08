@@ -9,6 +9,8 @@
 #include <QFile>
 #include <QCoreApplication>
 #include <QDir>
+#include <QDateTime>
+#include <QtGlobal>
 
 PEParserNew::PEParserNew(QObject *parent)
     : QObject(parent)
@@ -123,6 +125,10 @@ void PEParserNew::clear()
     m_file.close();
     m_fileData.clear();
     m_dataModel.clear();
+    m_optionalHeaderBuffer.clear();
+    m_cachedSections.clear();
+    m_cachedDosHeader = IMAGE_DOS_HEADER{};
+    m_cachedFileHeader = IMAGE_FILE_HEADER{};
     m_isValid = false;
     m_isParsing = false;
 }
@@ -185,7 +191,8 @@ bool PEParserNew::parseDOSHeader()
         return false;
     }
     
-    m_dataModel.setDOSHeader(dosHeader);
+    m_cachedDosHeader = *dosHeader;
+    m_dataModel.setDOSHeader(&m_cachedDosHeader);
     return true;
 }
 
@@ -208,19 +215,21 @@ bool PEParserNew::parsePEHeaders()
         return false;
     }
     
-    // Parse file header
-    if (peOffset + sizeof(IMAGE_FILE_HEADER) > m_fileData.size()) {
+    // Parse file header (immediately after the PE signature)
+    quint32 fileHeaderOffset = peOffset + sizeof(quint32);
+    if (fileHeaderOffset + sizeof(IMAGE_FILE_HEADER) > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_pe_header_beyond"));
         return false;
     }
     
     const IMAGE_FILE_HEADER *fileHeader = reinterpret_cast<const IMAGE_FILE_HEADER*>(
-        m_fileData.data() + peOffset
+        m_fileData.data() + fileHeaderOffset
     );
-    m_dataModel.setFileHeader(fileHeader);
+    m_cachedFileHeader = *fileHeader;
+    m_dataModel.setFileHeader(&m_cachedFileHeader);
     
     // Parse optional header
-    quint32 optionalHeaderOffset = peOffset + sizeof(IMAGE_FILE_HEADER);
+    quint32 optionalHeaderOffset = fileHeaderOffset + sizeof(IMAGE_FILE_HEADER);
     if (optionalHeaderOffset + fileHeader->SizeOfOptionalHeader > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_optional_header_beyond"));
         return false;
@@ -231,6 +240,8 @@ bool PEParserNew::parsePEHeaders()
     );
     
     if (!PEUtils::isValidOptionalHeaderMagic(optionalHeader->Magic)) {
+        qWarning() << "Unexpected optional header magic" << QString::number(optionalHeader->Magic, 16)
+                   << "at offset" << QString("0x%1").arg(optionalHeaderOffset, 0, 16);
         emit errorOccurred(LANG("UI/error_invalid_optional_magic"));
         return false;
     }
@@ -249,21 +260,21 @@ bool PEParserNew::parseSections()
         return false;
     }
     
-    // Calculate section table offset (Microsoft PE Format compliant)
-    quint32 sectionTableOffset = PEUtils::calculateSectionTableOffset(
-        dosHeader->e_lfanew, 
-        fileHeader->SizeOfOptionalHeader
-    );
+    // Calculate section table offset (PE signature + file header + optional header)
+    quint32 sectionTableOffset = dosHeader->e_lfanew
+                               + sizeof(quint32) // PE signature
+                               + sizeof(IMAGE_FILE_HEADER)
+                               + fileHeader->SizeOfOptionalHeader;
     
     if (sectionTableOffset + (fileHeader->NumberOfSections * sizeof(IMAGE_SECTION_HEADER)) > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_section_table_beyond"));
         return false;
     }
     
-    // Parse each section header
+    // Parse each section header from the in-memory buffer
     for (quint16 i = 0; i < fileHeader->NumberOfSections; ++i) {
         const IMAGE_SECTION_HEADER *section = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
-            m_fileData.data() + sectionTableOffset + (i * sizeof(IMAGE_SECTION_HEADER))
+            m_fileData.constData() + sectionTableOffset + (i * sizeof(IMAGE_SECTION_HEADER))
         );
         m_dataModel.addSection(section);
     }
@@ -281,12 +292,14 @@ bool PEParserNew::parseDataDirectories()
         return false;
     }
     
-    // Calculate data directory offset (Microsoft PE Format compliant)
-    quint32 dataDirectoryOffset = PEUtils::calculateDataDirectoryOffset(
-        dosHeader->e_lfanew + sizeof(IMAGE_FILE_HEADER),
-        fileHeader->SizeOfOptionalHeader,
-        0
-    );
+    // Calculate the start of the data directories inside the optional header
+    quint32 optionalHeaderOffset = dosHeader->e_lfanew
+                                + sizeof(quint32) // PE signature
+                                + sizeof(IMAGE_FILE_HEADER);
+    
+    quint16 magic = optionalHeader->Magic;
+    quint32 numberOfRvaAndSizesOffset = (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) ? 92 : 108; // 0x5C / 0x6C
+    quint32 dataDirectoryOffset = optionalHeaderOffset + numberOfRvaAndSizesOffset + sizeof(quint32);
     
     // Use the specialized data directory parser
     return m_dataDirectoryParser.parseDataDirectories(optionalHeader, dataDirectoryOffset, m_dataModel);
@@ -299,7 +312,8 @@ quint32 PEParserNew::rvaToFileOffset(quint32 rva)
     // Find the section that contains this RVA
     for (const IMAGE_SECTION_HEADER *section : sections) {
         quint32 sectionStart = section->VirtualAddress;
-        quint32 sectionEnd = sectionStart + section->VirtualSize;
+        quint32 sectionSize = qMax(section->getVirtualSize(), section->SizeOfRawData);
+        quint32 sectionEnd = sectionStart + sectionSize;
         
         if (rva >= sectionStart && rva < sectionEnd) {
             // Calculate file offset
@@ -341,7 +355,8 @@ bool PEParserNew::loadLargeFileStreaming()
         return false;
     }
     
-    m_dataModel.setDOSHeader(&dosHeader);
+    m_cachedDosHeader = dosHeader;
+    m_dataModel.setDOSHeader(&m_cachedDosHeader);
     
     emit parsingProgress(20, LANG("UI/progress_reading_pe_headers"));
     
@@ -370,23 +385,62 @@ bool PEParserNew::loadLargeFileStreaming()
         return false;
     }
     
-    m_dataModel.setFileHeader(&fileHeader);
+    m_cachedFileHeader = fileHeader;
+    m_dataModel.setFileHeader(&m_cachedFileHeader);
     
     emit parsingProgress(30, LANG("UI/progress_reading_optional_header"));
     
-    // Read optional header
-    IMAGE_OPTIONAL_HEADER optionalHeader;
-    if (m_file.read(reinterpret_cast<char*>(&optionalHeader), sizeof(IMAGE_OPTIONAL_HEADER)) != sizeof(IMAGE_OPTIONAL_HEADER)) {
+    // Read optional header - must read exactly SizeOfOptionalHeader bytes
+    // Allocate buffer for the optional header (max size is 224 bytes for PE32+)
+    QByteArray optionalHeaderBuffer(fileHeader.SizeOfOptionalHeader, 0);
+    if (m_file.read(optionalHeaderBuffer.data(), fileHeader.SizeOfOptionalHeader) != fileHeader.SizeOfOptionalHeader) {
         emit errorOccurred(LANG("UI/error_reading_optional_header"));
         return false;
     }
     
-    if (!PEUtils::isValidOptionalHeaderMagic(optionalHeader.Magic)) {
+    // Check magic number to determine if it's PE32 or PE32+
+    quint16 magic = *reinterpret_cast<const quint16*>(optionalHeaderBuffer.data());
+    if (!PEUtils::isValidOptionalHeaderMagic(magic)) {
         emit errorOccurred(LANG("UI/error_invalid_optional_magic"));
         return false;
     }
     
-    m_dataModel.setOptionalHeader(&optionalHeader);
+    // Store the optional header buffer in the data model
+    // We need to keep the buffer alive, so we'll store it in m_fileData
+    // For now, we'll create a properly sized structure
+    if (magic == 0x10b) {
+        // PE32 (32-bit)
+        if (optionalHeaderBuffer.size() < static_cast<int>(sizeof(IMAGE_OPTIONAL_HEADER32))) {
+            emit errorOccurred(LANG("UI/error_optional_header_too_small"));
+            return false;
+        }
+        const IMAGE_OPTIONAL_HEADER32 *optHeader = reinterpret_cast<const IMAGE_OPTIONAL_HEADER32*>(optionalHeaderBuffer.data());
+        m_dataModel.setOptionalHeader(reinterpret_cast<const IMAGE_OPTIONAL_HEADER*>(optHeader));
+    } else if (magic == 0x20b) {
+        // PE32+ (64-bit)
+        if (optionalHeaderBuffer.size() < static_cast<int>(sizeof(IMAGE_OPTIONAL_HEADER64))) {
+            emit errorOccurred(LANG("UI/error_optional_header_too_small"));
+            return false;
+        }
+        // For 64-bit, we need to handle it differently, but for now use the same structure
+        // The DataDirectory array is at the same relative offset in both
+        const IMAGE_OPTIONAL_HEADER64 *optHeader64 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(optionalHeaderBuffer.data());
+        // Store as 32-bit structure but we'll need to adjust access
+        m_dataModel.setOptionalHeader(reinterpret_cast<const IMAGE_OPTIONAL_HEADER*>(optHeader64));
+    }
+    
+    // Store the buffer so it doesn't go out of scope
+    m_optionalHeaderBuffer = optionalHeaderBuffer;
+    
+    // Load at least the headers into m_fileData so we can access Data Directories
+    // Calculate the size needed: DOS header + PE headers + Optional header + Section headers
+    quint32 headersSize = dosHeader.e_lfanew + sizeof(IMAGE_FILE_HEADER) + fileHeader.SizeOfOptionalHeader + 
+                          (fileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
+    if (!m_file.seek(0)) {
+        emit errorOccurred(LANG("UI/error_seeking_file_start"));
+        return false;
+    }
+    m_fileData = m_file.read(headersSize); // Read only headers, not entire file
     
     emit parsingProgress(40, LANG("UI/progress_reading_sections"));
     
@@ -398,13 +452,17 @@ bool PEParserNew::loadLargeFileStreaming()
     }
     
     // Read each section header
+    m_cachedSections.clear();
+    m_cachedSections.reserve(fileHeader.NumberOfSections);
+    
     for (quint16 i = 0; i < fileHeader.NumberOfSections; ++i) {
         IMAGE_SECTION_HEADER sectionHeader;
         if (m_file.read(reinterpret_cast<char*>(&sectionHeader), sizeof(IMAGE_SECTION_HEADER)) != sizeof(IMAGE_SECTION_HEADER)) {
             emit errorOccurred(LANG("UI/error_reading_section_header"));
             return false;
         }
-        m_dataModel.addSection(&sectionHeader);
+        m_cachedSections.append(sectionHeader);
+        m_dataModel.addSection(&m_cachedSections.last());
     }
     
     emit parsingProgress(60, LANG("UI/progress_analyzing_structure"));
@@ -445,6 +503,77 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
         // The structure has field names under language keys ("en", "pt")
         if (root.contains(currentLanguage)) {
             QJsonObject languageObj = root[currentLanguage].toObject();
+            
+            // Handle section names dynamically (e.g., "Section 1: .text", "Section 2: .data")
+            if (fieldName.startsWith("Section ")) {
+                // Extract section name if possible
+                QString sectionInfo = fieldName;
+                QString sectionName = "";
+                if (fieldName.contains(": ")) {
+                    sectionName = fieldName.split(": ").last();
+                }
+                
+                // Try to get generic "Section" explanation
+                if (languageObj.contains("Section")) {
+                    QJsonObject sectionObj = languageObj["Section"].toObject();
+                    QString description = sectionObj["description"].toString();
+                    QString purpose = sectionObj["purpose"].toString();
+                    QString note = sectionObj["note"].toString();
+                    QString securityNotes = sectionObj["security_notes"].toString();
+                    
+                    // Format the explanation with section-specific information
+                    QString explanation;
+                    explanation += QString("<div style='margin-bottom: 8px; line-height: 1.6; color: #1f2937;'>%1</div>").arg(description);
+                    
+                    if (!sectionName.isEmpty() && sectionName != "0x") {
+                        // Add section-specific information
+                        QString sectionTypeInfo = "";
+                        QString sectionTypeKey = "";
+                        if (sectionName == ".text") {
+                            sectionTypeKey = "section_info_text";
+                        } else if (sectionName == ".data") {
+                            sectionTypeKey = "section_info_data";
+                        } else if (sectionName == ".rdata") {
+                            sectionTypeKey = "section_info_rdata";
+                        } else if (sectionName == ".rsrc") {
+                            sectionTypeKey = "section_info_rsrc";
+                        } else if (sectionName == ".reloc") {
+                            sectionTypeKey = "section_info_reloc";
+                        } else if (sectionName == ".idata") {
+                            sectionTypeKey = "section_info_idata";
+                        } else if (sectionName == ".edata") {
+                            sectionTypeKey = "section_info_edata";
+                        }
+                        
+                        if (!sectionTypeKey.isEmpty()) {
+                            sectionTypeInfo = LanguageManager::getInstance().getString(sectionTypeKey, "");
+                            if (sectionTypeInfo.isEmpty()) {
+                                sectionTypeInfo = LanguageManager::getInstance().getString("UI/" + sectionTypeKey, "");
+                            }
+                        }
+                        
+                        if (!sectionTypeInfo.isEmpty()) {
+                            explanation += QString("<div style='margin-bottom: 8px; padding: 8px; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px;'><b style='color: #1e40af;'>Section: %1</b><br>%2</div>").arg(sectionName, sectionTypeInfo);
+                        }
+                    }
+                    
+                    if (!purpose.isEmpty()) {
+                        explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #1d4ed8;'>Purpose:</b> %1</div>").arg(purpose);
+                    }
+                    
+                    if (!note.isEmpty()) {
+                        explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #7c3aed;'>Note:</b> %1</div>").arg(note);
+                    }
+                    
+                    if (!securityNotes.isEmpty()) {
+                        explanation += QString("<div style='margin-bottom: 8px;'><b style='color: #7f1d1d;'>Security Notes:</b> %1</div>").arg(securityNotes);
+                    }
+                    
+                    return explanation;
+                }
+            }
+            
+            // Check for exact field name match
             if (languageObj.contains(fieldName)) {
                 QJsonObject fieldObj = languageObj[fieldName].toObject();
                 QString description = fieldObj["description"].toString();
@@ -490,7 +619,8 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
         }
     }
     
-    // Fallback to placeholder if field not found
+    // Fallback to placeholder if field not found in JSON
+    // All explanations should be in the config JSON files
     return LANG_PARAM("UI/field_explanation_placeholder", "fieldname", fieldName);
 }
 
@@ -588,9 +718,38 @@ QPair<quint32, quint32> PEParserNew::getFieldOffset(const QString &fieldName)
     fieldOffsets["Sections"] = QPair<quint32, quint32>(sectionsOffset, sectionsSize);
     
     // Add Data Directories container
-    quint32 dataDirectoriesOffset = optionalHeaderOffset + 96; // Standard offset for data directories
+    // Data Directories start after NumberOfRvaAndSizes field
+    // NumberOfRvaAndSizes is at offset 96 (0x60) for PE32, but we need to check the actual structure
+    // For PE32: offset 96 (0x60) from Optional Header start
+    // For PE32+: offset 112 (0x70) from Optional Header start (because ImageBase is 64-bit)
+    quint16 magic = optionalHeader->Magic;
+    quint32 dataDirectoriesOffset;
+    if (magic == 0x10b) {
+        // PE32 (32-bit) - NumberOfRvaAndSizes is at offset 96
+        dataDirectoriesOffset = optionalHeaderOffset + 96;
+    } else {
+        // PE32+ (64-bit) - NumberOfRvaAndSizes is at offset 112
+        dataDirectoriesOffset = optionalHeaderOffset + 112;
+    }
     quint32 dataDirectoriesSize = 16 * sizeof(IMAGE_DATA_DIRECTORY); // 16 data directories
     fieldOffsets["Data Directories"] = QPair<quint32, quint32>(dataDirectoriesOffset, dataDirectoriesSize);
+    
+    // Add Data Directory fields - now structured as "Directory Name" with "Address" and "Size" children
+    // Use the same translation keys as in addDataDirectoryFields to ensure names match
+    QStringList dirNames = {LANG("UI/data_dir_export"), LANG("UI/data_dir_import"), LANG("UI/data_dir_resource"), LANG("UI/data_dir_exception"),
+                           LANG("UI/data_dir_certificate"), LANG("UI/data_dir_base_relocation"), LANG("UI/data_dir_debug"), LANG("UI/data_dir_architecture"),
+                           LANG("UI/data_dir_global_pointer"), LANG("UI/data_dir_tls"), LANG("UI/data_dir_load_config"), LANG("UI/data_dir_bound_import"),
+                           LANG("UI/data_dir_iat"), LANG("UI/data_dir_delay_import"), LANG("UI/data_dir_com_runtime"), LANG("UI/data_dir_reserved")};
+    for (int i = 0; i < 16; ++i) {
+        quint32 addressOffset = dataDirectoriesOffset + (i * 8);      // Address (RVA) is at base + (i * 8)
+        quint32 sizeOffset = dataDirectoriesOffset + (i * 8) + 4;     // Size is at base + (i * 8) + 4
+        // Directory parent item (points to the start of the directory entry)
+        fieldOffsets[dirNames[i]] = QPair<quint32, quint32>(addressOffset, 8);
+        // Address child field
+        fieldOffsets[dirNames[i] + " Address"] = QPair<quint32, quint32>(addressOffset, 4);
+        // Size child field
+        fieldOffsets[dirNames[i] + " Size"] = QPair<quint32, quint32>(sizeOffset, 4);
+    }
     
     // Section fields - these will be calculated dynamically based on section index
     // For now, we'll add common section field names that can be used for lookup
@@ -637,58 +796,106 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     }
     treeItems.append(dosHeaderItem);
     
-    // Create PE Header section
-    QTreeWidgetItem *peHeaderItem = new QTreeWidgetItem();
-    peHeaderItem->setText(0, LANG("UI/pe_structure_pe_header"));
-    peHeaderItem->setText(1, "");
-    peHeaderItem->setText(2, QString("0x%1").arg(dosHeader ? dosHeader->e_lfanew : 0, 8, 16, QChar('0')).toUpper());
-    peHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0x18"));
-    
-    const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
-    if (fileHeader) {
-        addPEHeaderFields(peHeaderItem, fileHeader);
+    // Create Rich Header section (if present)
+    if (dosHeader) {
+        quint32 richOffset;
+        if (PEUtils::findRichHeaderOffset(m_fileData, *dosHeader, richOffset)) {
+            quint32 richSize = PEUtils::calculateRichHeaderSize(m_fileData, richOffset);
+            
+            QTreeWidgetItem *richHeaderItem = new QTreeWidgetItem();
+            richHeaderItem->setText(0, "Rich Header");
+            richHeaderItem->setText(1, "");
+            richHeaderItem->setText(2, PEUtils::formatHexWidth(richOffset, 8));
+            richHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(richSize, 0)));
+            richHeaderItem->setText(4, ""); // No meaning for section header
+            
+            addRichHeaderFields(richHeaderItem, richOffset);
+            treeItems.append(richHeaderItem);
+        }
     }
-    treeItems.append(peHeaderItem);
     
-    // Create Optional Header section
-    QTreeWidgetItem *optionalHeaderItem = new QTreeWidgetItem();
+    // Create NT Headers section (parent container for File Header, Optional Header, and Section Headers)
+    quint32 ntHeadersOffset = dosHeader ? dosHeader->e_lfanew : 0;
+    QTreeWidgetItem *ntHeadersItem = new QTreeWidgetItem();
+    ntHeadersItem->setText(0, "NT Headers");
+    ntHeadersItem->setText(1, "");
+    ntHeadersItem->setText(2, PEUtils::formatHexWidth(ntHeadersOffset, 8));
+    // NT Headers size = PE Signature (4) + File Header (20) + Optional Header + Section Headers
+    const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
+    const IMAGE_OPTIONAL_HEADER *optionalHeader = m_dataModel.getOptionalHeader();
+    quint32 ntHeadersSize = 4 + 20 + (optionalHeader ? optionalHeader->SizeOfHeaders : 0);
+    ntHeadersItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(ntHeadersSize, 0)));
+    ntHeadersItem->setText(4, ""); // No meaning for container
+    
+    // Add PE Signature as first field of NT Headers
+    if (ntHeadersOffset + 4 <= m_fileData.size()) {
+        quint32 peSignature = *reinterpret_cast<const quint32*>(m_fileData.data() + ntHeadersOffset);
+        addTreeField(ntHeadersItem, "Signature", PEUtils::formatHexWidth(peSignature, 8), 0, sizeof(quint32));
+    }
+    
+    // Create File Header as child of NT Headers
+    QTreeWidgetItem *fileHeaderItem = new QTreeWidgetItem(ntHeadersItem);
+    fileHeaderItem->setText(0, "File Header");
+    fileHeaderItem->setText(1, "");
+    // File Header starts 4 bytes after NT Headers (after PE signature)
+    fileHeaderItem->setText(2, PEUtils::formatHexWidth(ntHeadersOffset + 4, 8));
+    fileHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0x14"));
+    fileHeaderItem->setText(4, ""); // No meaning for section header
+    
+    if (fileHeader) {
+        addPEHeaderFields(fileHeaderItem, fileHeader);
+    }
+    
+    // Create Optional Header as child of NT Headers
+    QTreeWidgetItem *optionalHeaderItem = new QTreeWidgetItem(ntHeadersItem);
     optionalHeaderItem->setText(0, LANG("UI/pe_structure_optional_header"));
     optionalHeaderItem->setText(1, "");
-    optionalHeaderItem->setText(2, QString("0x%1").arg((dosHeader ? dosHeader->e_lfanew : 0) + 24, 8, 16, QChar('0')).toUpper());
+    // Optional Header starts after PE signature (4 bytes) + File Header (20 bytes) = 24 bytes from NT Headers start
+    optionalHeaderItem->setText(2, PEUtils::formatHexWidth(ntHeadersOffset + 4 + 20, 8));
     optionalHeaderItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", "0xE0"));
+    optionalHeaderItem->setText(4, ""); // No meaning for section header
     
-    const IMAGE_OPTIONAL_HEADER *optionalHeader = m_dataModel.getOptionalHeader();
     if (optionalHeader) {
         addOptionalHeaderFields(optionalHeaderItem, optionalHeader);
+        
+        // Create Data Directories as child of Optional Header
+        QTreeWidgetItem *dataDirsItem = new QTreeWidgetItem(optionalHeaderItem);
+        dataDirsItem->setText(0, LANG("UI/pe_structure_data_directories"));
+        dataDirsItem->setText(1, "");
+        // Data Directories start right after NumberOfRvaAndSizes field
+        // NumberOfRvaAndSizes offset depends on PE32 vs PE32+:
+        // PE32 (32-bit): NumberOfRvaAndSizes is at offset 96 (0x60) from Optional Header start, and is 4 bytes
+        // PE32+ (64-bit): NumberOfRvaAndSizes is at offset 112 (0x70) from Optional Header start, and is 4 bytes
+        // So Data Directories base = Optional Header start + NumberOfRvaAndSizes offset + 4
+        quint16 magic = optionalHeader->Magic;
+        quint32 numberOfRvaAndSizesOffset;
+        if (magic == 0x10b) {
+            // PE32 (32-bit)
+            numberOfRvaAndSizesOffset = 92; // 0x5C
+        } else {
+            // PE32+ (64-bit)
+            numberOfRvaAndSizesOffset = 108; // 0x6C
+        }
+        quint32 dataDirsOffset = ntHeadersOffset + 4 + 20 + numberOfRvaAndSizesOffset + 4; // NT Headers + PE Sig + File Header + NumberOfRvaAndSizes offset + 4
+        dataDirsItem->setText(2, PEUtils::formatHexWidth(dataDirsOffset, 8));
+        dataDirsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", "16"));
+        dataDirsItem->setText(4, ""); // No meaning for container
+        
+        addDataDirectoryFields(dataDirsItem);
     }
-    treeItems.append(optionalHeaderItem);
     
-    // Create Sections section
-    QTreeWidgetItem *sectionsItem = new QTreeWidgetItem();
-    sectionsItem->setText(0, LANG("UI/pe_structure_sections"));
+    // Create Section Headers as child of NT Headers
+    QTreeWidgetItem *sectionsItem = new QTreeWidgetItem(ntHeadersItem);
+    sectionsItem->setText(0, "Section Headers");
     sectionsItem->setText(1, "");
-    sectionsItem->setText(2, QString("0x%1").arg((dosHeader ? dosHeader->e_lfanew : 0) + 24 + (fileHeader ? fileHeader->SizeOfOptionalHeader : 0), 8, 16, QChar('0')).toUpper());
-    sectionsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", QString::number(m_dataModel.getSections().size())));
+    // Section Headers start after PE signature (4) + File Header (20) + Optional Header
+    sectionsItem->setText(2, PEUtils::formatHexWidth(ntHeadersOffset + 4 + 20 + (fileHeader ? fileHeader->SizeOfOptionalHeader : 0), 8));
+    sectionsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", PEUtils::formatHexWidth(static_cast<quint64>(m_dataModel.getSections().size()), 0)));
+    sectionsItem->setText(4, ""); // No meaning for container
     
     addSectionFields(sectionsItem);
-    treeItems.append(sectionsItem);
     
-    // Create Data Directories section
-    QTreeWidgetItem *dataDirsItem = new QTreeWidgetItem();
-    dataDirsItem->setText(0, LANG("UI/pe_structure_data_directories"));
-    dataDirsItem->setText(1, "");
-    // Use LANG with fallback for table value
-    QString variableText = LANG("UI/table_value_variable");
-    if (variableText == "UI/table_value_variable") {
-        // Fallback - use current language to determine text
-        QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
-        variableText = (currentLang == "pt") ? "Variável" : "Variable";
-    }
-    dataDirsItem->setText(2, variableText);
-    dataDirsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", "16"));
-    
-    addDataDirectoryFields(dataDirsItem);
-    treeItems.append(dataDirsItem);
+    treeItems.append(ntHeadersItem);
     
     return treeItems;
 }
@@ -696,67 +903,73 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
 void PEParserNew::addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader)
 {
     // Add DOS header fields
-    addTreeField(parent, "e_magic", QString("0x%1").arg(dosHeader->e_magic, 4, 16, QChar('0')).toUpper(), 0, sizeof(quint16));
-    addTreeField(parent, "e_cblp", QString::number(dosHeader->e_cblp), 2, sizeof(quint16));
-    addTreeField(parent, "e_cp", QString::number(dosHeader->e_cp), 4, sizeof(quint16));
-    addTreeField(parent, "e_crlc", QString::number(dosHeader->e_crlc), 6, sizeof(quint16));
-    addTreeField(parent, "e_cparhdr", QString::number(dosHeader->e_cparhdr), 8, sizeof(quint16));
-    addTreeField(parent, "e_minalloc", QString::number(dosHeader->e_minalloc), 10, sizeof(quint16));
-    addTreeField(parent, "e_maxalloc", QString::number(dosHeader->e_maxalloc), 12, sizeof(quint16));
-    addTreeField(parent, "e_ss", QString::number(dosHeader->e_ss), 14, sizeof(quint16));
-    addTreeField(parent, "e_sp", QString::number(dosHeader->e_sp), 16, sizeof(quint16));
-    addTreeField(parent, "e_csum", QString::number(dosHeader->e_csum), 18, sizeof(quint16));
-    addTreeField(parent, "e_ip", QString::number(dosHeader->e_ip), 20, sizeof(quint16));
-    addTreeField(parent, "e_cs", QString::number(dosHeader->e_cs), 22, sizeof(quint16));
-    addTreeField(parent, "e_lfarlc", QString::number(dosHeader->e_lfarlc), 24, sizeof(quint16));
-    addTreeField(parent, "e_ovno", QString::number(dosHeader->e_ovno), 26, sizeof(quint16));
-    addTreeField(parent, "e_lfanew", QString("0x%1").arg(dosHeader->e_lfanew, 8, 16, QChar('0')).toUpper(), 60, sizeof(quint32));
+        addTreeField(parent, "e_magic", PEUtils::formatHexWidth(dosHeader->e_magic, 4), 0, sizeof(quint16));
+    addTreeField(parent, "e_cblp", PEUtils::formatHexWidth(dosHeader->e_cblp, 4), 2, sizeof(quint16));
+    addTreeField(parent, "e_cp", PEUtils::formatHexWidth(dosHeader->e_cp, 4), 4, sizeof(quint16));
+    addTreeField(parent, "e_crlc", PEUtils::formatHexWidth(dosHeader->e_crlc, 4), 6, sizeof(quint16));
+    addTreeField(parent, "e_cparhdr", PEUtils::formatHexWidth(dosHeader->e_cparhdr, 4), 8, sizeof(quint16));
+    addTreeField(parent, "e_minalloc", PEUtils::formatHexWidth(dosHeader->e_minalloc, 4), 10, sizeof(quint16));
+    addTreeField(parent, "e_maxalloc", PEUtils::formatHexWidth(dosHeader->e_maxalloc, 4), 12, sizeof(quint16));
+    addTreeField(parent, "e_ss", PEUtils::formatHexWidth(dosHeader->e_ss, 4), 14, sizeof(quint16));
+    addTreeField(parent, "e_sp", PEUtils::formatHexWidth(dosHeader->e_sp, 4), 16, sizeof(quint16));
+    addTreeField(parent, "e_csum", PEUtils::formatHexWidth(dosHeader->e_csum, 4), 18, sizeof(quint16));
+    addTreeField(parent, "e_ip", PEUtils::formatHexWidth(dosHeader->e_ip, 4), 20, sizeof(quint16));
+    addTreeField(parent, "e_cs", PEUtils::formatHexWidth(dosHeader->e_cs, 4), 22, sizeof(quint16));
+    addTreeField(parent, "e_lfarlc", PEUtils::formatHexWidth(dosHeader->e_lfarlc, 4), 24, sizeof(quint16));
+    addTreeField(parent, "e_ovno", PEUtils::formatHexWidth(dosHeader->e_ovno, 4), 26, sizeof(quint16));
+        addTreeField(parent, "e_lfanew", PEUtils::formatHexWidth(dosHeader->e_lfanew, 8), 60, sizeof(quint32));
 }
 
 void PEParserNew::addPEHeaderFields(QTreeWidgetItem *parent, const IMAGE_FILE_HEADER *fileHeader)
 {
-    // Add PE header fields
-    addTreeField(parent, "Machine", QString("0x%1").arg(fileHeader->Machine, 4, 16, QChar('0')).toUpper(), 0, sizeof(quint16));
-    addTreeField(parent, "NumberOfSections", QString::number(fileHeader->NumberOfSections), 2, sizeof(quint16));
-    addTreeField(parent, "TimeDateStamp", QString("0x%1").arg(fileHeader->TimeDateStamp, 8, 16, QChar('0')).toUpper(), 4, sizeof(quint32));
-    addTreeField(parent, "PointerToSymbolTable", QString("0x%1").arg(fileHeader->PointerToSymbolTable, 8, 16, QChar('0')).toUpper(), 8, sizeof(quint32));
-    addTreeField(parent, "NumberOfSymbols", QString::number(fileHeader->NumberOfSymbols), 12, sizeof(quint32));
-    addTreeField(parent, "SizeOfOptionalHeader", QString::number(fileHeader->SizeOfOptionalHeader), 16, sizeof(quint16));
-    addTreeField(parent, "Characteristics", QString("0x%1").arg(fileHeader->Characteristics, 4, 16, QChar('0')).toUpper(), 18, sizeof(quint16));
+    // File Header fields are relative to File Header start (parent's offset)
+    // No offset needed since parent is already at File Header offset
+    
+    // Add File Header fields
+    addTreeField(parent, "Machine", PEUtils::formatHexWidth(fileHeader->Machine, 4), 0, sizeof(quint16));
+    addTreeField(parent, "NumberOfSections", PEUtils::formatHexWidth(fileHeader->NumberOfSections, 4), 2, sizeof(quint16));
+    addTreeField(parent, "TimeDateStamp", PEUtils::formatHexWidth(fileHeader->TimeDateStamp, 8), 4, sizeof(quint32));
+    addTreeField(parent, "PointerToSymbolTable", PEUtils::formatHexWidth(fileHeader->PointerToSymbolTable, 8), 8, sizeof(quint32));
+    addTreeField(parent, "NumberOfSymbols", PEUtils::formatHexWidth(fileHeader->NumberOfSymbols, 8), 12, sizeof(quint32));
+    addTreeField(parent, "SizeOfOptionalHeader", PEUtils::formatHexWidth(fileHeader->SizeOfOptionalHeader, 4), 16, sizeof(quint16));
+    addTreeField(parent, "Characteristics", PEUtils::formatHexWidth(fileHeader->Characteristics, 4), 18, sizeof(quint16));
 }
 
 void PEParserNew::addOptionalHeaderFields(QTreeWidgetItem *parent, const IMAGE_OPTIONAL_HEADER *optionalHeader)
 {
+    // Optional Header fields are relative to Optional Header start (parent's offset)
+    // No offset needed since parent is already at Optional Header offset
+    
     // Add optional header fields
-    addTreeField(parent, "Magic", QString("0x%1").arg(optionalHeader->Magic, 4, 16, QChar('0')).toUpper(), 0, sizeof(quint16));
-    addTreeField(parent, "MajorLinkerVersion", QString::number(optionalHeader->MajorLinkerVersion), 2, sizeof(quint8));
-    addTreeField(parent, "MinorLinkerVersion", QString::number(optionalHeader->MinorLinkerVersion), 3, sizeof(quint8));
-    addTreeField(parent, "SizeOfCode", QString::number(optionalHeader->SizeOfCode), 4, sizeof(quint32));
-    addTreeField(parent, "SizeOfInitializedData", QString::number(optionalHeader->SizeOfInitializedData), 8, sizeof(quint32));
-    addTreeField(parent, "SizeOfUninitializedData", QString::number(optionalHeader->SizeOfUninitializedData), 12, sizeof(quint32));
-    addTreeField(parent, "AddressOfEntryPoint", QString("0x%1").arg(optionalHeader->AddressOfEntryPoint, 8, 16, QChar('0')).toUpper(), 16, sizeof(quint32));
-    addTreeField(parent, "BaseOfCode", QString("0x%1").arg(optionalHeader->BaseOfCode, 8, 16, QChar('0')).toUpper(), 20, sizeof(quint32));
-    addTreeField(parent, "ImageBase", QString("0x%1").arg(optionalHeader->ImageBase, 16, 16, QChar('0')).toUpper(), 24, sizeof(quint64));
-    addTreeField(parent, "SectionAlignment", QString::number(optionalHeader->SectionAlignment), 32, sizeof(quint32));
-    addTreeField(parent, "FileAlignment", QString::number(optionalHeader->FileAlignment), 36, sizeof(quint32));
-    addTreeField(parent, "MajorOperatingSystemVersion", QString::number(optionalHeader->MajorOperatingSystemVersion), 40, sizeof(quint16));
-    addTreeField(parent, "MinorOperatingSystemVersion", QString::number(optionalHeader->MinorOperatingSystemVersion), 42, sizeof(quint16));
-    addTreeField(parent, "MajorImageVersion", QString::number(optionalHeader->MajorImageVersion), 44, sizeof(quint16));
-    addTreeField(parent, "MinorImageVersion", QString::number(optionalHeader->MinorImageVersion), 46, sizeof(quint16));
-    addTreeField(parent, "MajorSubsystemVersion", QString::number(optionalHeader->MajorSubsystemVersion), 48, sizeof(quint16));
-    addTreeField(parent, "MinorSubsystemVersion", QString::number(optionalHeader->MinorSubsystemVersion), 50, sizeof(quint16));
-    addTreeField(parent, "Win32VersionValue", QString("0x%1").arg(optionalHeader->Win32VersionValue, 8, 16, QChar('0')).toUpper(), 52, sizeof(quint32));
-    addTreeField(parent, "SizeOfImage", QString::number(optionalHeader->SizeOfImage), 56, sizeof(quint32));
-    addTreeField(parent, "SizeOfHeaders", QString::number(optionalHeader->SizeOfHeaders), 60, sizeof(quint32));
-    addTreeField(parent, "CheckSum", QString("0x%1").arg(optionalHeader->CheckSum, 8, 16, QChar('0')).toUpper(), 64, sizeof(quint32));
-    addTreeField(parent, "Subsystem", QString::number(optionalHeader->Subsystem), 68, sizeof(quint16));
-    addTreeField(parent, "DllCharacteristics", QString("0x%1").arg(optionalHeader->DllCharacteristics, 4, 16, QChar('0')).toUpper(), 70, sizeof(quint16));
-    addTreeField(parent, "SizeOfStackReserve", QString::number(optionalHeader->SizeOfStackReserve), 72, sizeof(quint64));
-    addTreeField(parent, "SizeOfStackCommit", QString::number(optionalHeader->SizeOfStackCommit), 80, sizeof(quint64));
-    addTreeField(parent, "SizeOfHeapReserve", QString::number(optionalHeader->SizeOfHeapReserve), 88, sizeof(quint64));
-    addTreeField(parent, "SizeOfHeapCommit", QString::number(optionalHeader->SizeOfHeapCommit), 96, sizeof(quint64));
-    addTreeField(parent, "LoaderFlags", QString("0x%1").arg(optionalHeader->LoaderFlags, 8, 16, QChar('0')).toUpper(), 104, sizeof(quint32));
-    addTreeField(parent, "NumberOfRvaAndSizes", QString::number(optionalHeader->NumberOfRvaAndSizes), 108, sizeof(quint32));
+    addTreeField(parent, "Magic", PEUtils::formatHexWidth(optionalHeader->Magic, 4), 0, sizeof(quint16));
+    addTreeField(parent, "MajorLinkerVersion", PEUtils::formatHexWidth(optionalHeader->MajorLinkerVersion, 2), 2, sizeof(quint8));
+    addTreeField(parent, "MinorLinkerVersion", PEUtils::formatHexWidth(optionalHeader->MinorLinkerVersion, 2), 3, sizeof(quint8));
+    addTreeField(parent, "SizeOfCode", PEUtils::formatHexWidth(optionalHeader->SizeOfCode, 8), 4, sizeof(quint32));
+    addTreeField(parent, "SizeOfInitializedData", PEUtils::formatHexWidth(optionalHeader->SizeOfInitializedData, 8), 8, sizeof(quint32));
+    addTreeField(parent, "SizeOfUninitializedData", PEUtils::formatHexWidth(optionalHeader->SizeOfUninitializedData, 8), 12, sizeof(quint32));
+    addTreeField(parent, "AddressOfEntryPoint", PEUtils::formatHexWidth(optionalHeader->AddressOfEntryPoint, 8), 16, sizeof(quint32));
+    addTreeField(parent, "BaseOfCode", PEUtils::formatHexWidth(optionalHeader->BaseOfCode, 8), 20, sizeof(quint32));
+    addTreeField(parent, "ImageBase", PEUtils::formatHexWidth(optionalHeader->ImageBase, 16), 24, sizeof(quint64));
+    addTreeField(parent, "SectionAlignment", PEUtils::formatHexWidth(optionalHeader->SectionAlignment, 8), 32, sizeof(quint32));
+    addTreeField(parent, "FileAlignment", PEUtils::formatHexWidth(optionalHeader->FileAlignment, 8), 36, sizeof(quint32));
+    addTreeField(parent, "MajorOperatingSystemVersion", PEUtils::formatHexWidth(optionalHeader->MajorOperatingSystemVersion, 4), 40, sizeof(quint16));
+    addTreeField(parent, "MinorOperatingSystemVersion", PEUtils::formatHexWidth(optionalHeader->MinorOperatingSystemVersion, 4), 42, sizeof(quint16));
+    addTreeField(parent, "MajorImageVersion", PEUtils::formatHexWidth(optionalHeader->MajorImageVersion, 4), 44, sizeof(quint16));
+    addTreeField(parent, "MinorImageVersion", PEUtils::formatHexWidth(optionalHeader->MinorImageVersion, 4), 46, sizeof(quint16));
+    addTreeField(parent, "MajorSubsystemVersion", PEUtils::formatHexWidth(optionalHeader->MajorSubsystemVersion, 4), 48, sizeof(quint16));
+    addTreeField(parent, "MinorSubsystemVersion", PEUtils::formatHexWidth(optionalHeader->MinorSubsystemVersion, 4), 50, sizeof(quint16));
+    addTreeField(parent, "Win32VersionValue", PEUtils::formatHexWidth(optionalHeader->Win32VersionValue, 8), 52, sizeof(quint32));
+    addTreeField(parent, "SizeOfImage", PEUtils::formatHexWidth(optionalHeader->SizeOfImage, 8), 56, sizeof(quint32));
+    addTreeField(parent, "SizeOfHeaders", PEUtils::formatHexWidth(optionalHeader->SizeOfHeaders, 8), 60, sizeof(quint32));
+    addTreeField(parent, "CheckSum", PEUtils::formatHexWidth(optionalHeader->CheckSum, 8), 64, sizeof(quint32));
+    addTreeField(parent, "Subsystem", PEUtils::formatHexWidth(optionalHeader->Subsystem, 4), 68, sizeof(quint16));
+    addTreeField(parent, "DllCharacteristics", PEUtils::formatHexWidth(optionalHeader->DllCharacteristics, 4), 70, sizeof(quint16));
+    addTreeField(parent, "SizeOfStackReserve", PEUtils::formatHexWidth(optionalHeader->SizeOfStackReserve, 16), 72, sizeof(quint64));
+    addTreeField(parent, "SizeOfStackCommit", PEUtils::formatHexWidth(optionalHeader->SizeOfStackCommit, 16), 80, sizeof(quint64));
+    addTreeField(parent, "SizeOfHeapReserve", PEUtils::formatHexWidth(optionalHeader->SizeOfHeapReserve, 16), 88, sizeof(quint64));
+    addTreeField(parent, "SizeOfHeapCommit", PEUtils::formatHexWidth(optionalHeader->SizeOfHeapCommit, 16), 96, sizeof(quint64));
+    addTreeField(parent, "LoaderFlags", PEUtils::formatHexWidth(optionalHeader->LoaderFlags, 8), 104, sizeof(quint32));
+    addTreeField(parent, "NumberOfRvaAndSizes", PEUtils::formatHexWidth(optionalHeader->NumberOfRvaAndSizes, 8), 108, sizeof(quint32));
 }
 
 void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
@@ -792,70 +1005,239 @@ void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
             } else {
                 // If no valid ASCII characters, show as hex
                 QByteArray nameBytes(namePtr, 8);
-                sectionName = QString("0x%1").arg(QString(nameBytes.toHex()).toUpper());
+                sectionName = QString("0x") + QString(nameBytes.toHex()).toUpper();
             }
             QMap<QString, QString> params;
             params["number"] = QString::number(i + 1);
             params["name"] = sectionName;
             sectionItem->setText(0, LANG_PARAMS("UI/pe_structure_section_format", params));
             sectionItem->setText(1, "");
-            sectionItem->setText(2, QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper());
-            sectionItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString::number(section->SizeOfRawData)));
+            // Section header offset (where the section header structure is in the file)
+            // Sections start after PE signature (4) + File Header (20) + Optional Header
+            quint32 sectionHeaderOffset = (dosHeader ? dosHeader->e_lfanew : 0) + 4 + 20 + (fileHeader ? fileHeader->SizeOfOptionalHeader : 0) + (i * sizeof(IMAGE_SECTION_HEADER));
+            sectionItem->setText(2, PEUtils::formatHexWidth(sectionHeaderOffset, 8));
+            sectionItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(sizeof(IMAGE_SECTION_HEADER), 0)));
             
             // Add section details with proper file offsets
-            // Calculate the actual file offset for this section header
-            quint32 sectionHeaderOffset = (dosHeader ? dosHeader->e_lfanew : 0) + 24 + (fileHeader ? fileHeader->SizeOfOptionalHeader : 0) + (i * sizeof(IMAGE_SECTION_HEADER));
+            // Section header fields are relative to sectionHeaderOffset (parent's offset)
+            // IMAGE_SECTION_HEADER structure:
+            // Name[8] at offset 0 (8 bytes)
+            // Misc.VirtualSize at offset 8 (4 bytes)
+            // VirtualAddress at offset 12 (4 bytes)
+            // SizeOfRawData at offset 16 (4 bytes)
+            // PointerToRawData at offset 20 (4 bytes)
+            // PointerToRelocations at offset 24 (4 bytes)
+            // PointerToLinenumbers at offset 28 (4 bytes)
+            // NumberOfRelocations at offset 32 (2 bytes)
+            // NumberOfLinenumbers at offset 34 (2 bytes)
+            // Characteristics at offset 36 (4 bytes)
             
-            addTreeField(sectionItem, "VirtualAddress", QString("0x%1").arg(section->VirtualAddress, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset, sizeof(quint32));
-            addTreeField(sectionItem, "SizeOfRawData", QString::number(section->SizeOfRawData), sectionHeaderOffset + 4, sizeof(quint32));
-            addTreeField(sectionItem, "PointerToRawData", QString("0x%1").arg(section->PointerToRawData, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 8, sizeof(quint32));
-            addTreeField(sectionItem, "PointerToRelocations", QString("0x%1").arg(section->PointerToRelocations, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 12, sizeof(quint32));
+            addTreeField(sectionItem, "Name", sectionName, 0, 8);
+            addTreeField(sectionItem, "VirtualSize", PEUtils::formatHexWidth(section->Misc.VirtualSize, 8), 8, sizeof(quint32));
+            addTreeField(sectionItem, "VirtualAddress", PEUtils::formatHexWidth(section->VirtualAddress, 8), 12, sizeof(quint32));
+            addTreeField(sectionItem, "SizeOfRawData", PEUtils::formatHexWidth(section->SizeOfRawData, 8), 16, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToRawData", PEUtils::formatHexWidth(section->PointerToRawData, 8), 20, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToRelocations", PEUtils::formatHexWidth(section->PointerToRelocations, 8), 24, sizeof(quint32));
             // Note: PointerToLineNumbers and NumberOfLineNumbers are deprecated in modern PE format
-            addTreeField(sectionItem, "PointerToLineNumbers", LANG("UI/field_deprecated_pointer"), sectionHeaderOffset + 16, sizeof(quint32));
-            addTreeField(sectionItem, "NumberOfRelocations", QString::number(section->NumberOfRelocations), sectionHeaderOffset + 20, sizeof(quint16));
-            addTreeField(sectionItem, "NumberOfLineNumbers", LANG("UI/field_deprecated_count"), sectionHeaderOffset + 22, sizeof(quint16));
-            addTreeField(sectionItem, "Characteristics", QString("0x%1").arg(section->Characteristics, 8, 16, QChar('0')).toUpper(), sectionHeaderOffset + 24, sizeof(quint32));
+            addTreeField(sectionItem, "PointerToLineNumbers", LANG("UI/field_deprecated_pointer"), 28, sizeof(quint32));
+            addTreeField(sectionItem, "NumberOfRelocations", PEUtils::formatHexWidth(section->NumberOfRelocations, 4), 32, sizeof(quint16));
+            addTreeField(sectionItem, "NumberOfLineNumbers", LANG("UI/field_deprecated_count"), 34, sizeof(quint16));
+            addTreeField(sectionItem, "Characteristics", PEUtils::formatHexWidth(section->Characteristics, 8), 36, sizeof(quint32));
         }
+    }
+}
+
+void PEParserNew::addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset)
+{
+    if (richOffset + 16 > m_fileData.size()) {
+        return;
+    }
+    
+    IMAGE_RICH_HEADER richHeader;
+    if (!PEUtils::parseRichHeader(m_fileData, richOffset, richHeader)) {
+        return;
+    }
+    
+    // Add Rich Header fields - offsets are relative to richOffset (parent's offset)
+    addTreeField(parent, "XorKey", PEUtils::formatHexWidth(richHeader.XorKey, 8), 0, sizeof(quint32));
+    addTreeField(parent, "RichSignature", PEUtils::formatHexWidth(richHeader.RichSignature, 8), 4, sizeof(quint32));
+    addTreeField(parent, "RichVersion", PEUtils::formatHexWidth(richHeader.RichVersion, 8), 8, sizeof(quint32));
+    addTreeField(parent, "RichCount", PEUtils::formatHexWidth(richHeader.RichCount, 8), 12, sizeof(quint32));
+    
+    // Add Rich Entry fields
+    QList<IMAGE_RICH_ENTRY> entries = PEUtils::parseRichEntries(m_fileData, richOffset, richHeader.RichCount);
+    quint32 entryBaseOffset = 16; // 4 dwords = 16 bytes
+    
+    for (int i = 0; i < entries.size(); ++i) {
+        const IMAGE_RICH_ENTRY &entry = entries[i];
+        QString productName = PEUtils::getRichHeaderProductName(entry.ProductId);
+        QString entryName = QString("Entry %1: %2").arg(i + 1).arg(productName);
+        
+        QTreeWidgetItem *entryItem = new QTreeWidgetItem(parent);
+        entryItem->setText(0, entryName);
+        QString versionMajor = QString::number((entry.ProductVersion >> 8) & 0xFF, 16).toUpper().rightJustified(2, '0');
+        QString versionMinor = QString::number(entry.ProductVersion & 0xFF, 16).toUpper().rightJustified(2, '0');
+        QString countHex = PEUtils::formatHexWidth(entry.ProductCount, 8);
+        entryItem->setText(1, QString("v0x%1.0x%2, Count: %3").arg(versionMajor, versionMinor, countHex));
+        quint32 entryOffset = entryBaseOffset + (i * 12); // Each entry is 12 bytes
+        entryItem->setText(2, PEUtils::formatHexWidth(richOffset + entryOffset, 8));
+        entryItem->setText(3, PEUtils::formatHexWidth(12, 0) + " bytes");
+        entryItem->setText(4, ""); // No meaning for entry header
+        
+        // Add individual entry fields - offsets relative to entry start (entryOffset)
+        addTreeField(entryItem, "ProductId", PEUtils::formatHexWidth(entry.ProductId, 4), entryOffset, sizeof(quint16));
+        addTreeField(entryItem, "ProductVersion", PEUtils::formatHexWidth(entry.ProductVersion, 4), entryOffset + 2, sizeof(quint16));
+        addTreeField(entryItem, "ProductCount", PEUtils::formatHexWidth(entry.ProductCount, 8), entryOffset + 4, sizeof(quint32));
+        addTreeField(entryItem, "ProductTimestamp", PEUtils::formatHexWidth(entry.ProductTimestamp, 8), entryOffset + 8, sizeof(quint32));
     }
 }
 
 void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
 {
-    // Add data directory entries
+    // Get the Optional Header to access DataDirectory array
+    const IMAGE_OPTIONAL_HEADER *optionalHeader = m_dataModel.getOptionalHeader();
+    
+    if (!optionalHeader) {
+        return;
+    }
+    
+    // Get Data Directories base offset from parent item (already calculated correctly in getPEStructureTree)
+    QString parentOffsetStr = parent->text(2);
+    quint32 dataDirsBaseOffset = 0;
+    if (!parentOffsetStr.isEmpty() && parentOffsetStr.startsWith("0x")) {
+        bool ok;
+        dataDirsBaseOffset = parentOffsetStr.toULong(&ok, 16);
+        if (!ok || dataDirsBaseOffset == 0) {
+            // Fallback: recalculate if parent offset is invalid
+            const IMAGE_DOS_HEADER *dosHeader = m_dataModel.getDOSHeader();
+            const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
+            if (dosHeader && fileHeader) {
+                quint32 ntHeadersOffset = dosHeader->e_lfanew;
+                quint16 magic = optionalHeader->Magic;
+                quint32 numberOfRvaAndSizesOffset;
+                if (magic == 0x10b) {
+                    numberOfRvaAndSizesOffset = 92; // 0x5C
+                } else {
+                    numberOfRvaAndSizesOffset = 108; // 0x6C
+                }
+                dataDirsBaseOffset = ntHeadersOffset + 4 + 20 + numberOfRvaAndSizesOffset + 4;
+            } else {
+                return; // Cannot calculate offset
+            }
+        }
+    } else {
+        // Fallback: recalculate if no parent offset
+        const IMAGE_DOS_HEADER *dosHeader = m_dataModel.getDOSHeader();
+        const IMAGE_FILE_HEADER *fileHeader = m_dataModel.getFileHeader();
+        if (dosHeader && fileHeader) {
+            quint32 ntHeadersOffset = dosHeader->e_lfanew;
+            quint16 magic = optionalHeader->Magic;
+            quint32 numberOfRvaAndSizesOffset;
+            if (magic == 0x10b) {
+                numberOfRvaAndSizesOffset = 92; // 0x5C
+            } else {
+                numberOfRvaAndSizesOffset = 108; // 0x6C
+            }
+            dataDirsBaseOffset = ntHeadersOffset + 4 + 20 + numberOfRvaAndSizesOffset + 4;
+        } else {
+            return; // Cannot calculate offset
+        }
+    }
+    
+    // Add data directory entries - match CFF Explorer format: show RVA and Size as separate entries
     QStringList dirNames = {LANG("UI/data_dir_export"), LANG("UI/data_dir_import"), LANG("UI/data_dir_resource"), LANG("UI/data_dir_exception"),
                            LANG("UI/data_dir_certificate"), LANG("UI/data_dir_base_relocation"), LANG("UI/data_dir_debug"), LANG("UI/data_dir_architecture"),
                            LANG("UI/data_dir_global_pointer"), LANG("UI/data_dir_tls"), LANG("UI/data_dir_load_config"), LANG("UI/data_dir_bound_import"),
                            LANG("UI/data_dir_iat"), LANG("UI/data_dir_delay_import"), LANG("UI/data_dir_com_runtime"), LANG("UI/data_dir_reserved")};
     
-    for (int i = 0; i < dirNames.size(); ++i) {
+    // Access DataDirectory array directly from optional header structure
+    // Handle both PE32 and PE32+ formats
+    quint16 magic = optionalHeader->Magic;
+    const IMAGE_DATA_DIRECTORY *dataDirectories = nullptr;
+    if (magic == 0x10b) {
+        // PE32 (32-bit) - DataDirectory is part of IMAGE_OPTIONAL_HEADER32
+        const IMAGE_OPTIONAL_HEADER32 *optHeader32 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER32*>(optionalHeader);
+        dataDirectories = optHeader32->DataDirectory;
+            } else {
+        // PE32+ (64-bit) - DataDirectory is part of IMAGE_OPTIONAL_HEADER64
+        const IMAGE_OPTIONAL_HEADER64 *optHeader64 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(optionalHeader);
+        dataDirectories = optHeader64->DataDirectory;
+    }
+    
+    if (!dataDirectories) {
+        return;
+            }
+    
+    for (int i = 0; i < dirNames.size() && i < 16; ++i) {
+        // Get values directly from DataDirectory array
+        quint32 address = dataDirectories[i].VirtualAddress;
+        quint32 size = dataDirectories[i].Size;
+        
+        // Calculate offsets for display (Address and Size are consecutive 4-byte fields)
+        // Each Data Directory entry is 8 bytes: 4 bytes VirtualAddress + 4 bytes Size
+        quint32 addressOffset = dataDirsBaseOffset + (i * 8);      // Address (RVA) is at base + (i * 8)
+        quint32 sizeOffset = dataDirsBaseOffset + (i * 8) + 4;     // Size is at base + (i * 8) + 4
+        
+        // Verify offsets are within file bounds
+        if (addressOffset + 4 > static_cast<quint32>(m_fileData.size()) || 
+            sizeOffset + 4 > static_cast<quint32>(m_fileData.size())) {
+            // Skip if offset is out of bounds
+            continue;
+        }
+        
+        // Verify values match what's in the file (for debugging/validation)
+        // Read directly from file to ensure accuracy
+        quint32 fileAddress = 0;
+        quint32 fileSize = 0;
+        if (addressOffset + sizeof(quint32) <= static_cast<quint32>(m_fileData.size())) {
+            const quint8 *addrPtr = reinterpret_cast<const quint8*>(m_fileData.data() + addressOffset);
+            fileAddress = static_cast<quint32>(addrPtr[0]) |
+                         (static_cast<quint32>(addrPtr[1]) << 8) |
+                         (static_cast<quint32>(addrPtr[2]) << 16) |
+                         (static_cast<quint32>(addrPtr[3]) << 24);
+        }
+        if (sizeOffset + sizeof(quint32) <= static_cast<quint32>(m_fileData.size())) {
+            const quint8 *sizePtr = reinterpret_cast<const quint8*>(m_fileData.data() + sizeOffset);
+            fileSize = static_cast<quint32>(sizePtr[0]) |
+                      (static_cast<quint32>(sizePtr[1]) << 8) |
+                      (static_cast<quint32>(sizePtr[2]) << 16) |
+                      (static_cast<quint32>(sizePtr[3]) << 24);
+        }
+        
+        // Use values from structure (they should match file, but structure is more reliable)
+        // If they don't match, use file values as fallback
+        if (address != fileAddress) {
+            address = fileAddress; // Use file value if mismatch
+        }
+        if (size != fileSize) {
+            size = fileSize; // Use file value if mismatch
+        }
+        
+        // Create directory parent item (e.g., "Export Directory")
         QTreeWidgetItem *dirItem = new QTreeWidgetItem(parent);
         dirItem->setText(0, dirNames[i]);
-        dirItem->setText(1, "");
+        dirItem->setText(1, ""); // No value for parent
+        dirItem->setText(2, PEUtils::formatHexWidth(addressOffset, 8)); // Base offset
+        dirItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(8, 0))); // 8 bytes total
+        dirItem->setText(4, ""); // No meaning for directory container
         
-        // Create directory format with fallback
-        QString directoryFormat = LANG_PARAM("UI/data_directory_format", "number", QString::number(i));
-        if (directoryFormat.contains("%1")) {
-            // If LANG_PARAM didn't work, do manual replacement
-            QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
-            if (currentLang == "pt") {
-                directoryFormat = QString("Diretório %1").arg(i);
-            } else {
-                directoryFormat = QString("Directory %1").arg(i);
-            }
-        }
-        dirItem->setText(2, directoryFormat);
+        // Add Address child (showing RVA value in hexadecimal)
+        QTreeWidgetItem *addressItem = new QTreeWidgetItem(dirItem);
+        addressItem->setText(0, "Address");
+        addressItem->setText(1, PEUtils::formatHexWidth(address, 8));
+        addressItem->setText(2, PEUtils::formatHexWidth(addressOffset, 8));
+        addressItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(4, 0)));
+        addressItem->setText(4, ""); // No meaning for Data Directory entries
         
-        // Create size variable with fallback
-        QString sizeVariable = LANG("UI/data_directory_size_variable");
-        if (sizeVariable == "UI/data_directory_size_variable") {
-            QString currentLang = LanguageManager::getInstance().getCurrentLanguage();
-            if (currentLang == "pt") {
-                sizeVariable = "Variável";
-            } else {
-                sizeVariable = "Variable";
-            }
-        }
-        dirItem->setText(3, sizeVariable);
+        // Add Size child (showing size value in hexadecimal)
+        QTreeWidgetItem *sizeItem = new QTreeWidgetItem(dirItem);
+        sizeItem->setText(0, "Size");
+        sizeItem->setText(1, PEUtils::formatHexWidth(size, 8));
+        sizeItem->setText(2, PEUtils::formatHexWidth(sizeOffset, 8));
+        sizeItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(4, 0)));
+        sizeItem->setText(4, ""); // No meaning for Data Directory entries
+        
+        // Import/export details now live in the dedicated tabs (imports/exports)
     }
 }
 
@@ -864,8 +1246,192 @@ void PEParserNew::addTreeField(QTreeWidgetItem *parent, const QString &name, con
     QTreeWidgetItem *fieldItem = new QTreeWidgetItem(parent);
     fieldItem->setText(0, name);
     fieldItem->setText(1, value);
-    fieldItem->setText(2, QString("0x%1").arg(offset, 8, 16, QChar('0')).toUpper());
-    fieldItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", QString("0x%1").arg(size, 0, 16).toUpper()));
+    
+    // Calculate absolute offset: get parent's base offset and add relative offset
+    quint32 absoluteOffset = offset;
+    if (parent) {
+        QString parentOffsetStr = parent->text(2);
+        if (!parentOffsetStr.isEmpty() && parentOffsetStr.startsWith("0x")) {
+            bool ok;
+            quint32 parentOffset = parentOffsetStr.toULong(&ok, 16);
+            if (ok) {
+                absoluteOffset = parentOffset + offset;
+            }
+        }
+    }
+    
+    fieldItem->setText(2, PEUtils::formatHexWidth(absoluteOffset, 8));
+    fieldItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(size, 0)));
+    
+    // Get meaning for the field
+    QString meaning = getFieldMeaning(name, value);
+    fieldItem->setText(4, meaning);
+}
+
+QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &value)
+{
+    // Handle empty values
+    if (value.isEmpty()) {
+        return "";
+    }
+    
+    // Machine field - convert to architecture name
+    if (fieldName == "Machine") {
+        bool ok;
+        quint16 machine = value.toUShort(&ok, 16);
+        if (ok) {
+            return PEUtils::getMachineType(machine);
+        }
+    }
+    
+    // TimeDateStamp - convert to date/time
+    if (fieldName == "TimeDateStamp") {
+        bool ok;
+        quint32 timestamp = value.toULong(&ok, 16);
+        if (ok && timestamp != 0) {
+            QDateTime dateTime = QDateTime::fromSecsSinceEpoch(timestamp);
+            return dateTime.toString("dddd, dd.MM.yyyy HH:mm:ss UTC");
+        }
+    }
+    
+    // Characteristics - decode flags (can be File Header or Section Header)
+    if (fieldName == "Characteristics") {
+        bool ok;
+        // Try parsing as 16-bit first (File Header Characteristics)
+        quint16 chars16 = value.toUShort(&ok, 16);
+        if (ok) {
+            // File characteristics are typically small values (0x0001-0xFFFF)
+            // Section characteristics are typically larger (0x00000020-0xE0000000)
+            // If value fits in 16-bit and is reasonable for file chars, use file characteristics
+            if (chars16 <= 0xFFFF && chars16 != 0) {
+                QString fileChars = PEUtils::getFileCharacteristics(chars16);
+                // Check if we got meaningful flags (not just "None")
+                if (!fileChars.isEmpty() && fileChars != LANG("UI/section_char_none")) {
+                    return fileChars;
+                }
+            }
+        }
+        
+        // Otherwise try section characteristics (32-bit)
+        quint32 chars32 = value.toULong(&ok, 16);
+        if (ok) {
+            QString sectionChars = PEUtils::getSectionCharacteristics(chars32);
+            if (!sectionChars.isEmpty()) {
+                return sectionChars;
+            }
+        }
+    }
+    
+    // DllCharacteristics - decode flags
+    if (fieldName == "DllCharacteristics") {
+        bool ok;
+        quint16 chars = value.toUShort(&ok, 16);
+        if (ok) {
+            QString dllChars = PEUtils::getDLLCharacteristics(chars);
+            // If translation failed and we got raw keys, return empty to avoid showing broken text
+            if (dllChars.startsWith("UI/")) {
+                return ""; // Translation keys not found, return empty
+            }
+            return dllChars;
+        }
+    }
+    
+    // Subsystem - convert to subsystem name
+    if (fieldName == "Subsystem") {
+        bool ok;
+        quint16 subsystem = value.toUShort(&ok, 10);
+        if (ok) {
+            return PEUtils::getSubsystem(subsystem);
+        }
+    }
+    
+    // Magic - PE32 or PE32+
+    if (fieldName == "Magic") {
+        bool ok;
+        quint16 magic = value.toUShort(&ok, 16);
+        if (ok) {
+            if (magic == 0x10b) return "PE32 (32-bit)";
+            if (magic == 0x20b) return "PE32+ (64-bit)";
+            return QString("Unknown (0x%1)").arg(magic, 4, 16, QChar('0'));
+        }
+    }
+    
+    // e_magic - DOS signature
+    if (fieldName == "e_magic") {
+        bool ok;
+        quint16 magic = value.toUShort(&ok, 16);
+        if (ok && magic == 0x5a4d) {
+            return "MZ (DOS signature)";
+        }
+    }
+    
+    // Signature - PE signature
+    if (fieldName == "Signature") {
+        bool ok;
+        quint32 signature = value.toULong(&ok, 16);
+        if (ok && signature == 0x00004550) {
+            return "PE\\0\\0 (PE signature)";
+        }
+    }
+    
+    // NumberOfSections - just show count
+    if (fieldName == "NumberOfSections") {
+        return QString("%1 section(s)").arg(value);
+    }
+    
+    // SizeOfOptionalHeader - show decimal value
+    if (fieldName == "SizeOfOptionalHeader") {
+        bool ok;
+        quint16 size = value.toUShort(&ok, 10);
+        if (ok) {
+            return QString("%1 bytes (0x%2)").arg(size).arg(size, 0, 16);
+        }
+    }
+    
+    // PointerToSymbolTable - show if zero or not
+    if (fieldName == "PointerToSymbolTable") {
+        bool ok;
+        quint32 ptr = value.toULong(&ok, 16);
+        if (ok) {
+            if (ptr == 0) {
+                return "No symbol table";
+            }
+            return QString("RVA: 0x%1").arg(ptr, 8, 16, QChar('0'));
+        }
+    }
+    
+    // NumberOfSymbols - show count
+    if (fieldName == "NumberOfSymbols") {
+        bool ok;
+        quint32 count = value.toULong(&ok, 10);
+        if (ok) {
+            if (count == 0) {
+                return "No symbols";
+            }
+            return QString("%1 symbol(s)").arg(count);
+        }
+    }
+    
+    // Rich Header fields
+    if (fieldName == "RichSignature") {
+        bool ok;
+        quint32 sig = value.toULong(&ok, 16);
+        if (ok) {
+            // Check if it's "DanS" when XORed (we'd need the XOR key, but for display we show it's the signature)
+            return "DanS signature (XORed)";
+        }
+    }
+    
+    if (fieldName == "RichCount") {
+        bool ok;
+        quint32 count = value.toULong(&ok, 10);
+        if (ok) {
+            return QString("%1 entry/entries").arg(count);
+        }
+    }
+    
+    // Default: return empty string if no specific meaning
+    return "";
 }
 
 QString PEParserNew::findConfigFile(const QString &fileName) const

@@ -43,6 +43,8 @@
 #include <QTreeWidgetItem>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QVector>
+#include <limits>
 
 /**
  * @brief New modular PE Parser that follows SOLID principles
@@ -241,6 +243,18 @@ public:
      */
     void setLanguage(const QString &language);
     
+    /**
+     * @brief Gets human-readable meaning for a field value
+     * @param fieldName Name of the field
+     * @param value String representation of the field value
+     * @return Human-readable meaning of the value, or empty string if no specific meaning
+     * 
+     * This method interprets field values and provides human-readable meanings,
+     * such as converting machine codes to architecture names, timestamps to dates,
+     * and decoding flag values.
+     */
+    QString getFieldMeaning(const QString &fieldName, const QString &value);
+    
     // Tree building method (for UI compatibility)
     
     /**
@@ -252,6 +266,9 @@ public:
      * providing a comprehensive view of the PE structure.
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
+    QStringList getImportModules() const { return m_dataModel.getImports(); }
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getImportFunctionDetails() const { return m_dataModel.getImportFunctions(); }
+    const QList<PEDataModel::ExportFunctionEntry>& getExportFunctions() const { return m_dataModel.getExportFunctions(); }
     
     // Async parsing support - For handling large files without blocking UI
     
@@ -435,6 +452,7 @@ private:
      * @param parent Parent tree item
      */
     void addDataDirectoryFields(QTreeWidgetItem *parent);
+    void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
     
     /**
      * @brief Adds a field to a tree item
@@ -449,7 +467,11 @@ private:
     // File data - Storage for file content and parsed information
     
     QFile m_file;                    ///< File handle for reading PE data
-    QByteArray m_fileData;           ///< Raw file data in memory
+    QByteArray m_fileData;          ///< Raw file data buffer
+    QByteArray m_optionalHeaderBuffer; ///< Buffer for optional header when reading from file
+    IMAGE_DOS_HEADER m_cachedDosHeader; ///< Persistent DOS header for streaming mode
+    IMAGE_FILE_HEADER m_cachedFileHeader; ///< Persistent File header for streaming mode
+    QVector<IMAGE_SECTION_HEADER> m_cachedSections; ///< Persistent section headers for streaming mode
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
     
@@ -462,8 +484,8 @@ private:
     
     // Constants - Configuration values for parsing behavior
     
-    static const qint64 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;      ///< 5MB threshold for large files
-    static const qint64 VERY_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024; ///< 20MB threshold for very large files
+    static const qint64 LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
+    static const qint64 VERY_LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
 };
 
 #endif // PE_PARSER_NEW_H
