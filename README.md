@@ -24,7 +24,7 @@ PEHint is a visual PE file analyzer designed for analysts, reverse engineers, an
 - Uniform hexadecimal formatting (uppercase with 0x prefix) across the tree and hex viewer
 - Drag-and-drop loading and clipboard-friendly exports of tree data
 - Removal of the large-file shortcut path—64-bit samples now receive a full parse by default
-- About dialog updated with scaled branding imagery and refreshed language assets (no emoji)
+- About dialog updated with scaled branding imagery and refreshed language assets
 
 ## Screenshots
 
