@@ -72,6 +72,7 @@ public slots:
     void onCollapseAll();
     void onHexViewerOptions();
     void onSecurityAnalysis();
+    void onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     
     // Language management
     void setupLanguageMenu();
@@ -121,6 +122,7 @@ private:
     void clearDisplay();
     void updateFileInfo();
     void updateAnalysisDisplay();
+    void populateImportFunctions(const QString &moduleName);
     
     // Utility functions
     void showError(const QString &title, const QString &message);

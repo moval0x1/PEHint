@@ -28,6 +28,7 @@
 #include "version.h"
 #include "language_manager.h"
 #include "crash_handler.h"
+#include "pe_utils.h"
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QApplication>
@@ -490,7 +491,8 @@ void MainWindow::dropEvent(QDropEvent *event)
 // Menu action handlers
 void MainWindow::on_action_PEHint_triggered()
 {
-    QPixmap pehintIcon(":/images/imgs/PEHint-ico.ico");
+    QPixmap pehintIcon(":/images/imgs/PEHint.png");
+    QPixmap scaledIcon = pehintIcon.scaled(240, 240, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
     QString msg = QString("<b>%1</b>").arg(LANG("UI/about_title"));
     msg += "<br/>";
@@ -513,7 +515,7 @@ void MainWindow::on_action_PEHint_triggered()
     msgBox.setTextFormat(Qt::RichText);
     msgBox.setText(msg);
     msgBox.setAutoFillBackground(true);
-    msgBox.setIconPixmap(pehintIcon);
+    msgBox.setIconPixmap(scaledIcon);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 }
@@ -952,6 +954,9 @@ void MainWindow::clearDisplay()
         if (m_uiManager->m_securityButton) m_uiManager->m_securityButton->setEnabled(false);
         if (m_uiManager->m_expandAllButton) m_uiManager->m_expandAllButton->setEnabled(false);
         if (m_uiManager->m_collapseAllButton) m_uiManager->m_collapseAllButton->setEnabled(false);
+        if (m_uiManager->m_importModulesTree) m_uiManager->m_importModulesTree->clear();
+        if (m_uiManager->m_importFunctionsTree) m_uiManager->m_importFunctionsTree->clear();
+        if (m_uiManager->m_exportsTree) m_uiManager->m_exportsTree->clear();
         
         // Also clear hex viewer highlights
         if (m_uiManager->m_hexViewer) {
@@ -1005,7 +1010,7 @@ void MainWindow::updateAnalysisDisplay()
     ).arg(LANG("UI/welcome_title"), LANG_PARAMS("UI/placeholder_welcome", params), LANG("UI/welcome_description"));
 
     m_uiManager->m_fieldExplanationText->setHtml(welcomeMessage);
-    
+ 
     // Update hex viewer with file data
     if (m_peParser->isValid()) {
         if (m_peParser->isLargeFile()) {
@@ -1031,6 +1036,55 @@ void MainWindow::updateAnalysisDisplay()
                 QByteArray fileData = file.readAll();
                 file.close();
                 m_uiManager->m_hexViewer->setData(fileData);
+            }
+        }
+    }
+
+    // Populate Imports tab
+    if (m_uiManager->m_importModulesTree) {
+        m_uiManager->m_importModulesTree->clear();
+        if (m_uiManager->m_importFunctionsTree) {
+            m_uiManager->m_importFunctionsTree->clear();
+        }
+        const QStringList imports = m_peParser->getImportModules();
+        const auto &importDetails = m_peParser->getImportFunctionDetails();
+
+        for (const QString &moduleName : imports) {
+            const QList<PEDataModel::ImportFunctionEntry> functions = importDetails.value(moduleName);
+            QTreeWidgetItem *moduleItem = new QTreeWidgetItem(m_uiManager->m_importModulesTree);
+            moduleItem->setText(0, moduleName);
+            moduleItem->setText(1, QString::number(functions.size()));
+        }
+
+        if (m_uiManager->m_importModulesTree->topLevelItemCount() > 0) {
+            m_uiManager->m_importModulesTree->setCurrentItem(m_uiManager->m_importModulesTree->topLevelItem(0));
+        } else {
+            QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_importModulesTree);
+            placeholder->setText(0, LANG("UI/imports_none"));
+            placeholder->setText(1, "");
+            populateImportFunctions(QString());
+        }
+    }
+
+    // Populate Exports tab
+    if (m_uiManager->m_exportsTree) {
+        m_uiManager->m_exportsTree->clear();
+        const auto &exports = m_peParser->getExportFunctions();
+        if (exports.isEmpty()) {
+            QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_exportsTree);
+            placeholder->setText(0, LANG("UI/exports_none"));
+            placeholder->setFirstColumnSpanned(true);
+            placeholder->setFlags(Qt::NoItemFlags);
+        } else {
+            for (const PEDataModel::ExportFunctionEntry &entry : exports) {
+                QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_exportsTree);
+                item->setText(0, entry.name);
+                if (entry.rva != 0) {
+                    item->setText(1, PEUtils::formatHexWidth(entry.rva, 8));
+                } else {
+                    item->setText(1, "");
+                }
+                item->setText(2, QString::number(entry.ordinal));
             }
         }
     }
@@ -1427,7 +1481,31 @@ void MainWindow::updateUILanguage()
                 << LANG("UI/tree_header_meaning");
         m_uiManager->m_peTree->setHeaderLabels(headers);
     }
-    
+
+    if (m_uiManager && m_uiManager->m_analysisTabWidget) {
+        if (m_uiManager->m_analysisTabWidget->count() > 0) {
+            m_uiManager->m_analysisTabWidget->setTabText(0, LANG("UI/tab_structure"));
+        }
+        if (m_uiManager->m_analysisTabWidget->count() > 1) {
+            m_uiManager->m_analysisTabWidget->setTabText(1, LANG("UI/tab_imports"));
+        }
+        if (m_uiManager->m_analysisTabWidget->count() > 2) {
+            m_uiManager->m_analysisTabWidget->setTabText(2, LANG("UI/tab_exports"));
+        }
+    }
+
+    if (m_uiManager && m_uiManager->m_importModulesTree) {
+        m_uiManager->m_importModulesTree->setHeaderLabels({LANG("UI/imports_header_module"), LANG("UI/imports_header_count")});
+    }
+
+    if (m_uiManager && m_uiManager->m_importFunctionsTree) {
+        m_uiManager->m_importFunctionsTree->setHeaderLabels({LANG("UI/imports_functions_header_name")});
+    }
+
+    if (m_uiManager && m_uiManager->m_exportsTree) {
+        m_uiManager->m_exportsTree->setHeaderLabels({LANG("UI/exports_header_name")});
+    }
+ 
     // Update placeholder text
     if (m_uiManager && m_uiManager->m_fieldExplanationText) {
         m_uiManager->m_fieldExplanationText->setPlaceholderText(LANG("UI/placeholder_explanation"));
@@ -1573,5 +1651,60 @@ void MainWindow::updateLanguageMenu()
     // Force menu update
     languageMenu->update();
     qDebug() << "Language menu update complete. Current language:" << currentLanguage;
+}
+
+void MainWindow::populateImportFunctions(const QString &moduleName)
+{
+    if (!m_uiManager || !m_uiManager->m_importFunctionsTree) {
+        return;
+    }
+
+    m_uiManager->m_importFunctionsTree->clear();
+
+    if (!m_fileLoaded || !m_peParser) {
+        return;
+    }
+
+    const auto &importDetails = m_peParser->getImportFunctionDetails();
+    const QList<PEDataModel::ImportFunctionEntry> functions = moduleName.isEmpty() ? QList<PEDataModel::ImportFunctionEntry>() : importDetails.value(moduleName);
+
+    if (functions.isEmpty()) {
+        QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_importFunctionsTree);
+        placeholder->setText(0, LANG("UI/imports_no_functions"));
+        placeholder->setFirstColumnSpanned(true);
+        placeholder->setFlags(Qt::NoItemFlags);
+        return;
+    }
+
+    for (const PEDataModel::ImportFunctionEntry &entry : functions) {
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_importFunctionsTree);
+        item->setText(0, entry.name);
+        if (entry.thunkRVA != 0) {
+            item->setText(1, PEUtils::formatHexWidth(entry.thunkRVA, 8));
+        } else {
+            item->setText(1, "");
+        }
+        if (entry.importedByOrdinal) {
+            item->setText(2, QString::number(entry.ordinal));
+        } else {
+            item->setText(2, QString());
+        }
+    }
+}
+
+void MainWindow::onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
+{
+    Q_UNUSED(previous);
+
+    if (!m_fileLoaded || !m_peParser) {
+        return;
+    }
+
+    if (!current) {
+        populateImportFunctions(QString());
+        return;
+    }
+
+    populateImportFunctions(current->text(0));
 }
 

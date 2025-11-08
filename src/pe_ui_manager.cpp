@@ -46,6 +46,10 @@ UIManager::UIManager(MainWindow *parent)
     , m_peTree(nullptr)
     , m_fieldExplanationText(nullptr)
     , m_contextMenu(nullptr)
+    , m_analysisTabWidget(nullptr)
+    , m_importModulesTree(nullptr)
+    , m_importFunctionsTree(nullptr)
+    , m_exportsTree(nullptr)
     , m_hexViewer(nullptr)
 {
 }
@@ -201,13 +205,22 @@ void UIManager::setupProgressSection(QVBoxLayout *mainLayout)
  */
 void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
 {
+    // Create main tab widget for structure/import/export views
+    m_analysisTabWidget = new QTabWidget();
+    m_analysisTabWidget->setObjectName("analysisTabWidget");
+    m_analysisTabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    // --------------------------------------------------------------------
+    // Structure tab (original tree + explanations)
+    // --------------------------------------------------------------------
+
     // Create PE Structure Tree with comprehensive columns
     m_peTree = new QTreeWidget();
     QStringList headers;
     headers << LANG("UI/tree_header_field") << LANG("UI/tree_header_value") << LANG("UI/tree_header_offset") << LANG("UI/tree_header_size") << LANG("UI/tree_header_meaning");
     m_peTree->setHeaderLabels(headers);
     m_peTree->setAlternatingRowColors(true); // Improves readability
-    
+
     // Enhanced styling to indicate clickable items
     m_peTree->setStyleSheet(
         "QTreeWidget { "
@@ -240,39 +253,30 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
         "   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2); "
         "}"
     );
-    
+
     // Enable mouse tracking for hover effects
     m_peTree->setMouseTracking(true);
-    
+
     // Set cursor to indicate clickable items
     m_peTree->setCursor(Qt::PointingHandCursor);
-    
-    // Set column widths for optimal display - increased field name width significantly to show full names
-    m_peTree->setColumnWidth(0, 320); // Field name (increased from 250 to show full names like "COM+ Runtime Header Directory RVA")
-    m_peTree->setColumnWidth(1, 150); // Field value
-    m_peTree->setColumnWidth(2, 110); // Field offset
-    m_peTree->setColumnWidth(3, 80);  // Field size
-    m_peTree->setColumnWidth(4, 400); // Field meaning (wider for longer meanings)
-    
-    // Set minimum height for tree to show more fields
-    m_peTree->setMinimumHeight(300); // Reduced from 600 to allow better resizing
-    // Set size policy to allow proper resizing
+
+    // Set column widths for optimal display
+    m_peTree->setColumnWidth(0, 320);
+    m_peTree->setColumnWidth(1, 150);
+    m_peTree->setColumnWidth(2, 110);
+    m_peTree->setColumnWidth(3, 80);
+    m_peTree->setColumnWidth(4, 400);
+
+    m_peTree->setMinimumHeight(300);
     m_peTree->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_peTree->setMinimumWidth(600); // Reduced from 800 to prevent layout breaking
-    
-    // Create a splitter to allow resizing between tree and explanation
-    QSplitter *treeSplitter = new QSplitter(Qt::Vertical);
-    treeSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    treeSplitter->setChildrenCollapsible(false); // Prevent collapsing sections completely
-    treeSplitter->setHandleWidth(5); // Make splitter handle more visible
-    
-    // Create a container widget for the tree and help label
+    m_peTree->setMinimumWidth(600);
+
     QWidget *treeContainer = new QWidget();
     treeContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *treeContainerLayout = new QVBoxLayout(treeContainer);
     treeContainerLayout->setContentsMargins(0, 0, 0, 0);
     treeContainerLayout->setSpacing(0);
-    
+
     QWidget *treeControlsWidget = new QWidget(treeContainer);
     QHBoxLayout *treeControlsLayout = new QHBoxLayout(treeControlsWidget);
     treeControlsLayout->setContentsMargins(0, 0, 0, 4);
@@ -295,16 +299,14 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     treeControlsLayout->addWidget(m_collapseAllButton);
 
     treeContainerLayout->addWidget(treeControlsWidget);
-    treeContainerLayout->addWidget(m_peTree, 1); // Tree takes all available space
-    
-    // Create Field Explanation Text area
+    treeContainerLayout->addWidget(m_peTree, 1);
+
     QWidget *explanationContainer = new QWidget();
-    explanationContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    explanationContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *explanationLayout = new QVBoxLayout(explanationContainer);
     explanationLayout->setContentsMargins(0, 0, 0, 0);
     explanationLayout->setSpacing(4);
-    
-    // Add a small info label above the explanation area
+
     QLabel *explanationLabel = new QLabel(LANG("UI/explanation_label"));
     explanationLabel->setStyleSheet(
         "QLabel { "
@@ -327,12 +329,12 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
         "}"
     );
     explanationLayout->addWidget(explanationLabel);
-    
+
     m_fieldExplanationText = new QTextEdit();
-    m_fieldExplanationText->setMinimumHeight(100); // Reduced further to allow better resizing
-    m_fieldExplanationText->setMaximumHeight(250); // Reduced maximum to prevent layout issues
+    m_fieldExplanationText->setMinimumHeight(220);
+    m_fieldExplanationText->setMaximumHeight(220);
     m_fieldExplanationText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
-    m_fieldExplanationText->setReadOnly(true);     // User can't edit explanations
+    m_fieldExplanationText->setReadOnly(true);
     m_fieldExplanationText->setStyleSheet(
         "QTextEdit { "
         "   font-size: 11px; "
@@ -351,25 +353,88 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     );
     m_fieldExplanationText->setPlaceholderText(LANG("UI/placeholder_explanation"));
     explanationLayout->addWidget(m_fieldExplanationText, 1);
-    
-    // Add containers to splitter
-    treeSplitter->addWidget(treeContainer);
-    treeSplitter->addWidget(explanationContainer);
-    
-    // Set splitter sizes: 75% for tree, 25% for explanation
-    // This gives more space to the parsing tree to show all fields
-    // Use proportional sizes that work with smaller windows
-    treeSplitter->setSizes({600, 150});
-    treeSplitter->setStretchFactor(0, 3); // Tree gets 3x more space (reduced from 4)
-    treeSplitter->setStretchFactor(1, 1);  // Explanation gets 1x space
-    
-    // Set minimum sizes to prevent layout breaking on resize
-    // Ensure splitter maintains proper proportions - reduced to allow smaller windows
-    treeContainer->setMinimumSize(600, 200); // Reduced minimum size for tree container
-    explanationContainer->setMinimumSize(600, 100); // Reduced minimum size for explanation container
-    
-    // Add splitter to main layout with stretch factor so it takes available space
-    mainLayout->addWidget(treeSplitter, 1); // Stretch factor 1 means it takes available space
+
+    treeContainer->setMinimumSize(600, 200);
+    explanationContainer->setMinimumSize(600, 220);
+    explanationContainer->setMaximumHeight(220);
+
+    QWidget *structureTab = new QWidget();
+    QVBoxLayout *structureLayout = new QVBoxLayout(structureTab);
+    structureLayout->setContentsMargins(0, 0, 0, 0);
+    structureLayout->setSpacing(0);
+    structureLayout->addWidget(treeContainer, 1);
+    structureLayout->addWidget(explanationContainer, 0);
+
+    m_analysisTabWidget->addTab(structureTab, LANG("UI/tab_structure"));
+
+    // --------------------------------------------------------------------
+    // Imports tab
+    // --------------------------------------------------------------------
+    QWidget *importsTab = new QWidget();
+    QVBoxLayout *importsLayout = new QVBoxLayout(importsTab);
+    importsLayout->setContentsMargins(0, 0, 0, 0);
+    importsLayout->setSpacing(4);
+
+    QSplitter *importsSplitter = new QSplitter(Qt::Vertical);
+    importsSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    importsSplitter->setChildrenCollapsible(false);
+    importsSplitter->setHandleWidth(5);
+
+    m_importModulesTree = new QTreeWidget();
+    m_importModulesTree->setAlternatingRowColors(true);
+    m_importModulesTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_importModulesTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_importModulesTree->setHeaderLabels({LANG("UI/imports_header_module"), LANG("UI/imports_header_count")});
+    m_importModulesTree->setColumnWidth(0, 250);
+    m_importModulesTree->setColumnWidth(1, 120);
+
+    m_importFunctionsTree = new QTreeWidget();
+    m_importFunctionsTree->setAlternatingRowColors(true);
+    m_importFunctionsTree->setSelectionMode(QAbstractItemView::NoSelection);
+    m_importFunctionsTree->setHeaderLabels({
+        LANG("UI/imports_functions_header_name"),
+        LANG("UI/imports_functions_header_offset"),
+        LANG("UI/imports_functions_header_ordinal")
+    });
+    m_importFunctionsTree->setColumnWidth(0, 260);
+    m_importFunctionsTree->setColumnWidth(1, 140);
+    m_importFunctionsTree->setColumnWidth(2, 100);
+
+    importsSplitter->addWidget(m_importModulesTree);
+    importsSplitter->addWidget(m_importFunctionsTree);
+    importsSplitter->setStretchFactor(0, 2);
+    importsSplitter->setStretchFactor(1, 3);
+    importsSplitter->setSizes({300, 300});
+
+    importsLayout->addWidget(importsSplitter);
+    m_analysisTabWidget->addTab(importsTab, LANG("UI/tab_imports"));
+
+    // --------------------------------------------------------------------
+    // Exports tab
+    // --------------------------------------------------------------------
+    QWidget *exportsTab = new QWidget();
+    QVBoxLayout *exportsLayout = new QVBoxLayout(exportsTab);
+    exportsLayout->setContentsMargins(0, 0, 0, 0);
+    exportsLayout->setSpacing(4);
+
+    m_exportsTree = new QTreeWidget();
+    m_exportsTree->setAlternatingRowColors(true);
+    m_exportsTree->setSelectionMode(QAbstractItemView::NoSelection);
+    m_exportsTree->setHeaderLabels({
+        LANG("UI/exports_header_name"),
+        LANG("UI/exports_header_offset"),
+        LANG("UI/exports_header_ordinal")
+    });
+    m_exportsTree->setColumnWidth(0, 260);
+    m_exportsTree->setColumnWidth(1, 140);
+    m_exportsTree->setColumnWidth(2, 100);
+
+    exportsLayout->addWidget(m_exportsTree);
+    m_analysisTabWidget->addTab(exportsTab, LANG("UI/tab_exports"));
+
+    // --------------------------------------------------------------------
+
+    mainLayout->addWidget(m_analysisTabWidget, 1);
 }
 
 /**
@@ -453,6 +518,9 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
     if (m_collapseAllButton) {
         connect(m_collapseAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onCollapseAll);
+    }
+    if (m_importModulesTree) {
+        connect(m_importModulesTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportModuleSelected);
     }
     // connect(m_securityButton, &QPushButton::clicked, mainWindow, &MainWindow::onSecurityAnalysis); // HIDDEN
     connect(m_peTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onTreeItemClicked);

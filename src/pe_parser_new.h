@@ -43,6 +43,8 @@
 #include <QTreeWidgetItem>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QVector>
+#include <limits>
 
 /**
  * @brief New modular PE Parser that follows SOLID principles
@@ -264,6 +266,9 @@ public:
      * providing a comprehensive view of the PE structure.
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
+    QStringList getImportModules() const { return m_dataModel.getImports(); }
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getImportFunctionDetails() const { return m_dataModel.getImportFunctions(); }
+    const QList<PEDataModel::ExportFunctionEntry>& getExportFunctions() const { return m_dataModel.getExportFunctions(); }
     
     // Async parsing support - For handling large files without blocking UI
     
@@ -447,12 +452,6 @@ private:
      * @param parent Parent tree item
      */
     void addDataDirectoryFields(QTreeWidgetItem *parent);
-    
-    /**
-     * @brief Adds Rich Header fields to a tree item
-     * @param parent Parent tree item
-     * @param richOffset File offset of the Rich Header
-     */
     void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
     
     /**
@@ -468,8 +467,11 @@ private:
     // File data - Storage for file content and parsed information
     
     QFile m_file;                    ///< File handle for reading PE data
-    QByteArray m_fileData;           ///< Raw file data in memory
+    QByteArray m_fileData;          ///< Raw file data buffer
     QByteArray m_optionalHeaderBuffer; ///< Buffer for optional header when reading from file
+    IMAGE_DOS_HEADER m_cachedDosHeader; ///< Persistent DOS header for streaming mode
+    IMAGE_FILE_HEADER m_cachedFileHeader; ///< Persistent File header for streaming mode
+    QVector<IMAGE_SECTION_HEADER> m_cachedSections; ///< Persistent section headers for streaming mode
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
     
@@ -482,8 +484,8 @@ private:
     
     // Constants - Configuration values for parsing behavior
     
-    static const qint64 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;      ///< 5MB threshold for large files
-    static const qint64 VERY_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024; ///< 20MB threshold for very large files
+    static const qint64 LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
+    static const qint64 VERY_LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
 };
 
 #endif // PE_PARSER_NEW_H

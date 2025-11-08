@@ -40,6 +40,7 @@
 #include <QProgressBar>
 #include <QTreeWidget>
 #include <QTextEdit>
+#include <QTabWidget>
 #include <QMenu>
 #include "hexviewer.h"
 
@@ -86,6 +87,10 @@ public:
     QPushButton *m_saveButton;      ///< Saves analysis report to file
     QPushButton *m_expandAllButton; ///< Expands the entire PE structure tree
     QPushButton *m_collapseAllButton; ///< Collapses the entire PE structure tree
+    QTabWidget *m_analysisTabWidget; ///< Tab widget for structure/import/export views
+    QTreeWidget *m_importModulesTree; ///< Displays import modules list
+    QTreeWidget *m_importFunctionsTree; ///< Displays functions for selected import module
+    QTreeWidget *m_exportsTree;       ///< Displays export functions list
     QPushButton *m_securityButton;  ///< Performs security analysis
     QTreeWidget *m_peTree;         ///< Displays PE structure hierarchy
     QTextEdit *m_fieldExplanationText; ///< Shows field explanations

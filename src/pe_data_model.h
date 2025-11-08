@@ -9,6 +9,21 @@
 class PEDataModel
 {
 public:
+    struct ImportFunctionEntry {
+        QString name;
+        bool importedByOrdinal = false;
+        quint16 ordinal = 0;
+        quint32 thunkRVA = 0;
+        quint32 thunkOffset = 0;
+    };
+
+    struct ExportFunctionEntry {
+        QString name;
+        quint16 ordinal = 0;
+        quint32 rva = 0;
+        quint32 fileOffset = 0;
+    };
+
     PEDataModel();
     ~PEDataModel();
     
@@ -33,14 +48,12 @@ public:
     
     // Imports/Exports
     void setImports(const QStringList &imports);
-    void setImportDetails(const QMap<QString, QList<QString>> &details);
+    void setImportFunctions(const QMap<QString, QList<ImportFunctionEntry>> &details);
     QStringList getImports() const;
-    QMap<QString, QList<QString>> getImportDetails() const;
-    
-    void setExports(const QStringList &exports);
-    void setExportDetails(const QStringList &details);
-    QStringList getExports() const;
-    QStringList getExportDetails() const;
+    const QMap<QString, QList<ImportFunctionEntry>>& getImportFunctions() const;
+
+    void setExportFunctions(const QList<ExportFunctionEntry> &functions);
+    const QList<ExportFunctionEntry>& getExportFunctions() const;
     
     // Resources
     void setResourceTypes(const QStringList &types);
@@ -143,9 +156,8 @@ private:
     
     // Imports/Exports
     QStringList m_imports;
-    QMap<QString, QList<QString>> m_importDetails;
-    QStringList m_exports;
-    QStringList m_exportDetails;
+    QMap<QString, QList<ImportFunctionEntry>> m_importFunctionDetails;
+    QList<ExportFunctionEntry> m_exportFunctions;
     
     // Resources
     QStringList m_resourceTypes;

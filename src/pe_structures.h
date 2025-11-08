@@ -96,7 +96,6 @@ struct IMAGE_DOS_HEADER {
 };
 
 struct IMAGE_FILE_HEADER {
-    quint32 Signature;        // PE signature
     quint16 Machine;          // Machine type
     quint16 NumberOfSections; // Number of sections
     quint32 TimeDateStamp;    // Time/date stamp
@@ -105,6 +104,8 @@ struct IMAGE_FILE_HEADER {
     quint16 SizeOfOptionalHeader; // Size of optional header
     quint16 Characteristics;  // File characteristics
 };
+
+static_assert(sizeof(IMAGE_FILE_HEADER) == 20, "IMAGE_FILE_HEADER must be 20 bytes");
 
 // ============================================================================
 // DATA DIRECTORY STRUCTURES
@@ -156,6 +157,8 @@ struct IMAGE_OPTIONAL_HEADER32 {
     IMAGE_DATA_DIRECTORY DataDirectory[16];
 };
 
+static_assert(sizeof(IMAGE_OPTIONAL_HEADER32) == 224, "IMAGE_OPTIONAL_HEADER32 must be 224 bytes");
+
 // 64-bit Optional Header (PE32+)
 struct IMAGE_OPTIONAL_HEADER64 {
     quint16 Magic;                    // Magic number
@@ -191,6 +194,8 @@ struct IMAGE_OPTIONAL_HEADER64 {
     // Data Directory array (16 entries)
     IMAGE_DATA_DIRECTORY DataDirectory[16];
 };
+
+static_assert(sizeof(IMAGE_OPTIONAL_HEADER64) == 240, "IMAGE_OPTIONAL_HEADER64 must be 240 bytes");
 
 // Legacy compatibility - keep the old name for existing code
 typedef IMAGE_OPTIONAL_HEADER32 IMAGE_OPTIONAL_HEADER;

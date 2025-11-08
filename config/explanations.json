@@ -369,13 +369,13 @@
       "title": "Export Directory",
       "description": "Contains information about functions and data that the module exports for use by other modules. This directory points to the export address table (EAT) which lists all exported symbols.",
       "purpose": "Enable other modules to import functions and data from this executable",
-      "security_notes": "Critical for analysis - check for suspicious exported functions, unexpected exports, or missing exports that might indicate obfuscation"
+      "security_notes": "Critical for malware triage – look for exported functions with purely ordinal names, duplicate names, or exports that proxy straight into system DLLs (common in DLL sideloading). Unexpected exports (especially networking, process injection, or service routines) can indicate command-and-control or persistence hooks."
     },
     "Import Directory": {
       "title": "Import Directory",
       "description": "Lists all modules and functions that this executable imports from other modules. Each import entry specifies the module name and the functions being imported.",
       "purpose": "Resolve dependencies on external functions and libraries at runtime",
-      "security_notes": "Critical for security analysis - check for suspicious imports, unexpected DLLs, or imports from non-standard locations"
+      "security_notes": "Review imported DLLs and APIs for suspicious behavior: direct imports of functions such as WriteProcessMemory, CreateRemoteThread, VirtualAllocEx, Nt* syscalls, or unusual DLLs (e.g. dbghelp, samsrv, wininet) often reveal the malware’s capabilities. Sparse imports combined with a high entry point entropy usually suggest packed or dynamically resolved APIs."
     },
     "Resource Directory": {
       "title": "Resource Directory",

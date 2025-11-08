@@ -10,6 +10,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
+#include <QtGlobal>
 
 PEParserNew::PEParserNew(QObject *parent)
     : QObject(parent)
@@ -124,6 +125,10 @@ void PEParserNew::clear()
     m_file.close();
     m_fileData.clear();
     m_dataModel.clear();
+    m_optionalHeaderBuffer.clear();
+    m_cachedSections.clear();
+    m_cachedDosHeader = IMAGE_DOS_HEADER{};
+    m_cachedFileHeader = IMAGE_FILE_HEADER{};
     m_isValid = false;
     m_isParsing = false;
 }
@@ -186,7 +191,8 @@ bool PEParserNew::parseDOSHeader()
         return false;
     }
     
-    m_dataModel.setDOSHeader(dosHeader);
+    m_cachedDosHeader = *dosHeader;
+    m_dataModel.setDOSHeader(&m_cachedDosHeader);
     return true;
 }
 
@@ -209,19 +215,21 @@ bool PEParserNew::parsePEHeaders()
         return false;
     }
     
-    // Parse file header
-    if (peOffset + sizeof(IMAGE_FILE_HEADER) > m_fileData.size()) {
+    // Parse file header (immediately after the PE signature)
+    quint32 fileHeaderOffset = peOffset + sizeof(quint32);
+    if (fileHeaderOffset + sizeof(IMAGE_FILE_HEADER) > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_pe_header_beyond"));
         return false;
     }
     
     const IMAGE_FILE_HEADER *fileHeader = reinterpret_cast<const IMAGE_FILE_HEADER*>(
-        m_fileData.data() + peOffset
+        m_fileData.data() + fileHeaderOffset
     );
-    m_dataModel.setFileHeader(fileHeader);
+    m_cachedFileHeader = *fileHeader;
+    m_dataModel.setFileHeader(&m_cachedFileHeader);
     
     // Parse optional header
-    quint32 optionalHeaderOffset = peOffset + sizeof(IMAGE_FILE_HEADER);
+    quint32 optionalHeaderOffset = fileHeaderOffset + sizeof(IMAGE_FILE_HEADER);
     if (optionalHeaderOffset + fileHeader->SizeOfOptionalHeader > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_optional_header_beyond"));
         return false;
@@ -232,6 +240,8 @@ bool PEParserNew::parsePEHeaders()
     );
     
     if (!PEUtils::isValidOptionalHeaderMagic(optionalHeader->Magic)) {
+        qWarning() << "Unexpected optional header magic" << QString::number(optionalHeader->Magic, 16)
+                   << "at offset" << QString("0x%1").arg(optionalHeaderOffset, 0, 16);
         emit errorOccurred(LANG("UI/error_invalid_optional_magic"));
         return false;
     }
@@ -250,21 +260,21 @@ bool PEParserNew::parseSections()
         return false;
     }
     
-    // Calculate section table offset (Microsoft PE Format compliant)
-    quint32 sectionTableOffset = PEUtils::calculateSectionTableOffset(
-        dosHeader->e_lfanew, 
-        fileHeader->SizeOfOptionalHeader
-    );
+    // Calculate section table offset (PE signature + file header + optional header)
+    quint32 sectionTableOffset = dosHeader->e_lfanew
+                               + sizeof(quint32) // PE signature
+                               + sizeof(IMAGE_FILE_HEADER)
+                               + fileHeader->SizeOfOptionalHeader;
     
     if (sectionTableOffset + (fileHeader->NumberOfSections * sizeof(IMAGE_SECTION_HEADER)) > m_fileData.size()) {
         emit errorOccurred(LANG("UI/error_section_table_beyond"));
         return false;
     }
     
-    // Parse each section header
+    // Parse each section header from the in-memory buffer
     for (quint16 i = 0; i < fileHeader->NumberOfSections; ++i) {
         const IMAGE_SECTION_HEADER *section = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
-            m_fileData.data() + sectionTableOffset + (i * sizeof(IMAGE_SECTION_HEADER))
+            m_fileData.constData() + sectionTableOffset + (i * sizeof(IMAGE_SECTION_HEADER))
         );
         m_dataModel.addSection(section);
     }
@@ -282,12 +292,14 @@ bool PEParserNew::parseDataDirectories()
         return false;
     }
     
-    // Calculate data directory offset (Microsoft PE Format compliant)
-    quint32 dataDirectoryOffset = PEUtils::calculateDataDirectoryOffset(
-        dosHeader->e_lfanew + sizeof(IMAGE_FILE_HEADER),
-        fileHeader->SizeOfOptionalHeader,
-        0
-    );
+    // Calculate the start of the data directories inside the optional header
+    quint32 optionalHeaderOffset = dosHeader->e_lfanew
+                                + sizeof(quint32) // PE signature
+                                + sizeof(IMAGE_FILE_HEADER);
+    
+    quint16 magic = optionalHeader->Magic;
+    quint32 numberOfRvaAndSizesOffset = (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) ? 92 : 108; // 0x5C / 0x6C
+    quint32 dataDirectoryOffset = optionalHeaderOffset + numberOfRvaAndSizesOffset + sizeof(quint32);
     
     // Use the specialized data directory parser
     return m_dataDirectoryParser.parseDataDirectories(optionalHeader, dataDirectoryOffset, m_dataModel);
@@ -300,7 +312,8 @@ quint32 PEParserNew::rvaToFileOffset(quint32 rva)
     // Find the section that contains this RVA
     for (const IMAGE_SECTION_HEADER *section : sections) {
         quint32 sectionStart = section->VirtualAddress;
-        quint32 sectionEnd = sectionStart + section->getVirtualSize();
+        quint32 sectionSize = qMax(section->getVirtualSize(), section->SizeOfRawData);
+        quint32 sectionEnd = sectionStart + sectionSize;
         
         if (rva >= sectionStart && rva < sectionEnd) {
             // Calculate file offset
@@ -342,7 +355,8 @@ bool PEParserNew::loadLargeFileStreaming()
         return false;
     }
     
-    m_dataModel.setDOSHeader(&dosHeader);
+    m_cachedDosHeader = dosHeader;
+    m_dataModel.setDOSHeader(&m_cachedDosHeader);
     
     emit parsingProgress(20, LANG("UI/progress_reading_pe_headers"));
     
@@ -371,7 +385,8 @@ bool PEParserNew::loadLargeFileStreaming()
         return false;
     }
     
-    m_dataModel.setFileHeader(&fileHeader);
+    m_cachedFileHeader = fileHeader;
+    m_dataModel.setFileHeader(&m_cachedFileHeader);
     
     emit parsingProgress(30, LANG("UI/progress_reading_optional_header"));
     
@@ -437,13 +452,17 @@ bool PEParserNew::loadLargeFileStreaming()
     }
     
     // Read each section header
+    m_cachedSections.clear();
+    m_cachedSections.reserve(fileHeader.NumberOfSections);
+    
     for (quint16 i = 0; i < fileHeader.NumberOfSections; ++i) {
         IMAGE_SECTION_HEADER sectionHeader;
         if (m_file.read(reinterpret_cast<char*>(&sectionHeader), sizeof(IMAGE_SECTION_HEADER)) != sizeof(IMAGE_SECTION_HEADER)) {
             emit errorOccurred(LANG("UI/error_reading_section_header"));
             return false;
         }
-        m_dataModel.addSection(&sectionHeader);
+        m_cachedSections.append(sectionHeader);
+        m_dataModel.addSection(&m_cachedSections.last());
     }
     
     emit parsingProgress(60, LANG("UI/progress_analyzing_structure"));
@@ -839,30 +858,30 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     if (optionalHeader) {
         addOptionalHeaderFields(optionalHeaderItem, optionalHeader);
         
-                // Create Data Directories as child of Optional Header
-                QTreeWidgetItem *dataDirsItem = new QTreeWidgetItem(optionalHeaderItem);
-                dataDirsItem->setText(0, LANG("UI/pe_structure_data_directories"));
-                dataDirsItem->setText(1, "");
-                // Data Directories start right after NumberOfRvaAndSizes field
-                // NumberOfRvaAndSizes offset depends on PE32 vs PE32+:
-                // PE32 (32-bit): NumberOfRvaAndSizes is at offset 96 (0x60) from Optional Header start, and is 4 bytes
-                // PE32+ (64-bit): NumberOfRvaAndSizes is at offset 112 (0x70) from Optional Header start, and is 4 bytes
-                // So Data Directories base = Optional Header start + NumberOfRvaAndSizes offset + 4
-                quint16 magic = optionalHeader->Magic;
-                quint32 numberOfRvaAndSizesOffset;
-                if (magic == 0x10b) {
-                    // PE32 (32-bit)
-                    numberOfRvaAndSizesOffset = 92; // 0x5C
-                } else {
-                    // PE32+ (64-bit)
-                    numberOfRvaAndSizesOffset = 108; // 0x6C
-                }
-                quint32 dataDirsOffset = ntHeadersOffset + 4 + 20 + numberOfRvaAndSizesOffset + 4; // NT Headers + PE Sig + File Header + NumberOfRvaAndSizes offset + 4
-                dataDirsItem->setText(2, PEUtils::formatHexWidth(dataDirsOffset, 8));
-                dataDirsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", "16"));
-                dataDirsItem->setText(4, ""); // No meaning for container
-                
-                addDataDirectoryFields(dataDirsItem);
+        // Create Data Directories as child of Optional Header
+        QTreeWidgetItem *dataDirsItem = new QTreeWidgetItem(optionalHeaderItem);
+        dataDirsItem->setText(0, LANG("UI/pe_structure_data_directories"));
+        dataDirsItem->setText(1, "");
+        // Data Directories start right after NumberOfRvaAndSizes field
+        // NumberOfRvaAndSizes offset depends on PE32 vs PE32+:
+        // PE32 (32-bit): NumberOfRvaAndSizes is at offset 96 (0x60) from Optional Header start, and is 4 bytes
+        // PE32+ (64-bit): NumberOfRvaAndSizes is at offset 112 (0x70) from Optional Header start, and is 4 bytes
+        // So Data Directories base = Optional Header start + NumberOfRvaAndSizes offset + 4
+        quint16 magic = optionalHeader->Magic;
+        quint32 numberOfRvaAndSizesOffset;
+        if (magic == 0x10b) {
+            // PE32 (32-bit)
+            numberOfRvaAndSizesOffset = 92; // 0x5C
+        } else {
+            // PE32+ (64-bit)
+            numberOfRvaAndSizesOffset = 108; // 0x6C
+        }
+        quint32 dataDirsOffset = ntHeadersOffset + 4 + 20 + numberOfRvaAndSizesOffset + 4; // NT Headers + PE Sig + File Header + NumberOfRvaAndSizes offset + 4
+        dataDirsItem->setText(2, PEUtils::formatHexWidth(dataDirsOffset, 8));
+        dataDirsItem->setText(3, LANG_PARAM("UI/pe_structure_entries_format", "count", "16"));
+        dataDirsItem->setText(4, ""); // No meaning for container
+        
+        addDataDirectoryFields(dataDirsItem);
     }
     
     // Create Section Headers as child of NT Headers
@@ -1139,7 +1158,7 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
         // PE32 (32-bit) - DataDirectory is part of IMAGE_OPTIONAL_HEADER32
         const IMAGE_OPTIONAL_HEADER32 *optHeader32 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER32*>(optionalHeader);
         dataDirectories = optHeader32->DataDirectory;
-    } else {
+            } else {
         // PE32+ (64-bit) - DataDirectory is part of IMAGE_OPTIONAL_HEADER64
         const IMAGE_OPTIONAL_HEADER64 *optHeader64 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(optionalHeader);
         dataDirectories = optHeader64->DataDirectory;
@@ -1147,7 +1166,7 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
     
     if (!dataDirectories) {
         return;
-    }
+            }
     
     for (int i = 0; i < dirNames.size() && i < 16; ++i) {
         // Get values directly from DataDirectory array
@@ -1217,6 +1236,8 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
         sizeItem->setText(2, PEUtils::formatHexWidth(sizeOffset, 8));
         sizeItem->setText(3, LANG_PARAM("UI/pe_structure_size_format", "size", PEUtils::formatHexWidth(4, 0)));
         sizeItem->setText(4, ""); // No meaning for Data Directory entries
+        
+        // Import/export details now live in the dedicated tabs (imports/exports)
     }
 }
 

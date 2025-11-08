@@ -1,6 +1,8 @@
 #include "pe_import_export_parser.h"
 #include "language_manager.h"
 #include <QDebug>
+#include <QtGlobal>
+#include <QHash>
 
 PEImportExportParser::PEImportExportParser(const QByteArray &fileData)
     : m_fileData(fileData)
@@ -18,9 +20,6 @@ bool PEImportExportParser::parseImports(quint32 importDirectoryRVA, quint32 size
         qWarning() << "Failed to convert import directory RVA to file offset";
         return false;
     }
-    
-    QStringList imports;
-    QMap<QString, QList<QString>> importDetails;
     
     const IMAGE_IMPORT_DESCRIPTOR *importDesc = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(
         m_fileData.data() + fileOffset
@@ -60,7 +59,7 @@ bool PEImportExportParser::parseImportDescriptor(const IMAGE_IMPORT_DESCRIPTOR *
     }
     
     // Parse thunk tables for function names
-    QList<QString> functions;
+    QList<PEDataModel::ImportFunctionEntry> functions = dataModel.getImportFunctions().value(dllName);
     
     // Parse original thunk table (contains function names/ordinals)
     if (importDesc->OriginalFirstThunk != 0) {
@@ -81,24 +80,31 @@ bool PEImportExportParser::parseThunkTable(quint32 thunkRVA, const QString &dllN
         return false;
     }
     
-    QList<QString> functions;
+    QList<PEDataModel::ImportFunctionEntry> functions = dataModel.getImportFunctions().value(dllName);
     const quint32 *thunk = reinterpret_cast<const quint32*>(m_fileData.data() + fileOffset);
     
     int functionCount = 0;
     while (*thunk != 0 && functionCount < MAX_EXPORT_FUNCTIONS) {
         QString functionName;
+        PEDataModel::ImportFunctionEntry entry;
+        quint32 thunkEntryRVA = thunkRVA + static_cast<quint32>(functionCount * sizeof(quint32));
+        entry.thunkRVA = thunkEntryRVA;
+        entry.thunkOffset = rvaToFileOffset(thunkEntryRVA, dataModel.getSections());
         
         if (*thunk & 0x80000000) {
             // Import by ordinal (high bit set)
             quint16 ordinal = static_cast<quint16>(*thunk & 0xFFFF);
             functionName = getFunctionNameByOrdinal(ordinal);
+            entry.importedByOrdinal = true;
+            entry.ordinal = ordinal;
         } else {
             // Import by name
             functionName = getFunctionName(*thunk);
         }
         
         if (!functionName.isEmpty()) {
-            functions.append(functionName);
+            entry.name = functionName;
+            functions.append(entry);
         }
         
         thunk++;
@@ -106,9 +112,9 @@ bool PEImportExportParser::parseThunkTable(quint32 thunkRVA, const QString &dllN
     }
     
     // Update import details
-    QMap<QString, QList<QString>> importDetails = dataModel.getImportDetails();
+    QMap<QString, QList<PEDataModel::ImportFunctionEntry>> importDetails = dataModel.getImportFunctions();
     importDetails[dllName] = functions;
-    dataModel.setImportDetails(importDetails);
+    dataModel.setImportFunctions(importDetails);
     
     return true;
 }
@@ -152,45 +158,57 @@ bool PEImportExportParser::parseExports(quint32 exportDirectoryRVA, quint32 size
 bool PEImportExportParser::parseExportDirectory(const IMAGE_EXPORT_DIRECTORY *exportDir, PEDataModel &dataModel)
 {
     if (!exportDir) return false;
-    
-    QStringList exports;
-    QStringList exportDetails;
-    
-    // Parse function names
-    if (exportDir->AddressOfNames != 0) {
+    QList<PEDataModel::ExportFunctionEntry> exports;
+
+    if (exportDir->NumberOfFunctions == 0) {
+        dataModel.setExportFunctions(exports);
+        return true;
+    }
+
+    quint32 functionsOffset = rvaToFileOffset(exportDir->AddressOfFunctions, dataModel.getSections());
+    if (functionsOffset == 0 || functionsOffset + exportDir->NumberOfFunctions * sizeof(quint32) > static_cast<quint32>(m_fileData.size())) {
+        dataModel.setExportFunctions(exports);
+        return true;
+    }
+
+    const quint32 *functionRVAs = reinterpret_cast<const quint32*>(m_fileData.constData() + functionsOffset);
+
+    QHash<quint16, QString> nameByIndex;
+    if (exportDir->AddressOfNames != 0 && exportDir->AddressOfNameOrdinals != 0) {
         quint32 namesOffset = rvaToFileOffset(exportDir->AddressOfNames, dataModel.getSections());
-        if (namesOffset != 0) {
-            const quint32 *nameRVAs = reinterpret_cast<const quint32*>(m_fileData.data() + namesOffset);
-            
-            for (quint32 i = 0; i < exportDir->NumberOfNames && i < MAX_EXPORT_FUNCTIONS; ++i) {
+        quint32 ordinalsOffset = rvaToFileOffset(exportDir->AddressOfNameOrdinals, dataModel.getSections());
+        if (namesOffset != 0 && ordinalsOffset != 0) {
+            const quint32 *nameRVAs = reinterpret_cast<const quint32*>(m_fileData.constData() + namesOffset);
+            const quint16 *nameOrdinals = reinterpret_cast<const quint16*>(m_fileData.constData() + ordinalsOffset);
+            quint32 maxNames = qMin(exportDir->NumberOfNames, static_cast<quint32>(MAX_EXPORT_FUNCTIONS));
+            for (quint32 i = 0; i < maxNames; ++i) {
+                quint16 funcIndex = nameOrdinals[i];
+                if (funcIndex >= exportDir->NumberOfFunctions) {
+                    continue;
+                }
                 QString functionName = getExportFunctionName(nameRVAs[i]);
                 if (!functionName.isEmpty()) {
-                    exports.append(functionName);
-                    exportDetails.append(functionName);
+                    nameByIndex.insert(funcIndex, functionName);
                 }
             }
         }
     }
-    
-    // Parse functions by ordinal
-    if (exportDir->AddressOfFunctions != 0) {
-        quint32 functionsOffset = rvaToFileOffset(exportDir->AddressOfFunctions, dataModel.getSections());
-        if (functionsOffset != 0) {
-            const quint32 *functionRVAs = reinterpret_cast<const quint32*>(m_fileData.data() + functionsOffset);
-            
-            for (quint32 i = 0; i < exportDir->NumberOfFunctions && i < MAX_EXPORT_FUNCTIONS; ++i) {
-                QString functionName = LANG_PARAM("UI/ordinal_format", "value", QString::number(exportDir->OrdinalBase + i));
-                if (!exports.contains(functionName)) {
-                    exports.append(functionName);
-                    exportDetails.append(functionName);
-                }
-            }
+
+    quint32 maxFunctions = qMin(exportDir->NumberOfFunctions, static_cast<quint32>(MAX_EXPORT_FUNCTIONS));
+    for (quint32 i = 0; i < maxFunctions; ++i) {
+        PEDataModel::ExportFunctionEntry entry;
+        entry.ordinal = static_cast<quint16>(exportDir->OrdinalBase + i);
+        entry.rva = functionRVAs[i];
+        entry.fileOffset = (entry.rva != 0) ? rvaToFileOffset(entry.rva, dataModel.getSections()) : 0;
+        entry.name = nameByIndex.value(static_cast<quint16>(i));
+        if (entry.name.isEmpty()) {
+            entry.name = QStringLiteral("[ - ]");
         }
+        exports.append(entry);
     }
-    
-    dataModel.setExports(exports);
-    dataModel.setExportDetails(exportDetails);
-    
+
+    dataModel.setExportFunctions(exports);
+ 
     return true;
 }
 
@@ -221,7 +239,8 @@ quint32 PEImportExportParser::rvaToFileOffset(quint32 rva, const QList<const IMA
     // Find the section that contains this RVA
     for (const IMAGE_SECTION_HEADER *section : sections) {
         quint32 sectionStart = section->VirtualAddress;
-        quint32 sectionEnd = sectionStart + section->getVirtualSize();
+        quint32 sectionSize = qMax(section->getVirtualSize(), section->SizeOfRawData);
+        quint32 sectionEnd = sectionStart + sectionSize;
         
         if (rva >= sectionStart && rva < sectionEnd) {
             // Calculate file offset
