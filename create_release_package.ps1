@@ -54,7 +54,7 @@ Write-Host "Log files: $LogFile (main), $ErrorLogFile (errors)" -ForegroundColor
 Write-Host ""
 
 # Set paths
-$QtPath = "C:\Qt\6.8.0\msvc2022_64"
+$QtPath = "C:\Qt\6.10.2\msvc2022_64"
 $BuildDir = "out\build\qt-release"
 $PackageDir = "PEHint_Release_Package"
 
@@ -90,7 +90,8 @@ foreach ($var in $envVars) {
     if (Get-Variable -Name $var -ErrorAction SilentlyContinue) {
         Write-Host "  $var = $(Get-Variable -Name $var -ValueOnly)" -ForegroundColor Gray
     } elseif (Get-ChildItem -Path "env:$var" -ErrorAction SilentlyContinue) {
-        Write-Host "  $var = $env:$var" -ForegroundColor Gray
+        $envValue = (Get-Item -Path "env:$var").Value
+        Write-Host "  $var = $envValue" -ForegroundColor Gray
     }
 }
 
@@ -236,21 +237,21 @@ Get-ChildItem -Path $BuildDir -Recurse -Name "*.exe" | ForEach-Object {
 }
 
 if (Test-Path $releaseExe) {
-    Write-Host "✓ Release executable found at: $releaseExe" -ForegroundColor Green
+    Write-Host "[OK] Release executable found at: $releaseExe" -ForegroundColor Green
     $fileInfo = Get-Item $releaseExe
     Write-Host "  File size: $($fileInfo.Length) bytes" -ForegroundColor Gray
     Write-Host "  Created: $($fileInfo.CreationTime)" -ForegroundColor Gray
 } else {
-    Write-Host "✗ Release executable NOT found at: $releaseExe" -ForegroundColor Red
+    Write-Host "[FAIL] Release executable NOT found at: $releaseExe" -ForegroundColor Red
 }
 
 if (Test-Path $debugExe) {
-    Write-Host "⚠ Debug executable found at: $debugExe" -ForegroundColor Yellow
+    Write-Host "WARNING: Debug executable found at: $debugExe" -ForegroundColor Yellow
     $fileInfo = Get-Item $debugExe
     Write-Host "  File size: $($fileInfo.Length) bytes" -ForegroundColor Gray
     Write-Host "  Created: $($fileInfo.CreationTime)" -ForegroundColor Gray
 } else {
-    Write-Host "✓ No debug executable found (as expected)" -ForegroundColor Green
+    Write-Host "[OK] No debug executable found (as expected)" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -287,12 +288,12 @@ if (Test-Path $sourceExe) {
     Write-Host "Copying main executable..." -ForegroundColor Green
     Copy-Item $sourceExe $PackageDir
     if (Test-Path "$PackageDir\PEHint.exe") {
-        Write-Host "✓ Executable copied successfully" -ForegroundColor Green
+        Write-Host "[OK] Executable copied successfully" -ForegroundColor Green
     } else {
-        Write-Host "✗ Executable copy failed!" -ForegroundColor Red
+        Write-Host "[FAIL] Executable copy failed!" -ForegroundColor Red
     }
 } else {
-    Write-Host "✗ Source executable not found: $sourceExe" -ForegroundColor Red
+    Write-Host "[FAIL] Source executable not found: $sourceExe" -ForegroundColor Red
 }
 
 # Copy DLLs
@@ -301,9 +302,9 @@ if ($dllFiles) {
     Write-Host "Copying $($dllFiles.Count) DLL files..." -ForegroundColor Green
     Copy-Item $sourceDlls $PackageDir
     $copiedDlls = Get-ChildItem -Path $PackageDir -Filter "*.dll"
-    Write-Host "✓ Copied $($copiedDlls.Count) DLL files" -ForegroundColor Green
+    Write-Host "[OK] Copied $($copiedDlls.Count) DLL files" -ForegroundColor Green
 } else {
-    Write-Host "⚠ No DLL files found to copy" -ForegroundColor Yellow
+    Write-Host "WARNING: No DLL files found to copy" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -322,16 +323,16 @@ foreach ($dir in $pluginDirs) {
         Copy-Item $sourcePath $destPath -Recurse -Force
         if (Test-Path $destPath) {
             $copiedPlugins++
-            Write-Host "✓ $dir plugin copied successfully" -ForegroundColor Green
+            Write-Host "[OK] $dir plugin copied successfully" -ForegroundColor Green
         } else {
-            Write-Host "✗ $dir plugin copy failed!" -ForegroundColor Red
+            Write-Host "[FAIL] $dir plugin copy failed!" -ForegroundColor Red
         }
     } else {
-        Write-Host "⚠ $dir plugin directory not found: $sourcePath" -ForegroundColor Yellow
+        Write-Host "WARNING: $dir plugin directory not found: $sourcePath" -ForegroundColor Yellow
     }
 }
 
-Write-Host "✓ Copied $copiedPlugins Qt plugin directories" -ForegroundColor Green
+Write-Host "[OK] Copied $copiedPlugins Qt plugin directories" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Copying configuration files..." -ForegroundColor Yellow
@@ -342,12 +343,12 @@ if (Test-Path "config") {
     Copy-Item "config" $PackageDir -Recurse -Force
     if (Test-Path "$PackageDir\config") {
         $configFiles = Get-ChildItem -Path "$PackageDir\config" -Recurse
-        Write-Host "✓ Configuration files copied successfully ($($configFiles.Count) files)" -ForegroundColor Green
+        Write-Host "[OK] Configuration files copied successfully ($($configFiles.Count) files)" -ForegroundColor Green
     } else {
-        Write-Host "✗ Configuration files copy failed!" -ForegroundColor Red
+        Write-Host "[FAIL] Configuration files copy failed!" -ForegroundColor Red
     }
 } else {
-    Write-Host "⚠ Configuration directory not found: config" -ForegroundColor Yellow
+    Write-Host "WARNING: Configuration directory not found: config" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -359,12 +360,12 @@ if (Test-Path "docs") {
     Copy-Item "docs" $PackageDir -Recurse -Force
     if (Test-Path "$PackageDir\docs") {
         $docFiles = Get-ChildItem -Path "$PackageDir\docs" -Recurse
-        Write-Host "✓ Documentation files copied successfully ($($docFiles.Count) files)" -ForegroundColor Green
+        Write-Host "[OK] Documentation files copied successfully ($($docFiles.Count) files)" -ForegroundColor Green
     } else {
-        Write-Host "✗ Documentation files copy failed!" -ForegroundColor Red
+        Write-Host "[FAIL] Documentation files copy failed!" -ForegroundColor Red
     }
 } else {
-    Write-Host "⚠ Documentation directory not found: docs" -ForegroundColor Yellow
+    Write-Host "WARNING: Documentation directory not found: docs" -ForegroundColor Yellow
 }
 
 # Copy README
@@ -372,12 +373,12 @@ if (Test-Path "README.md") {
     Write-Host "Copying README..." -ForegroundColor Green
     Copy-Item "README.md" $PackageDir
     if (Test-Path "$PackageDir\README.md") {
-        Write-Host "✓ README copied successfully" -ForegroundColor Green
+        Write-Host "[OK] README copied successfully" -ForegroundColor Green
     } else {
-        Write-Host "✗ README copy failed!" -ForegroundColor Red
+        Write-Host "[FAIL] README copy failed!" -ForegroundColor Red
     }
 } else {
-    Write-Host "⚠ README file not found: README.md" -ForegroundColor Yellow
+    Write-Host "WARNING: README file not found: README.md" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -388,18 +389,18 @@ $versionInfo = @"
 PEHint Release Package
 Built on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Build Type: Release
-Qt Version: 6.8.0
+Qt Version: 6.10.2
 Compiler: MSVC 2022
 "@
 
 $versionInfo | Out-File "$PackageDir\VERSION.txt" -Encoding UTF8
 if (Test-Path "$PackageDir\VERSION.txt") {
-    Write-Host "✓ Version info file created successfully" -ForegroundColor Green
+    Write-Host "[OK] Version info file created successfully" -ForegroundColor Green
     $versionContent = Get-Content "$PackageDir\VERSION.txt"
     Write-Host "Version info content:" -ForegroundColor Gray
     $versionContent | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
 } else {
-    Write-Host "✗ Version info file creation failed!" -ForegroundColor Red
+    Write-Host "[FAIL] Version info file creation failed!" -ForegroundColor Red
 }
 
 Write-Host ""
@@ -417,22 +418,28 @@ Write-Host "  Total files: $totalFiles" -ForegroundColor Gray
 Write-Host "  Total size: $([math]::Round($totalSize / 1MB, 2)) MB" -ForegroundColor Gray
 
 # Check for critical files
-$criticalFiles = @("PEHint.exe", "config", "docs")
+$criticalFiles = @("PEHint.exe", "config")
 $missingFiles = @()
 
 foreach ($file in $criticalFiles) {
     if (Test-Path "$PackageDir\$file") {
-        Write-Host "✓ $file found" -ForegroundColor Green
+        Write-Host "[OK] $file found" -ForegroundColor Green
     } else {
-        Write-Host "✗ $file missing!" -ForegroundColor Red
+        Write-Host "[FAIL] $file missing!" -ForegroundColor Red
         $missingFiles += $file
     }
 }
 
 if ($missingFiles.Count -gt 0) {
-    Write-Host "⚠ Missing critical files: $($missingFiles -join ', ')" -ForegroundColor Yellow
+    Write-Host "WARNING: Missing critical files: $($missingFiles -join ', ')" -ForegroundColor Yellow
 } else {
-    Write-Host "✓ All critical files present" -ForegroundColor Green
+    Write-Host "[OK] All critical files present" -ForegroundColor Green
+}
+
+if (Test-Path "$PackageDir\docs") {
+    Write-Host "[OK] docs found (optional)" -ForegroundColor Green
+} else {
+    Write-Host "INFO: docs not present (optional)" -ForegroundColor Gray
 }
 
 Write-Host ""

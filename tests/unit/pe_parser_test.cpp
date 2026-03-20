@@ -177,4 +177,3 @@ void PEParserTest::cleanupTestFile(const QString &filePath)
     }
 }
 
-#include "pe_parser_test.moc"

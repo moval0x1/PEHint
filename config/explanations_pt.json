@@ -30,6 +30,12 @@
       "purpose": "Localizar estruturas de dados importantes para carregamento e execução",
       "security_notes": "Diretórios de importação/exportação são críticos para análise de segurança. Verifique importações suspeitas, exportações inesperadas e verifique a integridade dos diretórios"
     },
+    "WIN_CERTIFICATE": {
+      "title": "WIN_CERTIFICATE (Certificado de Atributo)",
+      "description": "Contém a assinatura Authenticode ou outro certificado de atributo anexado ao PE. No diretório Certificate, o campo VirtualAddress é um deslocamento bruto no arquivo (não é RVA). dwLength cobre todo o registro; wCertificateType costuma ser 0x0002 (PKCS#7 assinado).",
+      "purpose": "Assinatura de código, integridade e identidade do editor da imagem",
+      "security_notes": "Compare com assinaturas de catálogo no disco; certificados removidos ou incoerentes podem indicar adulteração. O payload em bCertificate é ASN.1 / PKCS#7 — use ferramentas dedicadas para analisar a cadeia completa."
+    },
     "e_magic": {
       "title": "Número Mágico (e_magic)",
       "description": "Este valor de 16 bits deve ser 0x5A4D ('MZ' em ASCII). É a assinatura que identifica este arquivo como um executável DOS válido. O 'MZ' significa Mark Zbikowski, um dos desenvolvedores originais do DOS.",
@@ -121,6 +127,13 @@
       "purpose": "Localizar o cabeçalho PE para execução moderna do Windows",
       "calculation": "Offset do arquivo desde o início até a assinatura PE",
       "security_notes": "Suspeito se o offset for muito grande (>0x1000) - pode indicar preenchimento do arquivo para ocultar conteúdo malicioso. Também verifique se o offset aponta para uma assinatura PE válida."
+    },
+    "DOS_STUB": {
+      "title": "Stub DOS",
+      "description": "Esta região de 64 bytes (quando a assinatura PE está em 0x80) fica logo após o IMAGE_DOS_HEADER de 64 bytes (0x00–0x3F). É o stub MS-DOS: um pequeno programa em modo real de 16 bits que o linker embute no arquivo. Se alguém executar o arquivo no MS-DOS, a CPU executa esse código; em geral imprime algo como “This program cannot be run in DOS mode” e encerra. No Windows, o carregador ignora esse caminho e usa e_lfanew no offset 0x3C para achar o cabeçalho PE (“PE\\0\\0”). Os bytes são código e dados 8086/8088 — não outra estrutura PE formal.",
+      "purpose": "Compatibilidade legada; o stub só roda em ambiente DOS. Ocupa o espaço entre o cabeçalho DOS fixo e o bloco PE em e_lfanew.",
+      "note": "Desenvolvedores podem substituir o stub padrão por código 16 bits personalizado (ex.: CTF/crackme) com a opção /STUB do linker ou ferramentas similares. Se e_lfanew for menor que 0x80, só parte de 0x40–0x7F é stub; a partir de e_lfanew os bytes pertencem ao layout PE.",
+      "security_notes": "Stubs customizados ou empacotados podem diferir da mensagem padrão da Microsoft. Compare com linkers conhecidos; tamanho, entropia ou comportamento incomuns merecem análise mais profunda."
     },
     "Signature": {
       "title": "Assinatura PE",
@@ -311,9 +324,9 @@
     },
     "DllCharacteristics": {
       "title": "Características da DLL",
-      "description": "Flags que descrevem propriedades específicas de DLL: 0x0001 (VA de alta entropia), 0x0002 (Base dinâmica), 0x0004 (Forçar integridade), 0x0008 (Compatível NX), 0x0010 (Consciente de isolamento), 0x0020 (Sem SEH), 0x0040 (Não vincular), 0x0080 (Container de aplicativo), 0x0100 (Driver WDM), 0x2000 (Consciente de servidor terminal).",
-      "purpose": "Definir comportamento e recursos de segurança da DLL",
-      "security_notes": "Flags de segurança ausentes (Compatível NX, Forçar integridade) podem indicar código vulnerável. VA de alta entropia e Base dinâmica ajudam a prevenir bypasses do ASLR."
+      "description": "Máscara de 16 bits no cabeçalho opcional (especificação PE). Valores oficiais: 0x0020 VA de alta entropia (espaço ASLR 64 bits), 0x0040 Base dinâmica (ASLR), 0x0080 Forçar integridade, 0x0100 Compatível com NX (DEP), 0x0200 Sem isolamento, 0x0400 Sem SEH, 0x0800 Sem bind, 0x1000 AppContainer, 0x2000 Driver WDM, 0x4000 Control Flow Guard (CFG), 0x8000 Consciente do Terminal Server. A coluna Significado e a caixa «Esta imagem» indicam quais destes estão ativos no ficheiro aberto.",
+      "purpose": "Definir comportamento e segurança da DLL para o carregador do Windows",
+      "security_notes": "Ausência de NX ou CFG em binários recentes pode enfraquecer a resistência a exploits. Compare a lista descodificada com o esperado da toolchain."
     },
     "SizeOfStackReserve": {
       "title": "Tamanho da Reserva da Pilha",
@@ -412,7 +425,7 @@
       "note": "Geralmente 0 para a maioria das seções em executáveis modernos",
       "security_notes": "Número alto de relocações em seções incomuns pode indicar injeção de código ou manipulação. Verifique se as relocações apontam para endereços suspeitos."
     },
-    "NumberOfLinenumbers": {
+    "NumberOfLineNumbers": {
       "title": "Número de Números de Linha",
       "description": "O número de entradas de número de linha para esta seção. Estes são usados para depuração para mapear o código de máquina de volta ao código-fonte.",
       "purpose": "Suportar depuração e desenvolvimento",
@@ -701,6 +714,325 @@
       "purpose": "Este campo indica quantos bytes o Diretório de Configuração de Carregamento ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
       "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
       "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "Exc RuntimeFunctionCount": {
+      "title": "Entradas estimadas de função (runtime)",
+      "description": "Em imagens x64 o diretório de exceções costuma ser um vetor de IMAGE_RUNTIME_FUNCTION (12 bytes: RVA início, RVA fim, RVA unwind). Dividir o tamanho por 12 estima quantas funções publicam metadados de desenpiling.",
+      "purpose": "Apoiar análise de desenpiling e fluxo de exceções",
+      "note": "ARM64 e outras arquiteturas usam layouts diferentes.",
+      "security_notes": "Tabelas vazias ou inconsistentes em binários grandes podem ser suspeitas."
+    },
+    "Exc First BeginRVA": {
+      "title": "Primeiro BeginAddress",
+      "description": "RVA do primeiro byte da primeira função descrita pela tabela RUNTIME_FUNCTION.",
+      "purpose": "Âncora didática no blob do diretório de exceções",
+      "security_notes": "Cruzar com seções de código."
+    },
+    "Exc First EndRVA": {
+      "title": "Primeiro EndAddress",
+      "description": "RVA logo após o último byte da região da primeira função.",
+      "purpose": "Delimitar o intervalo coberto pelos metadados",
+      "security_notes": "Intervalos inválidos merecem verificação."
+    },
+    "Exc First UnwindRVA": {
+      "title": "Primeiro UnwindInfo / UnwindData",
+      "description": "Aponta para a cadeia de unwind (x64: UNWIND_INFO) usada pelo SO para percorrer frames.",
+      "purpose": "Ligar intervalos de função aos blocos de unwind",
+      "security_notes": "Alvos fora de seções válidas podem indicar adulteração."
+    },
+    "Exc Note": {
+      "title": "Nota sobre o diretório de exceções",
+      "description": "O PEHint expande a linha clássica RUNTIME_FUNCTION de três DWORDs para x64. Outras máquinas podem usar registros ARM64 compactos ou SEH legado.",
+      "purpose": "Ajustar expectativas em binários não x64",
+      "security_notes": "Confirme o campo Machine do cabeçalho PE antes de interpretar."
+    },
+    "TLS StartOfRawData": {
+      "title": "TLS StartAddressOfRawData",
+      "description": "Endereço virtual onde começa o modelo de dados TLS inicializados copiado pelo carregador.",
+      "purpose": "Localizar o template TLS na imagem",
+      "security_notes": "Callbacks TLS rodam cedo; são vetor comum de ofuscação."
+    },
+    "TLS EndOfRawData": {
+      "title": "TLS EndAddressOfRawData",
+      "description": "Fim exclusivo da região modelo TLS.",
+      "purpose": "Limitar o template TLS",
+      "security_notes": "Intervalos absurdos podem indicar corrupção."
+    },
+    "TLS AddressOfIndex": {
+      "title": "TLS AddressOfIndex",
+      "description": "Endereço do índice de slot TLS atualizado pelo carregador.",
+      "purpose": "Permitir que o runtime encontre o bloco TLS por thread",
+      "security_notes": "Útil ao correlacionar acessos thread-local."
+    },
+    "TLS AddressOfCallBacks": {
+      "title": "TLS AddressOfCallBacks",
+      "description": "Ponteiro para array de callbacks TLS terminado em zero; executam antes do ponto de entrada normal.",
+      "purpose": "Inicialização ligada ao TLS",
+      "security_notes": "Callbacks extras ou apontando para seções estranhas aparecem em packers."
+    },
+    "TLS SizeOfZeroFill": {
+      "title": "TLS SizeOfZeroFill",
+      "description": "Bytes adicionais de armazenamento TLS zerados além do modelo.",
+      "purpose": "Reservar BSS TLS",
+      "security_notes": "Valores enormes podem ser suspeitos."
+    },
+    "TLS Characteristics": {
+      "title": "TLS Characteristics",
+      "description": "Flags reservadas; normalmente zero.",
+      "purpose": "Compatibilidade futura",
+      "security_notes": "Bits inesperados merecem checagem documentada."
+    },
+    "LoadCfg StructureSize": {
+      "title": "Load Config – campo Size",
+      "description": "Tamanho declarado do IMAGE_LOAD_CONFIG_DIRECTORY presente. Valores maiores incluem extensões (CFG, etc.).",
+      "purpose": "Versionar o bloco e saber quantos bytes seguem",
+      "security_notes": "Size menor que campos usados indica PE truncado ou inconsistente."
+    },
+    "LoadCfg TimeDateStamp": {
+      "title": "Load Config – TimeDateStamp",
+      "description": "Carimbo opcional associado ao bloco (frequentemente alinhado ao build).",
+      "purpose": "Correlacionar mitigações com a era do toolchain",
+      "security_notes": "Divergência do TimeDateStamp do cabeçalho não prova malware."
+    },
+    "LoadCfg MajorVersion": {
+      "title": "Load Config – MajorVersion",
+      "description": "Versão principal do layout do load config.",
+      "purpose": "Inferir extensões disponíveis",
+      "security_notes": "Combine com MinorVersion e a documentação Microsoft."
+    },
+    "LoadCfg MinorVersion": {
+      "title": "Load Config – MinorVersion",
+      "description": "Versão secundária do layout.",
+      "purpose": "Refinar extensões de mitigação",
+      "security_notes": "Versões novas adicionam campos extras."
+    },
+    "LoadCfg SecurityCookie": {
+      "title": "Ponteiro SecurityCookie",
+      "description": "Em PE32 costuma ser RVA do cookie /GS; em PE32+ é VA. Usado para detectar estouro de pilha.",
+      "purpose": "Ativar proteção de pilha do compilador",
+      "security_notes": "Cookies ausentes enfraquecem /GS."
+    },
+    "LoadCfg SEHandlerTable": {
+      "title": "Tabela SEHandler (SafeSEH)",
+      "description": "Ponteiro para a tabela de handlers seguros em imagens 32-bit.",
+      "purpose": "Restringir handlers de exceção",
+      "security_notes": "Útil para contrastar com código legado sem SafeSEH."
+    },
+    "LoadCfg SEHandlerCount": {
+      "title": "Contagem SEHandler",
+      "description": "Número de entradas na tabela SafeSEH quando presente.",
+      "purpose": "Medir endurecimento de exceções em x86",
+      "security_notes": "Contagens gigantes em programas minúsculos podem ser lixo."
+    },
+    "LoadCfg GuardCFCheckFunction": {
+      "title": "Ponteiro da verificação CFG",
+      "description": "Endereço do stub que valida destinos de chamadas indiretas quando Control Flow Guard está ativo.",
+      "purpose": "Mitigar fluxo de chamadas indevido",
+      "security_notes": "Redirecionar este ponteiro é alvo clássico de exploração."
+    },
+    "LoadCfg GuardCFDispatchFunction": {
+      "title": "Dispatch CFG",
+      "description": "Função auxiliar usada pelo runtime/loader no caminho CFG.",
+      "purpose": "Ligar mitigação CFG ao loader",
+      "security_notes": "Deve residir em código confiável."
+    },
+    "LoadCfg GuardCFFunctionTable": {
+      "title": "Tabela CFG de funções",
+      "description": "Aponta para metadados que listam alvos válidos de chamadas indiretas.",
+      "purpose": "Permitir que o kernel aplique CFG",
+      "security_notes": "Alterar a tabela pode ampliar gadgets."
+    },
+    "LoadCfg GuardCFFunctionCount": {
+      "title": "Contagem CFG",
+      "description": "Contador associado à tabela CFG; interpretação depende da versão do toolchain.",
+      "purpose": "Relacionar tamanho da tabela à complexidade",
+      "security_notes": "Zero com flags de instrumentação ligadas é estranho."
+    },
+    "LoadCfg GuardFlags": {
+      "title": "GuardFlags",
+      "description": "Bits descrevendo mitigações (CFG instrumentado, tabela presente, RFG/retpoline relacionados, etc.).",
+      "purpose": "Resumir endurecimento moderno",
+      "security_notes": "Binários Microsoft recentes sem CFG podem merecer contexto extra."
+    },
+    "Res Characteristics": {
+      "title": "Characteristics do diretório de recursos",
+      "description": "Primeiro dword do IMAGE_RESOURCE_DIRECTORY raiz. Normalmente zero; reservado na especificação PE.",
+      "purpose": "Campo reservado no início do cabeçalho da árvore de recursos",
+      "security_notes": "Valores não zero são raros — verifique se o ficheiro não foi construído manualmente ou está corrompido."
+    },
+    "Res TimeDateStamp": {
+      "title": "TimeDateStamp do diretório de recursos",
+      "description": "Carimbo de tempo estilo Unix da compilação dos recursos, se a ferramenta o preencheu. Muitas vezes zero.",
+      "purpose": "Metadados opcionais de compilação da secção de recursos",
+      "security_notes": "Diferenças face a outros timestamps podem sugerir injeção de recursos após a build."
+    },
+    "Res MajorVersion": {
+      "title": "Versão major dos recursos",
+      "description": "Número de versão major associado ao cabeçalho do diretório (específico da ferramenta; muitas vezes zero).",
+      "purpose": "Metadados de versão para ferramentas de recursos",
+      "security_notes": "Valores isolados raramente são conclusivos — cruze com outros sinais."
+    },
+    "Res MinorVersion": {
+      "title": "Versão minor dos recursos",
+      "description": "Número de versão minor associado a Res MajorVersion (muitas vezes zero).",
+      "purpose": "Metadados de versão para ferramentas de recursos",
+      "security_notes": "Ver Res MajorVersion."
+    },
+    "Res NumberOfNamedEntries": {
+      "title": "NumberOfNamedEntries",
+      "description": "Número de entradas do diretório identificadas por nome (string). Aparecem antes das entradas por ID no array.",
+      "purpose": "Indicar ao carregador quantas entradas nomeadas seguem o cabeçalho",
+      "security_notes": "Nomes ao nível do tipo são menos comuns que tipos numéricos RT_*; contagens elevadas podem merecer inspeção manual."
+    },
+    "Res NumberOfIdEntries": {
+      "title": "NumberOfIdEntries",
+      "description": "Número de entradas identificadas por ID numérico (ex.: RT_MANIFEST=24, RT_VERSION=16). Listadas após as entradas nomeadas.",
+      "purpose": "Enumerar tipos de recurso ou IDs do nível seguinte na árvore",
+      "security_notes": "Ausência de tipos esperados (ex.: sem manifesto numa app GUI) pode ser empacotamento ou, em contexto, alteração."
+    },
+    "Res TypeId": {
+      "title": "ID de tipo de recurso (primeiro nível)",
+      "description": "Tipo de recurso na raiz. Valores conhecidos incluem RT_ICON (3), RT_DIALOG (5), RT_MANIFEST (24), RT_VERSION (16). O PEHint mostra o nome RT_* quando reconhece.",
+      "purpose": "Identificar o ramo (ícones, diálogos, manifesto XML, etc.)",
+      "security_notes": "RT_MANIFEST contém o XML de manifesto Win32 (UAC, DPI, side-by-side) — inspecione o conteúdo em busca de elevação ou dependências inesperadas."
+    },
+    "Manifest DataRVA": {
+      "title": "RVA do manifesto embutido",
+      "description": "Endereço virtual relativo dos bytes brutos do recurso RT_MANIFEST (geralmente XML em UTF-8). O PEHint localiza a primeira folha de manifesto sob o tipo 24, quando existe.",
+      "purpose": "Permitir ao carregador ler o manifesto side-by-side / compatibilidade",
+      "security_notes": "Manifestos podem pedir direitos de administrador, declarar dependências ou influenciar a procura de DLLs — compare com o comportamento esperado."
+    },
+    "Manifest Size": {
+      "title": "Tamanho do manifesto embutido",
+      "description": "Tamanho em bytes do blob do manifesto em Manifest DataRVA.",
+      "purpose": "Delimitar o manifesto para mapeamento e validação",
+      "security_notes": "Tamanhos muito pequenos ou enormes face ao esperado podem indicar truncagem ou dados extra — confirme com o hex."
+    },
+    "Manifest Preview": {
+      "title": "Pré-visualização do manifesto",
+      "description": "Pré-visualização curta em UTF-8 do XML (truncada para o ecrã). O conteúdo completo está na secção mapeada no RVA do manifesto.",
+      "purpose": "Ver rapidamente requestedExecutionLevel, assemblies de dependência ou dpiAware",
+      "security_notes": "Não confie só na pré-visualização para auditoria — exporte ou abra o recurso completo."
+    },
+    "CLR cb (reported)": {
+      "title": "Tamanho do cabeçalho CLR (imagem truncada)",
+      "description": "Campo cb de IMAGE_COR20_HEADER quando a região do diretório no disco é menor que um cabeçalho COR20 completo. Indica estrutura incompleta ou imagem truncada.",
+      "purpose": "Reportar quantos bytes a imagem declara para o descritor COM+",
+      "security_notes": "Cabeçalhos .NET malformados aparecem em downloads corrompidos ou anti-análise — compare com uma build boa."
+    },
+    "CLR cb": {
+      "title": "Tamanho do cabeçalho CLR (bytes)",
+      "description": "Tamanho em bytes do cabeçalho CLR/COM+ (IMAGE_COR20_HEADER), incluindo campos realmente presentes na imagem.",
+      "purpose": "Versionar e estender o descritor CLI de forma consistente",
+      "security_notes": "cb inferior ao esperado para a versão do runtime pode indicar manipulação ou metadados removidos."
+    },
+    "CLR MajorRuntimeVersion": {
+      "title": "Versão major do runtime CLR",
+      "description": "Versão major do CLR a que a imagem se destina (junto com MinorRuntimeVersion).",
+      "purpose": "Ajudar o carregador a escolher comportamento compatível com o CLR",
+      "security_notes": "Incompatibilidades com a versão dos metadados ou pares invulgares podem indicar assemblies mistos ou repackados."
+    },
+    "CLR MinorRuntimeVersion": {
+      "title": "Versão minor do runtime CLR",
+      "description": "Versão minor associada à MajorRuntimeVersion no cabeçalho CLI.",
+      "purpose": "Refinar verificações de compatibilidade do runtime",
+      "security_notes": "Ver CLR MajorRuntimeVersion."
+    },
+    "CLR MetaData RVA": {
+      "title": "RVA dos metadados CLR",
+      "description": "RVA da raiz dos metadados CLI (fluxo #~, strings, etc.) descrita na ECMA-335.",
+      "purpose": "Localizar tabelas de tipos, métodos, recursos e identidade do assembly",
+      "security_notes": "A engenharia reversa gerida e a análise de assinatura começam frequentemente aqui — RVA 0 com ILONLY é suspeito."
+    },
+    "CLR MetaData Size": {
+      "title": "Tamanho dos metadados CLR",
+      "description": "Tamanho em bytes do blob de metadados referenciado por CLR MetaData RVA.",
+      "purpose": "Delimitar os metadados para mapeamento",
+      "security_notes": "Tamanho mínimo ou zero com RVA não zero costuma indicar ficheiro quebrado ou fabricado."
+    },
+    "CLR Flags": {
+      "title": "Flags COM+ do CLR",
+      "description": "Campo de bits COMIMAGE_FLAGS (ex.: ILONLY, 32BITREQUIRED, STRONGNAMESIGNED, TRACKDEBUGDATA). O significado reconhecido aparece na coluna Meaning.",
+      "purpose": "Declarar se o módulo é IL puro, exige 32 bits, tem strong name, etc.",
+      "security_notes": "Flags de strong name e IL-only afetam confiança e carregamento — confirme com ferramentas de assinatura se decisões de segurança dependem disso."
+    },
+    "CLR EntryPointToken": {
+      "title": "Token / RVA do ponto de entrada CLR",
+      "description": "Se ILONLY: token de metadados do método de entrada gerido; caso contrário pode ser RVA para um stub nativo. A interpretação segue as flags.",
+      "purpose": "Indicar ao CLR onde começa a execução",
+      "security_notes": "Tokens ou RVAs inesperados podem apontar para entradas ofuscadas ou interop nativo."
+    },
+    "CLR Resources RVA": {
+      "title": "RVA dos recursos geridos CLR",
+      "description": "RVA dos recursos geridos .NET (não a árvore Win32 RT_RCDATA — é a secção de recursos geridos).",
+      "purpose": "Carregar strings localizadas, imagens e outros assets embutidos",
+      "security_notes": "Blobs grandes podem esconder payload — use ferramentas .NET."
+    },
+    "CLR Resources Size": {
+      "title": "Tamanho dos recursos geridos CLR",
+      "description": "Tamanho do bloco de recursos geridos referenciado por CLR Resources RVA.",
+      "purpose": "Delimitar recursos geridos na imagem",
+      "security_notes": "Ver CLR Resources RVA."
+    },
+    "CLR StrongNameSignature RVA": {
+      "title": "RVA da assinatura strong name",
+      "description": "RVA do blob de assinatura strong name usado quando o assembly é assinado (hash sobre a imagem).",
+      "purpose": "Suportar integridade e identidade de assemblies com nome forte",
+      "security_notes": "Assinatura presente com flag STRONGNAMESIGNED inconsistente merece verificação."
+    },
+    "CLR StrongNameSignature Size": {
+      "title": "Tamanho da assinatura strong name",
+      "description": "Tamanho dos dados da assinatura strong name.",
+      "purpose": "Localizar o bloco completo da assinatura",
+      "security_notes": "Ver CLR StrongNameSignature RVA."
+    },
+    "CLR CodeManagerTable RVA": {
+      "title": "RVA da tabela Code Manager",
+      "description": "Tabela histórica/opcional para code managers do CLR; muitas vezes zero em imagens modernas.",
+      "purpose": "Gancho de extensibilidade para motores de execução",
+      "security_notes": "Valores não zero são incomuns — confirme com o contexto da ferramenta."
+    },
+    "CLR CodeManagerTable Size": {
+      "title": "Tamanho da tabela Code Manager",
+      "description": "Tamanho da tabela Code Manager.",
+      "purpose": "Delimitar a tabela se existir",
+      "security_notes": "Ver CLR CodeManagerTable RVA."
+    },
+    "CLR VTableFixups RVA": {
+      "title": "RVA dos VTable fixups",
+      "description": "RVA dos registos de correção de vtable para C++/CLI e interop.",
+      "purpose": "Corrigir vtables ao carregar imagens mistas",
+      "security_notes": "Relevante sobretudo para assemblies mistos — fixups inesperados podem indicar mais superfície de interop."
+    },
+    "CLR VTableFixups Size": {
+      "title": "Tamanho dos VTable fixups",
+      "description": "Tamanho do array de VTable fixups.",
+      "purpose": "Delimitar os registos de fixup",
+      "security_notes": "Ver CLR VTableFixups RVA."
+    },
+    "CLR ExportAddressTableJumps RVA": {
+      "title": "RVA da tabela ExportAddressTableJumps",
+      "description": "RVA de saltos relacionados com métodos geridos exportados em alguns cenários (muitas vezes não usado).",
+      "purpose": "Suportar casos de reencaminhamento de exportações CLR",
+      "security_notes": "Raramente preenchido — valores não zero precisam de contexto da toolchain."
+    },
+    "CLR ExportAddressTableJumps Size": {
+      "title": "Tamanho da tabela ExportAddressTableJumps",
+      "description": "Tamanho da tabela de saltos de exportação.",
+      "purpose": "Delimitar a estrutura se existir",
+      "security_notes": "Ver CLR ExportAddressTableJumps RVA."
+    },
+    "CLR ManagedNativeHeader RVA": {
+      "title": "RVA do cabeçalho Managed Native",
+      "description": "RVA do cabeçalho nativo gerido (dados estilo NGEN/ReadyToRun) quando presente.",
+      "purpose": "Suportar código nativo pré-compilado para assemblies geridos",
+      "security_notes": "A presença indica otimização de imagem nativa — a análise pode diferir de IL pura."
+    },
+    "CLR ManagedNativeHeader Size": {
+      "title": "Tamanho do cabeçalho Managed Native",
+      "description": "Tamanho do bloco do cabeçalho nativo gerido.",
+      "purpose": "Delimitar metadados nativos pré-compilados",
+      "security_notes": "Ver CLR ManagedNativeHeader RVA."
     },
     "Bound Import Directory RVA": {
       "title": "RVA do Diretório de Importação Vinculada",

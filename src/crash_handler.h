@@ -32,6 +32,7 @@ public:
     QString getLogFilePath() const;
     
     // Manual crash logging methods
+    // In Release (NDEBUG): only logError / logCrashInfo write to the log file; logInfo/logWarning/logDebug are no-ops there.
     void logError(const QString &component, const QString &message, const QString &details = "");
     void logWarning(const QString &component, const QString &message, const QString &details = "");
     void logInfo(const QString &component, const QString &message);

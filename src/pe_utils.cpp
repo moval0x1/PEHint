@@ -4,6 +4,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QDebug>
+#include <cstddef>
 
 QString PEUtils::formatHexInternal(quint64 value, int width)
 {
@@ -269,7 +270,14 @@ quint32 PEUtils::calculateSectionTableOffset(quint32 peOffset, quint32 optionalH
 
 quint32 PEUtils::calculateDataDirectoryOffset(quint32 optionalHeaderOffset, quint32 optionalHeaderSize, int directoryIndex)
 {
-    return optionalHeaderOffset + optionalHeaderSize + (directoryIndex * sizeof(IMAGE_DATA_DIRECTORY));
+    // Data directories live inside the optional header (not after it).
+    // PE32: DataDirectory starts at offset 96; PE32+: at 112 (see IMAGE_OPTIONAL_HEADER32/64).
+    const quint32 tableOffsetInOptional =
+        (optionalHeaderSize >= static_cast<quint32>(sizeof(IMAGE_OPTIONAL_HEADER64)))
+            ? static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER64, DataDirectory))
+            : static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER32, DataDirectory));
+    return optionalHeaderOffset + tableOffsetInOptional
+        + static_cast<quint32>(directoryIndex) * static_cast<quint32>(sizeof(IMAGE_DATA_DIRECTORY));
 }
 
 // ============================================================================

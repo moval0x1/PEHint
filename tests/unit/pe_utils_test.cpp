@@ -78,5 +78,3 @@ void PEUtilsTest::testRVAFormatting()
     QVERIFY(rva2.contains("400000", Qt::CaseInsensitive));
 }
 
-#include "pe_utils_test.moc"
-

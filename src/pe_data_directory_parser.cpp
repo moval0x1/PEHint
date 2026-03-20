@@ -373,26 +373,39 @@ bool PEDataDirectoryParser::parseTLSDirectory(quint32 rva, quint32 size, PEDataM
     
     quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
     if (fileOffset == 0) return false;
-    
-    const IMAGE_TLS_DIRECTORY *tlsDir = reinterpret_cast<const IMAGE_TLS_DIRECTORY*>(
-        m_fileData.data() + fileOffset
-    );
-    
+
+    const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
+    const bool pe32Plus = opt && opt->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+
     QStringList tlsInfo;
     QMap<QString, QString> tlsDetails;
-    
-    // Parse TLS directory structure
     QMap<QString, QString> tlsParams;
-    tlsParams["rva"] = PEUtils::formatHex(tlsDir->AddressOfCallBacks);
-    tlsParams["size"] = QString::number(tlsDir->SizeOfZeroFill);
+
+    if (pe32Plus) {
+        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY64) > static_cast<quint32>(m_fileData.size())) {
+            return false;
+        }
+        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY64 *>(m_fileData.constData() + fileOffset);
+        tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(static_cast<quint64>(tls->AddressOfCallBacks));
+        tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
+        tlsParams[QStringLiteral("start")] = PEUtils::formatHex(static_cast<quint64>(tls->StartAddressOfRawData));
+    } else {
+        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY32) > static_cast<quint32>(m_fileData.size())) {
+            return false;
+        }
+        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY32 *>(m_fileData.constData() + fileOffset);
+        tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(tls->AddressOfCallBacks);
+        tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
+        tlsParams[QStringLiteral("start")] = PEUtils::formatHex(tls->StartAddressOfRawData);
+    }
+
     QString tlsData = LANG_PARAMS("UI/tls_details_format", tlsParams);
-    
     tlsInfo.append(LANG("UI/data_dir_tls"));
     tlsDetails[LANG("UI/data_dir_tls")] = tlsData;
-    
+
     dataModel.setTLSInfo(tlsInfo);
     dataModel.setTLSDetails(tlsDetails);
-    
+
     return true;
 }
 
@@ -402,27 +415,47 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
     
     quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
     if (fileOffset == 0) return false;
-    
-    const IMAGE_LOAD_CONFIG_DIRECTORY *loadConfigDir = reinterpret_cast<const IMAGE_LOAD_CONFIG_DIRECTORY*>(
-        m_fileData.data() + fileOffset
-    );
-    
+
+    if (fileOffset + 4 > static_cast<quint32>(m_fileData.size())) {
+        return false;
+    }
+
+    const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
+    const bool pe32Plus = opt && opt->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+
     QStringList loadConfigInfo;
     QMap<QString, QString> loadConfigDetails;
-    
-    // Parse Load Configuration directory structure
     QMap<QString, QString> configParams;
-    configParams["size"] = QString::number(loadConfigDir->Size);
-    configParams["time"] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
-    configParams["version"] = QString::number(loadConfigDir->MajorVersion);
+
+    if (pe32Plus) {
+        if (fileOffset + sizeof(IMAGE_LOAD_CONFIG_DIRECTORY64) > static_cast<quint32>(m_fileData.size())) {
+            return false;
+        }
+        const auto *loadConfigDir =
+            reinterpret_cast<const IMAGE_LOAD_CONFIG_DIRECTORY64 *>(m_fileData.constData() + fileOffset);
+        configParams[QStringLiteral("size")] = QString::number(loadConfigDir->Size);
+        configParams[QStringLiteral("time")] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
+        configParams[QStringLiteral("version")] =
+            QStringLiteral("%1.%2").arg(loadConfigDir->MajorVersion).arg(loadConfigDir->MinorVersion);
+    } else {
+        if (fileOffset + sizeof(IMAGE_LOAD_CONFIG_DIRECTORY32) > static_cast<quint32>(m_fileData.size())) {
+            return false;
+        }
+        const auto *loadConfigDir =
+            reinterpret_cast<const IMAGE_LOAD_CONFIG_DIRECTORY32 *>(m_fileData.constData() + fileOffset);
+        configParams[QStringLiteral("size")] = QString::number(loadConfigDir->Size);
+        configParams[QStringLiteral("time")] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
+        configParams[QStringLiteral("version")] =
+            QStringLiteral("%1.%2").arg(loadConfigDir->MajorVersion).arg(loadConfigDir->MinorVersion);
+    }
+
     QString configData = LANG_PARAMS("UI/load_config_details_format", configParams);
-    
     loadConfigInfo.append(LANG("UI/data_dir_load_config"));
     loadConfigDetails[LANG("UI/data_dir_load_config")] = configData;
-    
+
     dataModel.setLoadConfigInfo(loadConfigInfo);
     dataModel.setLoadConfigDetails(loadConfigDetails);
-    
+
     return true;
 }
 
@@ -515,9 +548,10 @@ bool PEDataDirectoryParser::parseExceptionDirectory(quint32 rva, quint32 size, P
 bool PEDataDirectoryParser::parseCertificateDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
+
+    // PE spec: IMAGE_DIRECTORY_ENTRY_SECURITY.VirtualAddress is a raw file offset to the first
+    // WIN_CERTIFICATE, NOT an RVA. Do not pass this through rvaToFileOffset().
+    const quint32 fileOffset = rva;
     
     QStringList certificateInfo;
     QMap<QString, QString> certificateDetails;
@@ -528,7 +562,7 @@ bool PEDataDirectoryParser::parseCertificateDirectory(quint32 rva, quint32 size,
             m_fileData.data() + fileOffset
         );
         
-        QString certData = QString("Type: %1, Version: %2, Size: %3 bytes")
+        QString certData = QStringLiteral("Revision: %1, CertificateType: %2, Length: %3 bytes")
                           .arg(PEUtils::formatHex(static_cast<quint32>(cert->wRevision)))
                           .arg(PEUtils::formatHex(static_cast<quint32>(cert->wCertificateType)))
                           .arg(cert->dwLength);
@@ -537,7 +571,10 @@ bool PEDataDirectoryParser::parseCertificateDirectory(quint32 rva, quint32 size,
         certificateDetails[LANG("UI/data_dir_certificate")] = certData;
     } else {
         certificateInfo.append(LANG("UI/data_dir_certificate"));
-        certificateDetails[LANG("UI/data_dir_certificate")] = QString("RVA: 0x%1, Size: %2 bytes").arg(PEUtils::formatHex(rva)).arg(size);
+        certificateDetails[LANG("UI/data_dir_certificate")] =
+            QStringLiteral("File offset: 0x%1, Size: %2 bytes (security directory uses file pointers, not RVAs)")
+                .arg(PEUtils::formatHex(rva))
+                .arg(size);
     }
     
     dataModel.setCertificateInfo(certificateInfo);

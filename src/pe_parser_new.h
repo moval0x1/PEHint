@@ -37,6 +37,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QFile>
+#include <QHash>
 #include <QFuture>
 #include <QMutex>
 #include <QtConcurrent/QtConcurrent>
@@ -76,6 +77,9 @@ class PEParserNew : public QObject
     Q_OBJECT
 
 public:
+    /** English key matching explanations.json (and getFieldOffset map). When set on column 0, used instead of translated display text. */
+    static constexpr int kTreeFieldKeyRole = Qt::UserRole + 22;
+
     /**
      * @brief Constructor for PEParserNew
      * @param parent Parent QObject for memory management
@@ -171,31 +175,15 @@ public:
     qint64 getFileSize() const { return m_dataModel.getFileSize(); }
     
     /**
-     * @brief Checks if the current file is considered "large"
-     * @return true if file exceeds the large file threshold
-     * 
-     * This method helps determine parsing strategy for large files,
-     * allowing optimization of memory usage and parsing performance.
+     * @brief True when file size exceeds LARGE_FILE_THRESHOLD (UI hints, e.g. memory / hex build time).
+     * The full file is always loaded and parsed.
      */
     bool isLargeFile() const;
     
     /**
-     * @brief Checks if the current file is considered "very large"
-     * @return true if file exceeds the very large file threshold
-     * 
-     * This method helps determine parsing strategy for very large files,
-     * allowing aggressive optimization of memory usage and parsing performance.
+     * @brief True when file size exceeds VERY_LARGE_FILE_THRESHOLD (optional UI hints).
      */
     bool isVeryLargeFile() const;
-    
-    /**
-     * @brief Loads large files using streaming approach to avoid memory issues
-     * @return true if loading succeeded, false otherwise
-     * 
-     * This method reads only essential headers and structure information
-     * without loading the entire file into memory.
-     */
-    bool loadLargeFileStreaming();
     
     // Data access - Access to parsed PE information
     
@@ -207,6 +195,12 @@ public:
      * The const reference ensures data integrity while allowing read access.
      */
     const PEDataModel& getDataModel() const;
+
+    /**
+     * @brief Gets the raw file bytes loaded by the parser (for small files)
+     * @return Const reference to the internal file buffer; may be empty in streaming mode
+     */
+    const QByteArray& getFileData() const;
     
     // Field explanation and offset methods (for UI compatibility)
     // REFACTORING: These methods provide backward compatibility with the old UI
@@ -215,31 +209,23 @@ public:
     /**
      * @brief Gets explanation text for a specific PE field
      * @param fieldName Name of the field to get explanation for
-     * @return HTML-formatted explanation text
-     * 
-     * REFACTORING NOTE: This method currently returns placeholder text.
-     * Future implementation will use the new PEDataModel to provide
-     * accurate, detailed field explanations.
+     * @return HTML-formatted explanation text (JSON-driven + i18n; falls back to generic placeholder)
      */
     QString getFieldExplanation(const QString &fieldName);
+
+    /** Drop cached JSON/HTML explanations (call after language or INI reload). */
+    static void clearFieldExplanationCaches();
     
     /**
      * @brief Gets the file offset and size for a specific PE field
      * @param fieldName Name of the field to get offset information for
-     * @return Pair containing (offset, size) in bytes
-     * 
-     * REFACTORING NOTE: This method currently returns placeholder values.
-     * Future implementation will calculate actual offsets from the parsed
-     * PE structure data.
+     * @return Pair containing (offset, size) in bytes from parsed PE layout
      */
     QPair<quint32, quint32> getFieldOffset(const QString &fieldName);
     
     /**
-     * @brief Sets the language for field explanations
+     * @brief Sets the language for field explanations (coordinates with LanguageManager / JSON assets)
      * @param language Language code for explanations
-     * 
-     * REFACTORING NOTE: This method is a placeholder for future
-     * internationalization support in the new architecture.
      */
     void setLanguage(const QString &language);
     
@@ -426,6 +412,7 @@ private:
      * @param dosHeader DOS header structure
      */
     void addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader);
+
     
     /**
      * @brief Adds PE header fields to a tree item
@@ -453,6 +440,14 @@ private:
      */
     void addDataDirectoryFields(QTreeWidgetItem *parent);
     void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
+
+    void appendExceptionDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
+    /** Security directory: @p filePointer is optional-header VirtualAddress (a file offset, not an RVA). */
+    void appendCertificateDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 filePointer, quint32 regionSize);
+    void appendTLSDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
+    void appendLoadConfigDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
+    void appendResourceDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
+    void appendComDescriptorDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
     
     /**
      * @brief Adds a field to a tree item
@@ -462,8 +457,13 @@ private:
      * @param offset Field offset
      * @param size Field size
      */
-    void addTreeField(QTreeWidgetItem *parent, const QString &name, const QString &value, quint32 offset, quint32 size);
-    
+    void addTreeField(QTreeWidgetItem *parent, const QString &name, const QString &value, quint32 offset, quint32 size,
+                      const QString &jsonFieldKey = QString());
+
+    /** Rebuilds m_fieldOffsetLookup once per loaded image (getFieldOffset is hot on tree selection). */
+    void ensureFieldOffsetLookup();
+    void invalidateFieldOffsetLookup();
+
     // File data - Storage for file content and parsed information
     
     QFile m_file;                    ///< File handle for reading PE data
@@ -479,13 +479,16 @@ private:
     
     bool m_isValid;                  ///< Flag indicating if the current file is valid
     bool m_isParsing;                ///< Flag indicating parsing is in progress
+    bool m_fieldOffsetLookupValid = false;
+    QHash<QString, QPair<quint32, quint32>> m_fieldOffsetLookup;
     QMutex m_parsingMutex;           ///< Mutex for thread-safe parsing operations
     QFuture<void> m_parsingFuture;   ///< Future for async parsing operations
     
     // Constants - Configuration values for parsing behavior
     
-    static const qint64 LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
-    static const qint64 VERY_LARGE_FILE_THRESHOLD = std::numeric_limits<qint64>::max();
+    // Size thresholds for optional UI messaging (full file is always read into m_fileData).
+    static constexpr qint64 LARGE_FILE_THRESHOLD = 128LL * 1024 * 1024;      // 128 MB
+    static constexpr qint64 VERY_LARGE_FILE_THRESHOLD = 512LL * 1024 * 1024; // 512 MB
 };
 
 #endif // PE_PARSER_NEW_H

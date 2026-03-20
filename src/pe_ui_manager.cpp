@@ -44,12 +44,23 @@ UIManager::UIManager(MainWindow *parent)
     , m_expandAllButton(nullptr)
     , m_collapseAllButton(nullptr)
     , m_peTree(nullptr)
+    , m_fieldExplanationTitleLabel(nullptr)
     , m_fieldExplanationText(nullptr)
     , m_contextMenu(nullptr)
     , m_analysisTabWidget(nullptr)
     , m_importModulesTree(nullptr)
     , m_importFunctionsTree(nullptr)
     , m_exportsTree(nullptr)
+    , m_dependenciesTree(nullptr)
+    , m_dependenciesExpandAllButton(nullptr)
+    , m_dependenciesCollapseAllButton(nullptr)
+    , m_stringsTree(nullptr)
+    , m_stringsFilterEdit(nullptr)
+    , m_stringsTypeCombo(nullptr)
+    , m_stringsMinLengthSpin(nullptr)
+    , m_stringsSectionCombo(nullptr)
+    , m_stringsCancelButton(nullptr)
+    , m_stringsExportButton(nullptr)
     , m_hexViewer(nullptr)
 {
 }
@@ -92,9 +103,15 @@ void UIManager::setupMainUI(QWidget *centralWidget)
     // Create hex viewer component and add it to the layout
     m_hexViewer = new HexViewer(centralWidget);
     m_hexViewer->setVisible(true); // Make hex viewer visible
-    m_hexViewer->setMinimumHeight(200); // Reduced from 250 to allow better resizing
+    m_hexViewer->setMinimumHeight(180);
     m_hexViewer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
-    mainLayout->addWidget(m_hexViewer, 0); // Add with stretch factor 0 so it doesn't take too much space
+    mainLayout->addWidget(m_hexViewer, 0);
+
+    // Keep a stable, readable vertical balance between tabs and hex view.
+    // Item index map:
+    // 0=file info, 1=progress, 2=analysis tabs, 3=buttons, 4=hex viewer
+    mainLayout->setStretch(2, 5);
+    mainLayout->setStretch(4, 3);
 }
 
 /**
@@ -304,10 +321,11 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     QWidget *explanationContainer = new QWidget();
     explanationContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *explanationLayout = new QVBoxLayout(explanationContainer);
-    explanationLayout->setContentsMargins(0, 0, 0, 0);
-    explanationLayout->setSpacing(4);
+    explanationLayout->setContentsMargins(0, 12, 0, 0);  /* top margin so "Field Explanations" doesn't overlap table */
+    explanationLayout->setSpacing(6);
 
-    QLabel *explanationLabel = new QLabel(LANG("UI/explanation_label"));
+    m_fieldExplanationTitleLabel = new QLabel(LANG("UI/explanation_label"));
+    QLabel *explanationLabel = m_fieldExplanationTitleLabel;
     explanationLabel->setStyleSheet(
         "QLabel { "
         "   color: #0078d4; "
@@ -331,10 +349,14 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     explanationLayout->addWidget(explanationLabel);
 
     m_fieldExplanationText = new QTextEdit();
-    m_fieldExplanationText->setMinimumHeight(220);
-    m_fieldExplanationText->setMaximumHeight(220);
-    m_fieldExplanationText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    m_fieldExplanationText->setMinimumHeight(140);
+    m_fieldExplanationText->setMinimumWidth(200);
+    m_fieldExplanationText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_fieldExplanationText->setReadOnly(true);
+    // Always show a vertical scrollbar so long field explanations are reachable.
+    m_fieldExplanationText->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    m_fieldExplanationText->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_fieldExplanationText->setLineWrapMode(QTextEdit::WidgetWidth);
     m_fieldExplanationText->setStyleSheet(
         "QTextEdit { "
         "   font-size: 11px; "
@@ -355,15 +377,24 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     explanationLayout->addWidget(m_fieldExplanationText, 1);
 
     treeContainer->setMinimumSize(600, 200);
-    explanationContainer->setMinimumSize(600, 220);
-    explanationContainer->setMaximumHeight(220);
+    explanationContainer->setMinimumSize(600, 140);
 
     QWidget *structureTab = new QWidget();
     QVBoxLayout *structureLayout = new QVBoxLayout(structureTab);
     structureLayout->setContentsMargins(0, 0, 0, 0);
-    structureLayout->setSpacing(0);
-    structureLayout->addWidget(treeContainer, 1);
-    structureLayout->addWidget(explanationContainer, 0);
+    structureLayout->setSpacing(6);
+
+    // Move explanations to the right side for better readability while browsing fields.
+    QSplitter *structureSplitter = new QSplitter(Qt::Horizontal, structureTab);
+    structureSplitter->setChildrenCollapsible(false);
+    structureSplitter->setHandleWidth(5);
+    structureSplitter->addWidget(treeContainer);
+    structureSplitter->addWidget(explanationContainer);
+    structureSplitter->setStretchFactor(0, 3);
+    structureSplitter->setStretchFactor(1, 2);
+    structureSplitter->setSizes({900, 420});
+
+    structureLayout->addWidget(structureSplitter);
 
     m_analysisTabWidget->addTab(structureTab, LANG("UI/tab_structure"));
 
@@ -433,6 +464,103 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(exportsTab, LANG("UI/tab_exports"));
 
     // --------------------------------------------------------------------
+    // Dependencies tab
+    // --------------------------------------------------------------------
+    QWidget *dependenciesTab = new QWidget();
+    QVBoxLayout *dependenciesLayout = new QVBoxLayout(dependenciesTab);
+    dependenciesLayout->setContentsMargins(0, 0, 0, 0);
+
+    QHBoxLayout *dependenciesToolbarLayout = new QHBoxLayout();
+    dependenciesToolbarLayout->setContentsMargins(0, 0, 0, 4);
+    dependenciesToolbarLayout->addStretch();
+    m_dependenciesExpandAllButton = new QPushButton(LANG("UI/context_expand_all"));
+    m_dependenciesExpandAllButton->setObjectName(QStringLiteral("dependenciesExpandAllButton"));
+    m_dependenciesExpandAllButton->setEnabled(false);
+    m_dependenciesExpandAllButton->setCursor(Qt::PointingHandCursor);
+    m_dependenciesExpandAllButton->setStyleSheet(
+        "QPushButton { padding: 4px 10px; font-size: 10px; } QPushButton:disabled { color: #999; }");
+    m_dependenciesCollapseAllButton = new QPushButton(LANG("UI/context_collapse_all"));
+    m_dependenciesCollapseAllButton->setObjectName(QStringLiteral("dependenciesCollapseAllButton"));
+    m_dependenciesCollapseAllButton->setEnabled(false);
+    m_dependenciesCollapseAllButton->setCursor(Qt::PointingHandCursor);
+    m_dependenciesCollapseAllButton->setStyleSheet(
+        "QPushButton { padding: 4px 10px; font-size: 10px; } QPushButton:disabled { color: #999; }");
+    dependenciesToolbarLayout->addWidget(m_dependenciesExpandAllButton);
+    dependenciesToolbarLayout->addWidget(m_dependenciesCollapseAllButton);
+    dependenciesLayout->addLayout(dependenciesToolbarLayout);
+
+    m_dependenciesTree = new QTreeWidget();
+    m_dependenciesTree->setAlternatingRowColors(true);
+    m_dependenciesTree->setSelectionMode(QAbstractItemView::NoSelection);
+    // Context menu is handled in MainWindow (customContextMenuRequested); not the main window's contextMenuEvent.
+    m_dependenciesTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_dependenciesTree->setHeaderLabels({
+        LANG("UI/deps_header_module"),
+        LANG("UI/deps_header_resolved_path"),
+        LANG("UI/deps_header_found")
+    });
+    m_dependenciesTree->setColumnWidth(0, 200);
+    m_dependenciesTree->setColumnWidth(1, 350);
+    m_dependenciesTree->setColumnWidth(2, 80);
+    dependenciesLayout->addWidget(m_dependenciesTree);
+    m_analysisTabWidget->addTab(dependenciesTab, LANG("UI/tab_dependencies"));
+
+    // --------------------------------------------------------------------
+    // Strings tab
+    // --------------------------------------------------------------------
+    QWidget *stringsTab = new QWidget();
+    QVBoxLayout *stringsLayout = new QVBoxLayout(stringsTab);
+    stringsLayout->setContentsMargins(0, 0, 0, 0);
+    QHBoxLayout *stringsFilterLayout = new QHBoxLayout();
+    stringsFilterLayout->setContentsMargins(0, 0, 0, 4);
+    m_stringsFilterEdit = new QLineEdit();
+    m_stringsFilterEdit->setPlaceholderText(LANG("UI/strings_filter_placeholder"));
+    m_stringsFilterEdit->setClearButtonEnabled(true);
+    m_stringsFilterEdit->setMaximumWidth(320);
+    m_stringsTypeCombo = new QComboBox();
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_all"), QStringLiteral("all"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ascii"), QStringLiteral("ascii"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_unicode"), QStringLiteral("unicode"));
+    m_stringsTypeCombo->setMaximumWidth(120);
+    m_stringsMinLengthSpin = new QSpinBox();
+    m_stringsMinLengthSpin->setRange(2, 64);
+    m_stringsMinLengthSpin->setValue(4);
+    m_stringsMinLengthSpin->setPrefix(LANG("UI/strings_min_len_prefix"));
+    m_stringsMinLengthSpin->setMaximumWidth(120);
+    m_stringsSectionCombo = new QComboBox();
+    m_stringsSectionCombo->setMaximumWidth(180);
+    m_stringsSectionCombo->addItem(LANG("UI/strings_all_sections"), QStringLiteral("__all__"));
+    m_stringsCancelButton = new QPushButton(LANG("UI/button_cancel"));
+    m_stringsCancelButton->setEnabled(false);
+    m_stringsCancelButton->setMaximumWidth(90);
+    m_stringsExportButton = new QPushButton(LANG("UI/button_export"));
+    m_stringsExportButton->setEnabled(false);
+    m_stringsExportButton->setMaximumWidth(90);
+    stringsFilterLayout->addWidget(m_stringsFilterEdit);
+    stringsFilterLayout->addWidget(m_stringsTypeCombo);
+    stringsFilterLayout->addWidget(m_stringsMinLengthSpin);
+    stringsFilterLayout->addWidget(m_stringsSectionCombo);
+    stringsFilterLayout->addWidget(m_stringsCancelButton);
+    stringsFilterLayout->addWidget(m_stringsExportButton);
+    stringsFilterLayout->addStretch();
+    stringsLayout->addLayout(stringsFilterLayout);
+    m_stringsTree = new QTreeWidget();
+    m_stringsTree->setAlternatingRowColors(true);
+    m_stringsTree->setSelectionMode(QAbstractItemView::NoSelection);
+    m_stringsTree->setHeaderLabels({
+        LANG("UI/strings_header_offset"),
+        LANG("UI/strings_header_section"),
+        LANG("UI/strings_header_type"),
+        LANG("UI/strings_header_value")
+    });
+    m_stringsTree->setColumnWidth(0, 100);
+    m_stringsTree->setColumnWidth(1, 120);
+    m_stringsTree->setColumnWidth(2, 72);
+    m_stringsTree->setColumnWidth(3, 420);
+    stringsLayout->addWidget(m_stringsTree);
+    m_analysisTabWidget->addTab(stringsTab, LANG("UI/tab_strings"));
+
+    // --------------------------------------------------------------------
 
     mainLayout->addWidget(m_analysisTabWidget, 1);
 }
@@ -471,18 +599,9 @@ void UIManager::setupButtonSection(QVBoxLayout *mainLayout)
     m_saveButton->setStyleSheet("QPushButton { padding: 5px 10px; font-size: 11px; }");
     m_saveButton->setEnabled(false); // Initially disabled until file is loaded
     
-    // Create Security Analysis button - HIDDEN
-    // m_securityButton = new QPushButton("🔒 Security Analysis");
-    // m_securityButton->setIcon(QIcon(":/images/imgs/security.png")); // Use security icon
-    // m_securityButton->setStyleSheet("QPushButton { padding: 5px 10px; font-size: 11px; background-color: #ff6b6b; color: white; border-radius: 3px; } QPushButton:hover { background-color: #ff5252; } QPushButton:pressed { background-color: #d32f2f; }");
-    // m_securityButton->setEnabled(false); // Initially disabled until file is loaded
-    // m_securityButton->setToolTip("Analyze file for security threats and suspicious patterns");
-    m_securityButton = nullptr; // Set to nullptr since button is hidden
-    
     // Add buttons to horizontal layout
     buttonLayout->addWidget(m_copyButton);
     buttonLayout->addWidget(m_saveButton);
-    // buttonLayout->addWidget(m_securityButton); // HIDDEN
     buttonLayout->addStretch(); // Push buttons to the left
     
     // Add the button section to the main layout
@@ -519,15 +638,54 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     if (m_collapseAllButton) {
         connect(m_collapseAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onCollapseAll);
     }
+    if (m_dependenciesExpandAllButton) {
+        connect(m_dependenciesExpandAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onExpandAllDependencies);
+    }
+    if (m_dependenciesCollapseAllButton) {
+        connect(m_dependenciesCollapseAllButton, &QPushButton::clicked, mainWindow, &MainWindow::onCollapseAllDependencies);
+    }
     if (m_importModulesTree) {
         connect(m_importModulesTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportModuleSelected);
     }
-    // connect(m_securityButton, &QPushButton::clicked, mainWindow, &MainWindow::onSecurityAnalysis); // HIDDEN
-    connect(m_peTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onTreeItemClicked);
+    // Use currentItemChanged to avoid duplicate work with itemClicked.
+    // It also covers keyboard navigation and mouse selection.
+    connect(m_peTree, &QTreeWidget::currentItemChanged, mainWindow,
+            [mainWindow](QTreeWidgetItem *current, QTreeWidgetItem *) {
+                if (current) {
+                    mainWindow->onTreeItemClicked(current, 0);
+                }
+            });
     
     // Connect hex viewer signals
     if (m_hexViewer) {
         connect(m_hexViewer, &HexViewer::byteClicked, mainWindow, &MainWindow::onHexViewerByteClicked);
+    }
+    if (m_stringsFilterEdit) {
+        connect(m_stringsFilterEdit, &QLineEdit::textChanged, mainWindow, &MainWindow::onStringsFilterChanged);
+    }
+    if (m_stringsTypeCombo) {
+        connect(m_stringsTypeCombo, &QComboBox::currentIndexChanged, mainWindow, &MainWindow::onStringsFilterChanged);
+    }
+    if (m_stringsMinLengthSpin) {
+        connect(m_stringsMinLengthSpin, QOverload<int>::of(&QSpinBox::valueChanged), mainWindow, &MainWindow::onStringsFilterChanged);
+    }
+    if (m_stringsSectionCombo) {
+        connect(m_stringsSectionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), mainWindow, &MainWindow::onStringsFilterChanged);
+    }
+    if (m_stringsCancelButton) {
+        connect(m_stringsCancelButton, &QPushButton::clicked, mainWindow, &MainWindow::onCancelStringsExtraction);
+    }
+    if (m_stringsExportButton) {
+        connect(m_stringsExportButton, &QPushButton::clicked, mainWindow, &MainWindow::onExportStrings);
+    }
+    if (m_stringsTree) {
+        connect(m_stringsTree, &QTreeWidget::itemDoubleClicked, mainWindow,
+                &MainWindow::onStringsTreeItemDoubleClicked);
+    }
+
+    // Lazily populate heavy tabs in MainWindow.
+    if (m_analysisTabWidget) {
+        connect(m_analysisTabWidget, &QTabWidget::currentChanged, mainWindow, &MainWindow::onAnalysisTabChanged);
     }
 }
 
@@ -605,10 +763,13 @@ void UIManager::setupStatusBar(MainWindow *mainWindow)
 void UIManager::setupContextMenu(MainWindow *mainWindow)
 {
     m_contextMenu = new QMenu(mainWindow);
-    m_contextMenu->addAction(LANG("UI/context_copy"), mainWindow, &MainWindow::onCopyToClipboard);
+    QAction *copyAct = m_contextMenu->addAction(LANG("UI/context_copy"), mainWindow, &MainWindow::onCopyToClipboard);
+    copyAct->setIcon(QIcon(QStringLiteral(":/images/imgs/copy.png")));
     m_contextMenu->addSeparator();
-    m_contextMenu->addAction(LANG("UI/context_expand_all"), mainWindow, &MainWindow::onExpandAll);
-    m_contextMenu->addAction(LANG("UI/context_collapse_all"), mainWindow, &MainWindow::onCollapseAll);
+    QAction *expandAct = m_contextMenu->addAction(LANG("UI/context_expand_all"), mainWindow, &MainWindow::onExpandAll);
+    expandAct->setIcon(QIcon(QStringLiteral(":/images/imgs/expand.png")));
+    QAction *collapseAct = m_contextMenu->addAction(LANG("UI/context_collapse_all"), mainWindow, &MainWindow::onCollapseAll);
+    collapseAct->setIcon(QIcon(QStringLiteral(":/images/imgs/collapse.png")));
 }
 
 /**

@@ -110,6 +110,13 @@ public:
     bool hasString(const QString &key) const;
 
     /**
+     * @brief Look up a string from loaded INI only (no Qt translator fallback).
+     * Tries @a key and the usual UI/ mirror; returns empty if missing — unlike getString(),
+     * this never returns the key as a placeholder.
+     */
+    QString getIniString(const QString &key) const;
+
+    /**
      * @brief Reload language configuration
      * @return true if reload successful, false otherwise
      */

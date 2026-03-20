@@ -53,6 +53,13 @@ compile_commands.json
 
 *_qmlcache.qrc
 build/
+# Preset / local CMake dirs (e.g. build_p1, build_ci, build_debug)
+build_*/
 out/
 .vs/
+.qtcreator/
+
+# Local release artifacts (keep source-only in git)
+PEHint_Release_Package*/
+PEHint_Release_Package*.zip
 

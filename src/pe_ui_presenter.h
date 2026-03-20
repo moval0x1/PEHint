@@ -40,8 +40,6 @@
 
 // Forward declarations
 class PEDataModel;
-class PESecurityAnalyzer;
-struct SecurityAnalysisResult;
 
 /**
  * @brief Display format options for PE data
@@ -67,7 +65,6 @@ enum class DisplayFormat {
 struct UIPresentationConfig {
     DisplayFormat displayFormat;                    ///< Preferred display format
     bool showTechnicalDetails;                      ///< Show technical/low-level details
-    bool showSecurityAnalysis;                      ///< Include security analysis results
     bool showFieldExplanations;                     ///< Show field explanations
     bool showOffsets;                               ///< Show field offsets and sizes
     bool showHexValues;                             ///< Show hexadecimal values
@@ -212,19 +209,6 @@ public:
      */
     QString getFieldInformation(const QString &fieldName, const UIPresentationConfig &config = UIPresentationConfig());
     
-    /**
-     * @brief Gets security analysis presentation
-     * @param securityResult Security analysis results to present
-     * @param config Presentation configuration options
-     * @return Formatted security analysis presentation
-     * 
-     * This method creates a user-friendly presentation of security
-     * analysis results, highlighting important findings and providing
-     * actionable recommendations.
-     */
-    QString getSecurityAnalysisPresentation(const SecurityAnalysisResult &securityResult, 
-                                          const UIPresentationConfig &config = UIPresentationConfig());
-    
     // Configuration methods
     
     /**
@@ -244,24 +228,6 @@ public:
      * debugging, validation, or integration purposes.
      */
     PEDataModel* getDataModel() const;
-    
-    /**
-     * @brief Sets the security analyzer for security presentations
-     * @param securityAnalyzer Pointer to the security analyzer
-     * 
-     * This method sets the security analyzer used for generating
-     * security-related presentations and analysis displays.
-     */
-    void setSecurityAnalyzer(PESecurityAnalyzer *securityAnalyzer);
-    
-    /**
-     * @brief Gets the current security analyzer
-     * @return Pointer to the current security analyzer
-     * 
-     * This method provides access to the current security analyzer
-     * for debugging or integration purposes.
-     */
-    PESecurityAnalyzer* getSecurityAnalyzer() const;
     
     /**
      * @brief Sets default presentation configuration
@@ -430,7 +396,6 @@ private:
     // Data members
     
     PEDataModel *m_dataModel;                       ///< Pointer to PE data model
-    PESecurityAnalyzer *m_securityAnalyzer;         ///< Pointer to security analyzer
     UIPresentationConfig m_defaultConfig;           ///< Default presentation configuration
     
     // Constants for presentation formatting

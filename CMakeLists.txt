@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Qt Creator may pass CMAKE_PROJECT_INCLUDE_BEFORE to a file that does not exist yet
+# (e.g. .qtc/package-manager/auto-setup.cmake in the build dir). Unset it so project() does not fail.
+if(DEFINED CMAKE_PROJECT_INCLUDE_BEFORE AND NOT EXISTS "${CMAKE_PROJECT_INCLUDE_BEFORE}")
+  unset(CMAKE_PROJECT_INCLUDE_BEFORE CACHE)
+  message(STATUS "Cleared non-existent CMAKE_PROJECT_INCLUDE_BEFORE (Qt Creator)")
+endif()
+
 # Set C++ compiler before project() if not found
 # This is especially important for Ninja generator
 if(NOT DEFINED CMAKE_CXX_COMPILER)
@@ -79,18 +86,27 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-# Set Qt prefix path if not already set
-if(NOT DEFINED CMAKE_PREFIX_PATH)
-    if(DEFINED ENV{QTDIR})
-        set(CMAKE_PREFIX_PATH $ENV{QTDIR})
+# Set Qt prefix path if not already set or empty (Qt Creator sometimes passes empty CMAKE_PREFIX_PATH)
+if(NOT CMAKE_PREFIX_PATH OR CMAKE_PREFIX_PATH STREQUAL "")
+    if(DEFINED ENV{QTDIR} AND NOT "$ENV{QTDIR}" STREQUAL "")
+        set(CMAKE_PREFIX_PATH "$ENV{QTDIR}")
         message(STATUS "Setting CMAKE_PREFIX_PATH to: $ENV{QTDIR}")
+    elseif(WIN32)
+        # Default Qt path when building with Qt Creator / Ninja on Windows
+        set(QT_DEFAULT_PATH "C:/Qt/6.10.2/msvc2022_64")
+        if(EXISTS "${QT_DEFAULT_PATH}")
+            set(CMAKE_PREFIX_PATH "${QT_DEFAULT_PATH}")
+            message(STATUS "Setting CMAKE_PREFIX_PATH to default: ${CMAKE_PREFIX_PATH}")
+        else()
+            message(WARNING "Qt6 not found. Set QTDIR or CMAKE_PREFIX_PATH to your Qt 6.10.2 kit (e.g. C:/Qt/6.10.2/msvc2022_64)")
+        endif()
     else()
         message(WARNING "QTDIR environment variable not set. Qt6 may not be found.")
     endif()
 endif()
 
 # Find Qt6 with specific version requirement
-find_package(Qt6 6.8.0 REQUIRED COMPONENTS Core Widgets Concurrent)
+find_package(Qt6 6.10.2 REQUIRED COMPONENTS Core Widgets Concurrent)
 
 # Alternative approach if the above fails
 if(NOT Qt6_FOUND)
@@ -102,7 +118,7 @@ if(NOT Qt6_FOUND)
 endif()
 
 if(NOT Qt6_FOUND)
-    message(FATAL_ERROR "Qt6 not found. Please ensure Qt 6.8.0 is installed and QTDIR is set correctly.")
+    message(FATAL_ERROR "Qt6 not found. Please ensure Qt 6.10.2 is installed and QTDIR is set correctly.")
 endif()
 
 # Set Qt6 specific options for Visual Studio
@@ -125,6 +141,8 @@ set(PROJECT_SOURCES
     src/mainwindow.h
     src/hexviewer.cpp
     src/hexviewer.h
+    src/virtual_hex_widget.cpp
+    src/virtual_hex_widget.h
     src/pe_structures.h
     src/pe_utils.cpp
     src/pe_utils.h
@@ -134,15 +152,15 @@ set(PROJECT_SOURCES
     src/pe_data_directory_parser.h
     src/pe_import_export_parser.cpp
     src/pe_import_export_parser.h
+    src/pe_dependency_analyzer.cpp
+    src/pe_dependency_analyzer.h
+    src/pe_string_extractor.cpp
+    src/pe_string_extractor.h
     src/pe_parser_new.cpp
     src/pe_parser_new.h
-    src/pe_security_analyzer.cpp
-    src/pe_security_analyzer.h
     src/pe_ui_presenter.h
     src/pe_ui_manager.cpp
     src/pe_ui_manager.h
-    src/security_config_manager.cpp
-    src/security_config_manager.h
     src/language_manager.h
     src/language_manager.cpp
     src/crash_handler.h
@@ -151,8 +169,8 @@ set(PROJECT_SOURCES
 )
 
 # Configure the resource file with version information
-# Set the icon path relative to the build directory
-set(ICON_PATH "${CMAKE_SOURCE_DIR}/resources/imgs/PEHint-ico.ico")
+# Set the icon path relative to the build directory (.rc ICON expects .ico, not .png)
+set(ICON_PATH "${CMAKE_SOURCE_DIR}/resources/imgs/PEHint.ico")
 
 configure_file(
     "${CMAKE_SOURCE_DIR}/resources/app.rc"
@@ -181,7 +199,11 @@ endif()
 # Include directories
 target_include_directories(PEHint PRIVATE src)
 
-# Set properties for Visual Studio
+# Non-Debug: compile out qDebug() (QT_NO_DEBUG_OUTPUT expands it to a no-op). Avoids QString/format
+# and message-handler work in Release/RelWithDebInfo/MinSizeRel. qWarning/qCritical unchanged.
+target_compile_definitions(PEHint PRIVATE
+    $<$<NOT:$<CONFIG:Debug>>:QT_NO_DEBUG_OUTPUT>
+)
 set_target_properties(PEHint PROPERTIES
     WIN32_EXECUTABLE TRUE
     VS_DEBUGGER_ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/bin"
