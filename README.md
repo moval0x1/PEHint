@@ -1,8 +1,7 @@
 # PEHint - PE Header Learning Tool
 
 [![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/moval0x1/PEHint)
-[![CI DEV](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
-[![CI MAIN](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
+[![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![GitHub downloads](https://img.shields.io/github/downloads/moval0x1/PEHint/total?label=Downloads&logo=github)](https://github.com/moval0x1/PEHint/releases)
