@@ -150,6 +150,8 @@ set(PROJECT_SOURCES
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp
     src/pe_data_directory_parser.h
+    src/pe_system_dll_ordinal_resolver.cpp
+    src/pe_system_dll_ordinal_resolver.h
     src/pe_import_export_parser.cpp
     src/pe_import_export_parser.h
     src/pe_dependency_analyzer.cpp
@@ -163,6 +165,8 @@ set(PROJECT_SOURCES
     src/pe_ui_manager.h
     src/language_manager.h
     src/language_manager.cpp
+    src/sdk_api_markdown_reader.h
+    src/sdk_api_markdown_reader.cpp
     src/crash_handler.h
     src/crash_handler.cpp
     resources/resource.qrc

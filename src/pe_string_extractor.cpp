@@ -19,17 +19,41 @@ static bool isPrintableUtf16Lead(const QByteArray &data, int i) {
     return isPrintableAscii(lo);
 }
 
-StringExtractionResult PEStringExtractor::extractFromData(const QByteArray &data, int minLength)
+StringExtractionResult PEStringExtractor::extractFromData(const QByteArray &data, int minLength,
+                                                          const std::function<void(int)> &reportProgress)
 {
     StringExtractionResult result;
     result.minLength = minLength;
-    if (data.isEmpty() || minLength < 1) return result;
+    if (data.isEmpty() || minLength < 1) {
+        if (reportProgress) {
+            reportProgress(100);
+        }
+        return result;
+    }
+
+    int lastReported = -1;
+    auto report = [&](int pct) {
+        if (!reportProgress) {
+            return;
+        }
+        pct = qBound(0, pct, 100);
+        if (pct > lastReported) {
+            lastReported = pct;
+            reportProgress(pct);
+        }
+    };
+
+    report(0);
 
     const int n = data.size();
+    const int asciiStep = qMax(4096, n / 128);
 
     // ASCII strings
     int start = -1;
     for (int i = 0; i < n; ++i) {
+        if ((i % asciiStep) == 0) {
+            report((i * 50) / qMax(1, n));
+        }
         if (isPrintableAscii(static_cast<quint8>(data[i]))) {
             if (start < 0) start = i;
         } else {
@@ -51,9 +75,16 @@ StringExtractionResult PEStringExtractor::extractFromData(const QByteArray &data
         result.strings.append(e);
     }
 
+    report(50);
+
     // UTF-16LE strings (2-byte aligned)
+    const int unicodeSpan = qMax(1, n - 1);
+    const int uStep = qMax(4096, unicodeSpan / 128);
     start = -1;
     for (int i = 0; i + 1 < n; i += 2) {
+        if ((i % uStep) == 0) {
+            report(50 + (i * 50) / unicodeSpan);
+        }
         if (isPrintableUtf16Lead(data, i)) {
             if (start < 0) start = i;
         } else {
@@ -79,6 +110,7 @@ StringExtractionResult PEStringExtractor::extractFromData(const QByteArray &data
         }
     }
 
+    report(100);
     return result;
 }
 

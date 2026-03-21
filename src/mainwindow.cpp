@@ -33,6 +33,7 @@
 #include "pe_structures.h"
 #include "pe_dependency_analyzer.h"
 #include "pe_string_extractor.h"
+#include "sdk_api_markdown_reader.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -66,6 +67,9 @@
 #include <QStyle>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QSignalBlocker>
+#include <QPointer>
+#include <QMetaObject>
 #include <algorithm>
 #include <limits>
 #include <QtConcurrent/QtConcurrent>
@@ -106,6 +110,109 @@ QString dependencyTooltipText(const DependencyNode &node)
 
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
+constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
+
+QString importHintPlaceholderText()
+{
+    return LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_placeholder"),
+        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative only—not live Microsoft data)."));
+}
+
+QString importHintTitleText()
+{
+    return LanguageManager::getInstance().getString(QStringLiteral("UI/imports_hint_title"), QStringLiteral("API summary"));
+}
+
+QString importHintFooterText()
+{
+    return LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_footer"),
+        QStringLiteral("Tip: On Microsoft Learn, search for the function name (for example CreateFileW) to open the full topic."));
+}
+
+QString importHintOrdinalText()
+{
+    return LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_ordinal"),
+        QStringLiteral("This import is bound by ordinal only and PEHint could not resolve a name from the system copy of the exporting DLL (missing file or unnamed export). Check the DLL’s exports or Microsoft Learn for that ordinal."));
+}
+
+QString importHintNoneForFunction(const QString &funcName)
+{
+    QMap<QString, QString> p;
+    p.insert(QStringLiteral("name"), funcName);
+    return LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_none"),
+        p,
+        QStringLiteral("No built-in summary for {name}. Search Microsoft Learn for the full reference and parameters."));
+}
+
+QString formatImportHintDisplay(const ImportApiHint &h, const QString &optionalBannerHtml = QString())
+{
+    // Section titles and the Learn tip stay English so they match Microsoft Learn topics even when the app UI is localized.
+    auto escTitle = [](const QString &s) -> QString { return QString(s).toHtmlEscaped(); };
+
+    QStringList html;
+    html << QStringLiteral("<html><head><meta charset=\"utf-8\"/><style>");
+    html << QStringLiteral(
+        "body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#222;margin:0;padding:0;line-height:1.5;}");
+    html << QStringLiteral(
+        "a{color:#0066cc;text-decoration:none;} a:hover{text-decoration:underline;}");
+    html << QStringLiteral(".sec{font-weight:600;margin:14px 0 6px 0;color:#111;font-size:12px;}");
+    html << QStringLiteral(
+        ".learn-doc{font-size:11px;color:#222;}"
+        ".learn-doc table{border-collapse:collapse;width:100%;margin:8px 0;font-size:11px;}"
+        ".learn-doc th,.learn-doc td{border:1px solid #e0e0e0;padding:5px 8px;text-align:left;vertical-align:top;}"
+        ".learn-doc th{background:#f3f3f3;font-weight:600;}"
+        ".learn-doc pre,.learn-doc code{font-family:Consolas,'Cascadia Mono','Segoe UI Mono',monospace;}"
+        ".learn-doc pre{background:#f6f6f6;border:1px solid #e8e8e8;border-radius:4px;padding:8px;font-size:10px;"
+        "margin:8px 0;white-space:pre-wrap;word-wrap:break-word;}"
+        ".learn-doc p{margin:6px 0;}"
+        ".learn-doc ul,.learn-doc ol{margin:6px 0 6px 22px;padding:0;}"
+        ".learn-doc li{margin:2px 0;}"
+        ".learn-doc blockquote{margin:8px 0 8px 6px;padding:4px 0 4px 10px;border-left:3px solid #ccc;color:#333;}"
+        ".param-item{margin:10px 0;padding:0;border-bottom:1px solid #eee;}"
+        ".param-item:last-child{border-bottom:none;}"
+        ".hint-foot{margin-top:12px;padding-top:8px;border-top:1px solid #e8e8e8;color:#666;font-size:10px;}");
+    html << QStringLiteral("</style></head><body>");
+    if (!optionalBannerHtml.isEmpty()) {
+        html << optionalBannerHtml;
+    }
+
+    if (!h.summary.isEmpty()) {
+        html << h.summary;
+    }
+    if (!h.signature.isEmpty()) {
+        html << QStringLiteral("<p class=\"sec\">") + escTitle(QStringLiteral("Signature")) + QStringLiteral("</p>") + h.signature;
+    }
+    if (!h.parameters.isEmpty()) {
+        html << QStringLiteral("<p class=\"sec\">") + escTitle(QStringLiteral("Parameters")) + QStringLiteral("</p>");
+        for (const QString &paramLine : h.parameters) {
+            html << paramLine;
+        }
+    }
+    if (!h.returns.isEmpty()) {
+        html << QStringLiteral("<p class=\"sec\">") + escTitle(QStringLiteral("Return value")) + QStringLiteral("</p>") + h.returns;
+    }
+    if (!h.remarks.isEmpty()) {
+        html << QStringLiteral("<p class=\"sec\">") + escTitle(QStringLiteral("Remarks")) + QStringLiteral("</p>") + h.remarks;
+    }
+    if (!h.learnUrl.isEmpty()) {
+        html << QStringLiteral("<p class=\"sec\">") + escTitle(QStringLiteral("Documentation")) + QStringLiteral("</p>");
+        html << QStringLiteral("<p><a href=\"")
+             + h.learnUrl.toHtmlEscaped() + QStringLiteral("\">") + h.learnUrl.toHtmlEscaped()
+             + QStringLiteral("</a></p>");
+    } else {
+        const QString foot = QStringLiteral(
+                                   "Tip: On Microsoft Learn, search for the function name (for example CreateFileW) to open the full topic.")
+                                   .toHtmlEscaped()
+                                   .replace(QLatin1Char('\n'), QStringLiteral("<br/>"));
+        html << QStringLiteral("<p class=\"hint-foot\">") + foot + QStringLiteral("</p>");
+    }
+    html << QStringLiteral("</body></html>");
+    return html.join(QString());
+}
 
 QColor colorForTreeSelection(const QTreeWidgetItem *item)
 {
@@ -319,6 +426,9 @@ MainWindow::MainWindow(QWidget *parent)
         }
     }
     
+    SdkApiMarkdownReader::instance().setContentRoot(SdkApiMarkdownReader::defaultContentRoot());
+    SdkApiMarkdownReader::instance().setConsoleDocsRoot(SdkApiMarkdownReader::defaultConsoleDocsRoot());
+
     // Setup UI components - REFACTORED: Now delegates to UIManager
     // This must be done BEFORE trying to access UI components
     setupUI();
@@ -414,9 +524,10 @@ void MainWindow::setupConnections()
     connect(m_peParser, &PEParserNew::parsingProgress, this, &MainWindow::onParsingProgress);
     connect(m_peParser, &PEParserNew::errorOccurred, this, &MainWindow::onErrorOccurred);
     
-    // Language Manager: refresh menus, chrome, hex, and (if a file is open) PE/lazy tabs
+    // Language Manager: always queue — never run UI refresh inside setLanguage()'s emit stack or while a
+    // native QMenu is closing (Windows access violations otherwise).
     connect(&LanguageManager::getInstance(), &LanguageManager::languageChanged,
-            this, &MainWindow::onApplicationLanguageChanged);
+            this, &MainWindow::onApplicationLanguageChanged, Qt::QueuedConnection);
     
     // REFACTORED: Use UI Manager to setup connections
     // This extracts UI-specific connections from MainWindow, reducing coupling
@@ -469,7 +580,7 @@ void MainWindow::setupMenus()
 
     QAction *clearRecentOnExitAction = new QAction(LANG("UI/menu_clear_recent_on_exit"), this);
     clearRecentOnExitAction->setCheckable(true);
-    clearRecentOnExitAction->setIcon(style()->standardIcon(QStyle::SP_DialogResetButton));
+    clearRecentOnExitAction->setIcon(QIcon(QStringLiteral(":/images/imgs/clear.png")));
     {
         QSettings settings(QStringLiteral("PEHint"), QStringLiteral("PEHint"));
         clearRecentOnExitAction->setChecked(settings.value(QStringLiteral("ui/clearRecentOnExit"), false).toBool());
@@ -487,8 +598,8 @@ void MainWindow::setupMenus()
     fileMenu->addSeparator();
     
     QAction *exitAction = new QAction(LANG("UI/menu_exit"), this);
-    exitAction->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
-    exitAction->setShortcut(QKeySequence::Quit);
+    exitAction->setIcon(QIcon(QStringLiteral(":/images/imgs/logout.png")));
+    exitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
     fileMenu->addAction(exitAction);
     
     // Tools menu
@@ -508,6 +619,7 @@ void MainWindow::setupMenus()
 
     QAction *aboutAction = new QAction(LANG("UI/menu_about"), this);
     aboutAction->setIcon(QIcon(QStringLiteral(":/images/imgs/about.png")));
+    aboutAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     aboutMenu->addAction(aboutAction);
     
     // Connect actions
@@ -525,8 +637,7 @@ void MainWindow::setupMenus()
     addAction(exitAction);
     addAction(refreshAction);
     addAction(hexViewerAction);
-    // Do not addAction(aboutAction): on Windows it can surface the action icon next to the menu bar;
-    // About has no standard shortcut requirement.
+    addAction(aboutAction);
 
     CrashHandler::getInstance().logInfo("MainWindow", "Application menus setup completed");
 }
@@ -591,7 +702,7 @@ void MainWindow::updateOpenRecentMenu()
 
     m_openRecentMenu->addSeparator();
     QAction *clearAct = m_openRecentMenu->addAction(LANG("UI/menu_clear_recent"));
-    clearAct->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    clearAct->setIcon(QIcon(QStringLiteral(":/images/imgs/clear.png")));
     connect(clearAct, &QAction::triggered, this, [this]() {
         m_recentFiles.clear();
         saveRecentFiles();
@@ -1227,8 +1338,10 @@ void MainWindow::onHexViewerByteClicked(qint64 offset, int length)
 void MainWindow::onLanguageChanged(const QString &language)
 {
     Q_UNUSED(language);
-    // Legacy hook: LanguageManager is already updated by the caller.
-    onApplicationLanguageChanged(LanguageManager::getInstance().getCurrentLanguage());
+    // Legacy hook: defer like LanguageManager::languageChanged so we never refresh menus synchronously.
+    QTimer::singleShot(0, this, [this]() {
+        onApplicationLanguageChanged(LanguageManager::getInstance().getCurrentLanguage());
+    });
 }
 
 void MainWindow::onApplicationLanguageChanged(const QString &languageCode)
@@ -1237,20 +1350,24 @@ void MainWindow::onApplicationLanguageChanged(const QString &languageCode)
 
     PEParserNew::clearFieldExplanationCaches();
 
+    // With QueuedConnection from languageChanged, this slot runs after the menu action returns. Still defer
+    // heavy PE/hex rebuild so tree/slot paths are not nested with tab widgets updating.
     updateUILanguage();
-
-    // Language menu checkmarks can update immediately; LanguageManager state is already new.
     updateLanguageMenu();
     menuBar()->update();
 
-    // With a file open, rebuilding the PE tree + hex in the same stack as the languageChanged
-    // signal can re-enter item/slot paths and crash. Defer the heavy refresh to the next event-loop tick.
     if (m_fileLoaded) {
-        QTimer::singleShot(0, this, [this]() {
+        updateHexViewerLanguage();
+        ++m_languageRefreshEpoch;
+        const quint64 langEpoch = m_languageRefreshEpoch;
+        QTimer::singleShot(0, this, [this, langEpoch]() {
             if (!m_fileLoaded) {
                 return;
             }
-            refreshOpenFileAfterLanguageChange();
+            if (langEpoch != m_languageRefreshEpoch) {
+                return;
+            }
+            refreshOpenFileAfterLanguageChange(langEpoch);
             updateHexViewerLanguage();
         });
         return;
@@ -1278,6 +1395,7 @@ void MainWindow::stopStringsExtractionSynchronously()
             m_uiManager->m_progressBar->setVisible(false);
             m_uiManager->m_progressBar->setRange(0, 100);
             m_uiManager->m_progressBar->setValue(0);
+            m_uiManager->m_progressBar->setFormat(QString());
         }
         if (m_uiManager->m_progressLabel) {
             m_uiManager->m_progressLabel->clear();
@@ -1288,11 +1406,17 @@ void MainWindow::stopStringsExtractionSynchronously()
     }
 }
 
-void MainWindow::refreshOpenFileAfterLanguageChange()
+void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch)
 {
+    if (languageRefreshEpoch != 0 && m_languageRefreshEpoch != languageRefreshEpoch) {
+        return;
+    }
     if (!m_fileLoaded || !m_uiManager || !m_peParser) {
         return;
     }
+
+    m_lastExplainedFieldName.clear();
+    m_lastHexHighlightOffset = -1;
 
     stopStringsExtractionSynchronously();
 
@@ -1307,7 +1431,12 @@ void MainWindow::refreshOpenFileAfterLanguageChange()
         m_uiManager->m_importModulesTree->blockSignals(false);
     }
     if (m_uiManager->m_importFunctionsTree) {
+        m_uiManager->m_importFunctionsTree->blockSignals(true);
         m_uiManager->m_importFunctionsTree->clear();
+        m_uiManager->m_importFunctionsTree->blockSignals(false);
+    }
+    if (m_uiManager->m_importHintText) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
     }
     if (m_uiManager->m_exportsTree) {
         m_uiManager->m_exportsTree->clear();
@@ -1328,7 +1457,7 @@ void MainWindow::refreshOpenFileAfterLanguageChange()
                 onTreeItemClicked(currentItem, 0);
             }
         }
-    });
+    }, languageRefreshEpoch);
 }
 
 void MainWindow::onCopyToClipboard()
@@ -1538,6 +1667,9 @@ void MainWindow::clearDisplay()
         if (m_uiManager->m_collapseAllButton) m_uiManager->m_collapseAllButton->setEnabled(false);
         if (m_uiManager->m_importModulesTree) m_uiManager->m_importModulesTree->clear();
         if (m_uiManager->m_importFunctionsTree) m_uiManager->m_importFunctionsTree->clear();
+        if (m_uiManager->m_importHintText) {
+            m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        }
         if (m_uiManager->m_exportsTree) m_uiManager->m_exportsTree->clear();
         if (m_uiManager->m_dependenciesTree) m_uiManager->m_dependenciesTree->clear();
         if (m_uiManager->m_stringsTree) m_uiManager->m_stringsTree->clear();
@@ -1581,19 +1713,24 @@ void MainWindow::updateFileInfo()
     m_uiManager->m_saveButton->setEnabled(true);
 }
 
-void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::function<void()> onComplete)
+void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::function<void()> onComplete,
+                                               quint64 languageRefreshEpoch)
 {
-    auto guard = [this, pathGuard]() -> bool {
+    auto guard = [this, pathGuard, languageRefreshEpoch]() -> bool {
         if (!m_fileLoaded || !m_uiManager || !m_peParser) {
             return false;
         }
         if (!pathGuard.isEmpty() && m_currentFilePath != pathGuard) {
             return false;
         }
+        if (languageRefreshEpoch != 0 && m_languageRefreshEpoch != languageRefreshEpoch) {
+            return false;
+        }
         return true;
     };
 
-    QTimer::singleShot(0, this, [this, guard, pathGuard, onComplete = std::move(onComplete)]() mutable {
+    QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
+                                 onComplete = std::move(onComplete)]() mutable {
         if (!guard()) {
             if (onComplete) {
                 onComplete();
@@ -1601,7 +1738,8 @@ void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::fu
             return;
         }
         analysisDisplayPhaseTree();
-        QTimer::singleShot(0, this, [this, guard, pathGuard, onComplete = std::move(onComplete)]() mutable {
+        QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
+                                     onComplete = std::move(onComplete)]() mutable {
             if (!guard()) {
                 if (onComplete) {
                     onComplete();
@@ -1609,7 +1747,8 @@ void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::fu
                 return;
             }
             analysisDisplayPhaseWelcomeOnly();
-            QTimer::singleShot(0, this, [this, guard, pathGuard, onComplete = std::move(onComplete)]() mutable {
+            QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
+                                         onComplete = std::move(onComplete)]() mutable {
                 if (!guard()) {
                     if (onComplete) {
                         onComplete();
@@ -1617,7 +1756,8 @@ void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::fu
                     return;
                 }
                 analysisDisplayPhaseHexSetData();
-                QTimer::singleShot(0, this, [this, guard, pathGuard, onComplete = std::move(onComplete)]() mutable {
+                QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
+                                             onComplete = std::move(onComplete)]() mutable {
                     if (!guard()) {
                         if (onComplete) {
                             onComplete();
@@ -1639,8 +1779,13 @@ void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::fu
                         }
                         statusBar()->showMessage(LANG(QStringLiteral("UI/status_preparing_hex_view")));
                         connect(hexViewer, &HexViewer::hexContentReady, this,
-                                [this, pathGuard, oc = std::move(onComplete)]() mutable {
+                                [this, pathGuard, languageRefreshEpoch,
+                                 oc = std::move(onComplete)]() mutable {
                                     if (!m_fileLoaded || !m_uiManager) {
+                                        return;
+                                    }
+                                    if (languageRefreshEpoch != 0
+                                        && m_languageRefreshEpoch != languageRefreshEpoch) {
                                         return;
                                     }
                                     if (!pathGuard.isEmpty() && m_currentFilePath != pathGuard) {
@@ -1764,6 +1909,10 @@ void MainWindow::analysisDisplayPhaseStringsTab()
     }
 
     if (m_uiManager->m_stringsSectionCombo) {
+        // clear()/addItem() emit currentIndexChanged; while empty, currentData() is invalid. On the Strings tab
+        // that triggered populateStringsTab() with selectedSection != "__all__", the worker returned no strings,
+        // and onAnalysisTabChanged then skipped repopulate because extraction was already "running".
+        QSignalBlocker blocker(m_uiManager->m_stringsSectionCombo);
         m_uiManager->m_stringsSectionCombo->clear();
         m_uiManager->m_stringsSectionCombo->addItem(LANG(QStringLiteral("UI/strings_all_sections")), QStringLiteral("__all__"));
         const QList<const IMAGE_SECTION_HEADER *> &sections = m_peParser->getDataModel().getSections();
@@ -1826,10 +1975,14 @@ void MainWindow::populateImportsTab()
     if (m_importsPopulated) return;
     if (!m_uiManager || !m_uiManager->m_importModulesTree) return;
 
+    m_uiManager->m_importModulesTree->blockSignals(true);
     m_uiManager->m_importModulesTree->clear();
     if (m_uiManager->m_importFunctionsTree) {
+        m_uiManager->m_importFunctionsTree->blockSignals(true);
         m_uiManager->m_importFunctionsTree->clear();
+        m_uiManager->m_importFunctionsTree->blockSignals(false);
     }
+    m_uiManager->m_importModulesTree->blockSignals(false);
 
     const QStringList imports = m_peParser->getImportModules();
     const auto &importDetails = m_peParser->getImportFunctionDetails();
@@ -1932,9 +2085,15 @@ void MainWindow::populateDependenciesTab()
 void MainWindow::populateStringsTab()
 {
     if (!m_uiManager || !m_uiManager->m_stringsTree) return;
+    if (!m_fileLoaded || !m_peParser || !m_peParser->isValid()) return;
     if (m_stringsPopulated && !m_stringsExtractionRunning) {
-        applyStringsFilter();
-        return;
+        // Stale state: extraction finished with no strings (bug paths) or filters yielded nothing in memory
+        // but m_extractedStrings is empty — must not short-circuit forever; re-run extraction.
+        if (!m_extractedStrings.isEmpty()) {
+            applyStringsFilter();
+            return;
+        }
+        m_stringsPopulated = false;
     }
     if (m_stringsExtractionRunning) {
         return;
@@ -1943,17 +2102,24 @@ void MainWindow::populateStringsTab()
     m_uiManager->m_stringsTree->clear();
     m_extractedStrings.clear();
     const int minLen = (m_uiManager->m_stringsMinLengthSpin ? m_uiManager->m_stringsMinLengthSpin->value() : 4);
-    const QString selectedSection = (m_uiManager->m_stringsSectionCombo
-                                     ? m_uiManager->m_stringsSectionCombo->currentData().toString()
-                                     : QStringLiteral("__all__"));
+    QString selectedSection = (m_uiManager->m_stringsSectionCombo
+                               ? m_uiManager->m_stringsSectionCombo->currentData().toString()
+                               : QStringLiteral("__all__"));
+    if (selectedSection.isEmpty()) {
+        selectedSection = QStringLiteral("__all__");
+    }
     if (m_uiManager->m_stringsCancelButton) m_uiManager->m_stringsCancelButton->setEnabled(true);
     if (m_uiManager->m_stringsExportButton) m_uiManager->m_stringsExportButton->setEnabled(false);
     if (m_uiManager->m_progressBar) {
         m_uiManager->m_progressBar->setVisible(true);
-        m_uiManager->m_progressBar->setRange(0, 0); // busy indicator
+        m_uiManager->m_progressBar->setRange(0, 100);
+        m_uiManager->m_progressBar->setValue(0);
+        m_uiManager->m_progressBar->setTextVisible(true);
+        m_uiManager->m_progressBar->setFormat(QStringLiteral("%p%"));
     }
+    const QString stringsProgressMsg = LANG("UI/strings_progress_extracting");
     if (m_uiManager->m_progressLabel) {
-        m_uiManager->m_progressLabel->setText(LANG("UI/strings_progress_extracting"));
+        m_uiManager->m_progressLabel->setText(QStringLiteral("0% — %1").arg(stringsProgressMsg));
     }
 
     m_stringsExtractionRunning = true;
@@ -1971,37 +2137,74 @@ void MainWindow::populateStringsTab()
     }
 
     const QString filePath = m_currentFilePath;
-    m_stringsExtractionWatcher.setFuture(QtConcurrent::run([filePath, minLen, selectedSection, sectionSlices]() {
-        StringExtractionResult out;
-        out.minLength = minLen;
-        QFile f(filePath);
-        if (!f.open(QIODevice::ReadOnly)) {
-            return out;
-        }
-        const QByteArray fullData = f.readAll();
-        f.close();
-        if (fullData.isEmpty()) {
-            return out;
-        }
+    const QPointer<MainWindow> self(this);
+    m_stringsExtractionWatcher.setFuture(QtConcurrent::run(
+        [self, filePath, minLen, selectedSection, sectionSlices, stringsProgressMsg]() {
+            StringExtractionResult out;
+            out.minLength = minLen;
 
-        if (selectedSection != QStringLiteral("__all__")) {
-            for (const auto &s : sectionSlices) {
-                if (s.name.compare(selectedSection, Qt::CaseInsensitive) != 0) continue;
-                if (s.offset >= static_cast<quint32>(fullData.size())) break;
-                const quint32 cappedSize = qMin(s.size, static_cast<quint32>(fullData.size() - s.offset));
-                StringExtractionResult sectionRes = PEStringExtractor::extractFromData(fullData.mid(static_cast<int>(s.offset), static_cast<int>(cappedSize)), minLen);
-                for (ExtractedString e : sectionRes.strings) {
-                    e.fileOffset += s.offset;
-                    out.strings.append(e);
+            const auto pushProgress = [self, stringsProgressMsg](int uiPercent) {
+                if (!self) {
+                    return;
                 }
+                const int p = qBound(0, uiPercent, 100);
+                QMetaObject::invokeMethod(
+                    self.data(),
+                    [self, p, stringsProgressMsg]() {
+                        if (!self || !self->m_uiManager || !self->m_uiManager->m_progressBar) {
+                            return;
+                        }
+                        self->m_uiManager->m_progressBar->setRange(0, 100);
+                        self->m_uiManager->m_progressBar->setValue(p);
+                        if (self->m_uiManager->m_progressLabel) {
+                            self->m_uiManager->m_progressLabel->setText(QStringLiteral("%1% — %2").arg(p).arg(stringsProgressMsg));
+                        }
+                    },
+                    Qt::QueuedConnection);
+            };
+
+            const auto extractProgress = [&pushProgress](int extractPct) {
+                pushProgress(5 + (extractPct * 95) / 100);
+            };
+
+            QFile f(filePath);
+            if (!f.open(QIODevice::ReadOnly)) {
                 return out;
             }
-            return out;
-        }
+            const QByteArray fullData = f.readAll();
+            f.close();
+            if (fullData.isEmpty()) {
+                return out;
+            }
 
-        out = PEStringExtractor::extractFromData(fullData, minLen);
-        return out;
-    }));
+            pushProgress(5);
+
+            if (selectedSection != QStringLiteral("__all__")) {
+                for (const auto &s : sectionSlices) {
+                    if (s.name.compare(selectedSection, Qt::CaseInsensitive) != 0) {
+                        continue;
+                    }
+                    if (s.offset >= static_cast<quint32>(fullData.size())) {
+                        break;
+                    }
+                    const quint32 cappedSize = qMin(s.size, static_cast<quint32>(fullData.size() - s.offset));
+                    StringExtractionResult sectionRes = PEStringExtractor::extractFromData(
+                        fullData.mid(static_cast<int>(s.offset), static_cast<int>(cappedSize)), minLen, extractProgress);
+                    for (ExtractedString e : sectionRes.strings) {
+                        e.fileOffset += s.offset;
+                        out.strings.append(e);
+                    }
+                    pushProgress(100);
+                    return out;
+                }
+                pushProgress(100);
+                return out;
+            }
+
+            out = PEStringExtractor::extractFromData(fullData, minLen, extractProgress);
+            pushProgress(100);
+            return out;
+        }));
 }
 
 void MainWindow::onStringsExtractionFinished()
@@ -2018,6 +2221,7 @@ void MainWindow::onStringsExtractionFinished()
         m_uiManager->m_progressBar->setVisible(false);
         m_uiManager->m_progressBar->setRange(0, 100);
         m_uiManager->m_progressBar->setValue(0);
+        m_uiManager->m_progressBar->setFormat(QString());
     }
     if (m_uiManager->m_progressLabel) {
         m_uiManager->m_progressLabel->clear();
@@ -2030,6 +2234,12 @@ void MainWindow::onStringsExtractionFinished()
     }
 
     if (fut.isCanceled()) {
+        m_extractedStrings.clear();
+        m_stringsPopulated = false;
+        return;
+    }
+
+    if (!m_fileLoaded || !m_peParser || !m_peParser->isValid()) {
         m_extractedStrings.clear();
         m_stringsPopulated = false;
         return;
@@ -2054,6 +2264,7 @@ void MainWindow::onCancelStringsExtraction()
         m_uiManager->m_progressBar->setVisible(false);
         m_uiManager->m_progressBar->setRange(0, 100);
         m_uiManager->m_progressBar->setValue(0);
+        m_uiManager->m_progressBar->setFormat(QString());
     }
     if (m_uiManager->m_progressLabel) {
         m_uiManager->m_progressLabel->setText(LANG("UI/strings_progress_cancelled"));
@@ -2165,11 +2376,15 @@ void MainWindow::applyStringsFilter()
 
     if (m_extractedStrings.isEmpty()) {
         QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_stringsTree);
-        placeholder->setText(0, LANG("UI/placeholder_explanation"));
+        placeholder->setText(0, LanguageManager::getInstance().getString(
+            QStringLiteral("UI/strings_list_empty"),
+            QStringLiteral("No strings to display. Try Refresh or change filters.")));
         placeholder->setFirstColumnSpanned(true);
         placeholder->setFlags(Qt::NoItemFlags);
         return;
     }
+
+    const bool sectionModelOk = m_fileLoaded && m_peParser && m_peParser->isValid();
 
     for (const ExtractedString &s : m_extractedStrings) {
         if (typeFilter == QLatin1String("ascii") && s.isUnicode) continue;
@@ -2186,13 +2401,15 @@ void MainWindow::applyStringsFilter()
         QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_stringsTree);
         item->setText(0, PEUtils::formatHexWidth(s.fileOffset, 8));
         QString sectionName = QStringLiteral("-");
-        for (const IMAGE_SECTION_HEADER *sec : m_peParser->getDataModel().getSections()) {
-            if (!sec) continue;
-            const quint32 start = sec->PointerToRawData;
-            const quint32 end = start + sec->SizeOfRawData;
-            if (s.fileOffset >= start && s.fileOffset < end) {
-                sectionName = normalizedSectionName(sec);
-                break;
+        if (sectionModelOk) {
+            for (const IMAGE_SECTION_HEADER *sec : m_peParser->getDataModel().getSections()) {
+                if (!sec) continue;
+                const quint32 start = sec->PointerToRawData;
+                const quint32 end = start + sec->SizeOfRawData;
+                if (s.fileOffset >= start && s.fileOffset < end) {
+                    sectionName = normalizedSectionName(sec);
+                    break;
+                }
             }
         }
         item->setText(1, sectionName);
@@ -2570,12 +2787,19 @@ void MainWindow::setupLanguageMenu()
         m_languageActionGroup->addAction(langAction);
         connect(langAction, &QAction::triggered, this, [this, langAction]() {
             onLanguageMenuTriggered(langAction);
-        });
+        }, Qt::QueuedConnection);
     }
 
-    for (QAction *langAction : languageMenu->actions()) {
+    const QList<QAction *> initialLangActions = languageMenu->actions();
+    for (QAction *langAction : initialLangActions) {
+        langAction->blockSignals(true);
+    }
+    for (QAction *langAction : initialLangActions) {
         const QString langCode = langAction->data().toString();
         langAction->setChecked(langCode == currentLanguage);
+    }
+    for (QAction *langAction : initialLangActions) {
+        langAction->blockSignals(false);
     }
 }
 
@@ -2587,10 +2811,10 @@ void MainWindow::onLanguageMenuTriggered(QAction *action)
     qDebug() << "Language menu triggered for:" << languageCode;
     qDebug() << "Current language is:" << currentLanguage;
     
-    // Resync checkmarks (exclusive group can toggle before we noop)
+    // Resync checkmarks (exclusive group can toggle before we noop) — defer: same stack as open menu.
     if (languageCode == currentLanguage) {
         qDebug() << "Same language already selected, doing nothing";
-        updateLanguageMenu();
+        QTimer::singleShot(0, this, [this]() { updateLanguageMenu(); });
         return;
     }
     
@@ -2601,7 +2825,7 @@ void MainWindow::onLanguageMenuTriggered(QAction *action)
         qDebug() << "Language changed to:" << languageCode;
     } else {
         qWarning() << "Failed to change language to:" << languageCode;
-        updateLanguageMenu(); // QAction may have toggled; restore checkmarks to current language
+        QTimer::singleShot(0, this, [this]() { updateLanguageMenu(); });
     }
 }
 
@@ -2668,6 +2892,13 @@ void MainWindow::updateUILanguage()
             LANG("UI/imports_functions_header_offset"),
             LANG("UI/imports_functions_header_ordinal")
         });
+    }
+
+    if (m_uiManager && m_uiManager->m_importHintTitleLabel) {
+        m_uiManager->m_importHintTitleLabel->setText(importHintTitleText());
+    }
+    if (m_uiManager && m_uiManager->m_importHintText && !m_fileLoaded) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
     }
 
     if (m_uiManager && m_uiManager->m_exportsTree) {
@@ -2747,13 +2978,14 @@ void MainWindow::updateMenuLanguage()
     // Update menu texts
     QMenuBar *menuBar = this->menuBar();
     
-    for (QAction *menuAction : menuBar->actions()) {
+    const QList<QAction *> topLevelMenuActions = menuBar->actions();
+    for (QAction *menuAction : topLevelMenuActions) {
         if (menuAction->menu()) {
             QMenu *menu = menuAction->menu();
             
             // Update menu title - use object name or text matching
-            QString menuTitle = menu->title();
-            QString cleanTitle = menuTitle.replace("&", "");
+            QString cleanTitle = menu->title();
+            cleanTitle.replace(QLatin1Char('&'), QString());
             
             if (cleanTitle.contains("File", Qt::CaseInsensitive) || 
                 cleanTitle.contains("Arquivo", Qt::CaseInsensitive)) {
@@ -2769,7 +3001,8 @@ void MainWindow::updateMenuLanguage()
             }
             
             // Update menu item texts (order matters: specific strings before generic "Open"/"Abrir")
-            for (QAction *action : menu->actions()) {
+            const QList<QAction *> menuActions = menu->actions();
+            for (QAction *action : menuActions) {
                 QString actionText = action->text();
                 QString cleanActionText = actionText;
                 cleanActionText.replace(QLatin1Char('&'), QString());
@@ -2784,7 +3017,7 @@ void MainWindow::updateMenuLanguage()
                 } else if (cleanActionText.contains(QStringLiteral("Clear Recent on Exit"), Qt::CaseInsensitive) ||
                            cleanActionText.contains(QStringLiteral("Limpar Recentes ao Sair"), Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_clear_recent_on_exit"));
-                    action->setIcon(style()->standardIcon(QStyle::SP_DialogResetButton));
+                    action->setIcon(QIcon(QStringLiteral(":/images/imgs/clear.png")));
                 } else if (cleanActionText.compare(QStringLiteral("Open"), Qt::CaseInsensitive) == 0 ||
                            cleanActionText.compare(QStringLiteral("Abrir"), Qt::CaseInsensitive) == 0) {
                     action->setText(LANG("UI/menu_open"));
@@ -2795,7 +3028,7 @@ void MainWindow::updateMenuLanguage()
                 } else if (cleanActionText.contains(QStringLiteral("Exit"), Qt::CaseInsensitive) ||
                            cleanActionText.compare(QStringLiteral("Sair"), Qt::CaseInsensitive) == 0) {
                     action->setText(LANG("UI/menu_exit"));
-                    action->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
+                    action->setIcon(QIcon(QStringLiteral(":/images/imgs/logout.png")));
                 } else if (cleanActionText.contains(QStringLiteral("Refresh"), Qt::CaseInsensitive) ||
                            cleanActionText.contains(QStringLiteral("Atualizar"), Qt::CaseInsensitive)) {
                     action->setText(LANG("UI/menu_refresh"));
@@ -2835,10 +3068,11 @@ void MainWindow::updateLanguageMenu()
     QMenu *languageMenu = nullptr;
     
     // Find Tools menu - check both English and Portuguese
-    for (QAction *action : menuBar()->actions()) {
+    const QList<QAction *> barActionsForTools = menuBar()->actions();
+    for (QAction *action : barActionsForTools) {
         if (action->menu()) {
-            QString menuTitle = action->menu()->title();
-            QString cleanTitle = menuTitle.replace("&", "");
+            QString cleanTitle = action->menu()->title();
+            cleanTitle.replace(QLatin1Char('&'), QString());
             if (cleanTitle == "Tools" || cleanTitle == "Ferramentas" || 
                 cleanTitle.contains("Tools", Qt::CaseInsensitive) || 
                 cleanTitle.contains("Ferramentas", Qt::CaseInsensitive)) {
@@ -2855,12 +3089,14 @@ void MainWindow::updateLanguageMenu()
     
     // Find language submenu: prefer structure (items carry lang codes), not translated title text
     const QStringList avail = LanguageManager::getInstance().getAvailableLanguages();
-    for (QAction *action : toolsMenu->actions()) {
+    const QList<QAction *> toolsMenuActions = toolsMenu->actions();
+    for (QAction *action : toolsMenuActions) {
         if (!action->menu()) {
             continue;
         }
         QMenu *candidate = action->menu();
-        for (QAction *sub : candidate->actions()) {
+        const QList<QAction *> candidateActions = candidate->actions();
+        for (QAction *sub : candidateActions) {
             const QString code = sub->data().toString();
             if (!code.isEmpty() && avail.contains(code)) {
                 languageMenu = candidate;
@@ -2872,7 +3108,7 @@ void MainWindow::updateLanguageMenu()
         }
     }
     if (!languageMenu) {
-        for (QAction *action : toolsMenu->actions()) {
+        for (QAction *action : toolsMenuActions) {
             if (action->menu() && action->text().contains(LANG("UI/menu_language"), Qt::CaseInsensitive)) {
                 languageMenu = action->menu();
                 break;
@@ -2889,9 +3125,14 @@ void MainWindow::updateLanguageMenu()
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
     qDebug() << "Updating language menu, current language:" << currentLanguage;
     
-    // Ensure mutual exclusivity: only one action can be checked
+    // Ensure mutual exclusivity: only one action can be checked. Block signals so QActionGroup / checkable
+    // actions do not re-emit triggered() while we sync state (avoids re-entrancy into setLanguage).
     bool foundCurrentLanguage = false;
-    for (QAction *langAction : languageMenu->actions()) {
+    const QList<QAction *> languageActions = languageMenu->actions();
+    for (QAction *langAction : languageActions) {
+        langAction->blockSignals(true);
+    }
+    for (QAction *langAction : languageActions) {
         QString langCode = langAction->data().toString();
         bool shouldBeChecked = (langCode == currentLanguage);
         
@@ -2910,6 +3151,9 @@ void MainWindow::updateLanguageMenu()
             qDebug() << "Unchecked action for:" << langCode;
         }
     }
+    for (QAction *langAction : languageActions) {
+        langAction->blockSignals(false);
+    }
     
     // Force menu update
     languageMenu->update();
@@ -2922,9 +3166,14 @@ void MainWindow::populateImportFunctions(const QString &moduleName)
         return;
     }
 
+    m_uiManager->m_importFunctionsTree->blockSignals(true);
     m_uiManager->m_importFunctionsTree->clear();
+    m_uiManager->m_importFunctionsTree->blockSignals(false);
 
     if (!m_fileLoaded || !m_peParser) {
+        if (m_uiManager->m_importHintText) {
+            m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        }
         return;
     }
 
@@ -2936,12 +3185,16 @@ void MainWindow::populateImportFunctions(const QString &moduleName)
         placeholder->setText(0, LANG("UI/imports_no_functions"));
         placeholder->setFirstColumnSpanned(true);
         placeholder->setFlags(Qt::NoItemFlags);
+        if (m_uiManager->m_importHintText) {
+            m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        }
         return;
     }
 
     for (const PEDataModel::ImportFunctionEntry &entry : functions) {
         QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_importFunctionsTree);
         item->setText(0, entry.name);
+        item->setData(0, kImportByOrdinalRole, entry.importedByOrdinal);
         if (entry.thunkRVA != 0) {
             item->setText(1, PEUtils::formatHexWidth(entry.thunkRVA, 8));
         } else {
@@ -2953,6 +3206,76 @@ void MainWindow::populateImportFunctions(const QString &moduleName)
             item->setText(2, QString());
         }
     }
+
+    if (m_uiManager->m_importFunctionsTree->topLevelItemCount() > 0) {
+        QTreeWidgetItem *first = m_uiManager->m_importFunctionsTree->topLevelItem(0);
+        if (first->flags() != Qt::NoItemFlags) {
+            m_uiManager->m_importFunctionsTree->setCurrentItem(first);
+        }
+    }
+}
+
+void MainWindow::onImportFunctionSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
+{
+    Q_UNUSED(previous);
+    if (!m_uiManager || !m_uiManager->m_importHintText) {
+        return;
+    }
+    if (!current || current->flags() == Qt::NoItemFlags) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        return;
+    }
+    QTreeWidgetItem *modItem = m_uiManager->m_importModulesTree
+        ? m_uiManager->m_importModulesTree->currentItem()
+        : nullptr;
+    if (!modItem) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        return;
+    }
+    const QString moduleName = modItem->text(0);
+    if (moduleName == LanguageManager::getInstance().getString(QStringLiteral("UI/imports_none"), QStringLiteral("No imported modules"))) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        return;
+    }
+    const QString funcName = current->text(0);
+    if (funcName == LanguageManager::getInstance().getString(QStringLiteral("UI/imports_no_functions"), QStringLiteral("No imported functions"))) {
+        m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+        return;
+    }
+    const bool importByOrdinal = current->data(0, kImportByOrdinalRole).toBool();
+    if (importByOrdinal) {
+        if (funcName == QStringLiteral("[ - ]")) {
+            QString t = importHintOrdinalText();
+            t += QStringLiteral("\n\n");
+            t += importHintFooterText();
+            m_uiManager->m_importHintText->setPlainText(t);
+            return;
+        }
+        const ImportApiHint hintOrd = SdkApiMarkdownReader::instance().hintForImport(moduleName, funcName);
+        if (hintOrd.hasContent()) {
+            const QString banner = QStringLiteral("<p style=\"color:#444;font-size:10px;margin:0 0 10px 0;padding:6px 8px;background:#fafafa;"
+                                                  "border-left:3px solid #bbb;\">")
+                + QStringLiteral("Imported by <strong>ordinal</strong> in this PE; the name in the list was resolved from the export table of the system copy of ")
+                + moduleName.toHtmlEscaped()
+                + QStringLiteral(" (not stored in the PE).</p>");
+            m_uiManager->m_importHintText->setHtml(formatImportHintDisplay(hintOrd, banner));
+            return;
+        }
+        QString t = importHintOrdinalText();
+        t += QStringLiteral("\n\n");
+        t += importHintFooterText();
+        m_uiManager->m_importHintText->setPlainText(t);
+        return;
+    }
+    const ImportApiHint hint = SdkApiMarkdownReader::instance().hintForImport(moduleName, funcName);
+    if (!hint.hasContent()) {
+        QString t = importHintNoneForFunction(funcName);
+        t += QStringLiteral("\n\n");
+        t += importHintFooterText();
+        m_uiManager->m_importHintText->setPlainText(t);
+        return;
+    }
+    m_uiManager->m_importHintText->setHtml(formatImportHintDisplay(hint));
 }
 
 void MainWindow::onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)

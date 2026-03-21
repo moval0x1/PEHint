@@ -62,4 +62,3 @@ out/
 # Local release artifacts (keep source-only in git)
 PEHint_Release_Package*/
 PEHint_Release_Package*.zip
-

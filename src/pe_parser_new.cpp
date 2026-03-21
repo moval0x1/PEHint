@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <functional>
 #include <cstddef>
+#include <cstring>
 
 namespace {
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
@@ -54,6 +55,8 @@ struct FieldExplanationCaches {
     QHash<QString, QString> explanationHtmlCache;
     QHash<QString, QJsonObject> languageJsonCache;
     QHash<QString, QDateTime> languageJsonMtime;
+    /// Resolved absolute path per UI language (explanations.json / explanations_pt.json); avoids hundreds of disk probes while building the tree.
+    QHash<QString, QString> explanationsPathByLanguage;
 };
 
 FieldExplanationCaches &fieldExplanationCaches()
@@ -68,6 +71,7 @@ void clearFieldExplanationCachesInternal()
     c.explanationHtmlCache.clear();
     c.languageJsonCache.clear();
     c.languageJsonMtime.clear();
+    c.explanationsPathByLanguage.clear();
 }
 
 /** Last-resort English when INI has no entry (must match config/language_config.ini). */
@@ -610,7 +614,7 @@ bool PEParserNew::parseDOSHeader()
         return false;
     }
     
-    const IMAGE_DOS_HEADER *dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(m_fileData.data());
+    const IMAGE_DOS_HEADER *dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(m_fileData.constData());
     
     // Validate DOS magic number
     if (!PEUtils::isValidDOSMagic(dosHeader->e_magic)) {
@@ -643,7 +647,7 @@ bool PEParserNew::parsePEHeaders()
         return false;
     }
     
-    quint32 peSignature = *reinterpret_cast<const quint32*>(m_fileData.data() + peOffset);
+    quint32 peSignature = *reinterpret_cast<const quint32*>(m_fileData.constData() + peOffset);
     if (!PEUtils::isValidPESignature(peSignature)) {
         emit errorOccurred(LANG("UI/error_invalid_pe_signature"));
         return false;
@@ -657,7 +661,7 @@ bool PEParserNew::parsePEHeaders()
     }
     
     const IMAGE_FILE_HEADER *fileHeader = reinterpret_cast<const IMAGE_FILE_HEADER*>(
-        m_fileData.data() + fileHeaderOffset
+        m_fileData.constData() + fileHeaderOffset
     );
     m_cachedFileHeader = *fileHeader;
     m_dataModel.setFileHeader(&m_cachedFileHeader);
@@ -669,17 +673,22 @@ bool PEParserNew::parsePEHeaders()
         return false;
     }
     
+    m_optionalHeaderBuffer.resize(static_cast<int>(fileHeader->SizeOfOptionalHeader));
+    memcpy(m_optionalHeaderBuffer.data(),
+           m_fileData.constData() + optionalHeaderOffset,
+           static_cast<size_t>(fileHeader->SizeOfOptionalHeader));
+
     const IMAGE_OPTIONAL_HEADER *optionalHeader = reinterpret_cast<const IMAGE_OPTIONAL_HEADER*>(
-        m_fileData.data() + optionalHeaderOffset
+        m_optionalHeaderBuffer.constData()
     );
-    
+
     if (!PEUtils::isValidOptionalHeaderMagic(optionalHeader->Magic)) {
         qWarning() << "Unexpected optional header magic" << QString::number(optionalHeader->Magic, 16)
                    << "at offset" << QString("0x%1").arg(optionalHeaderOffset, 0, 16);
         emit errorOccurred(LANG("UI/error_invalid_optional_magic"));
         return false;
     }
-    
+
     m_dataModel.setOptionalHeader(optionalHeader);
     return true;
 }
@@ -705,12 +714,17 @@ bool PEParserNew::parseSections()
         return false;
     }
     
-    // Parse each section header from the in-memory buffer
-    for (quint16 i = 0; i < fileHeader->NumberOfSections; ++i) {
+    // Copy section headers: QList stores pointers — must not point into m_fileData (QByteArray may detach
+    // when shared, e.g. with HexViewer), which would invalidate those pointers.
+    m_cachedSections.clear();
+    const quint16 sectionCount = fileHeader->NumberOfSections;
+    m_cachedSections.reserve(sectionCount);
+    for (quint16 i = 0; i < sectionCount; ++i) {
         const IMAGE_SECTION_HEADER *section = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
             m_fileData.constData() + sectionTableOffset + (i * sizeof(IMAGE_SECTION_HEADER))
         );
-        m_dataModel.addSection(section);
+        m_cachedSections.push_back(*section);
+        m_dataModel.addSection(&m_cachedSections.last());
     }
     
     return true;
@@ -774,17 +788,17 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
 {
     // Get current language from language manager
     QString currentLanguage = LanguageManager::getInstance().getCurrentLanguage();
-    
-    // Load explanations from the language-specific JSON file
-    QString explanationsPath;
-    
-    if (currentLanguage == "pt") {
-        explanationsPath = findConfigFile("explanations_pt.json");
-    } else {
-        explanationsPath = findConfigFile("explanations.json");
-    }
 
     FieldExplanationCaches &fec = fieldExplanationCaches();
+
+    // Load explanations from the language-specific JSON file (resolve path once per language per cache generation)
+    QString explanationsPath;
+    if (!fec.explanationsPathByLanguage.contains(currentLanguage)) {
+        const QString fileName = (currentLanguage == QStringLiteral("pt")) ? QStringLiteral("explanations_pt.json")
+                                                                           : QStringLiteral("explanations.json");
+        fec.explanationsPathByLanguage.insert(currentLanguage, findConfigFile(fileName));
+    }
+    explanationsPath = fec.explanationsPathByLanguage.value(currentLanguage);
     QHash<QString, QString> &explanationHtmlCache = fec.explanationHtmlCache;
     QHash<QString, QJsonObject> &languageJsonCache = fec.languageJsonCache;
     QHash<QString, QDateTime> &languageJsonMtime = fec.languageJsonMtime;
@@ -1137,7 +1151,7 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     
     // Add PE Signature as first field of NT Headers
     if (ntHeadersOffset + 4 <= m_fileData.size()) {
-        quint32 peSignature = *reinterpret_cast<const quint32*>(m_fileData.data() + ntHeadersOffset);
+        quint32 peSignature = *reinterpret_cast<const quint32*>(m_fileData.constData() + ntHeadersOffset);
         addTreeField(ntHeadersItem, "Signature", PEUtils::formatHexWidth(peSignature, 8), 0, sizeof(quint32));
     }
     
@@ -1498,14 +1512,14 @@ void PEParserNew::addDataDirectoryFields(QTreeWidgetItem *parent)
         quint32 fileAddress = 0;
         quint32 fileSize = 0;
         if (addressOffset + sizeof(quint32) <= static_cast<quint32>(m_fileData.size())) {
-            const quint8 *addrPtr = reinterpret_cast<const quint8*>(m_fileData.data() + addressOffset);
+            const quint8 *addrPtr = reinterpret_cast<const quint8*>(m_fileData.constData() + addressOffset);
             fileAddress = static_cast<quint32>(addrPtr[0]) |
                          (static_cast<quint32>(addrPtr[1]) << 8) |
                          (static_cast<quint32>(addrPtr[2]) << 16) |
                          (static_cast<quint32>(addrPtr[3]) << 24);
         }
         if (sizeOffset + sizeof(quint32) <= static_cast<quint32>(m_fileData.size())) {
-            const quint8 *sizePtr = reinterpret_cast<const quint8*>(m_fileData.data() + sizeOffset);
+            const quint8 *sizePtr = reinterpret_cast<const quint8*>(m_fileData.constData() + sizeOffset);
             fileSize = static_cast<quint32>(sizePtr[0]) |
                       (static_cast<quint32>(sizePtr[1]) << 8) |
                       (static_cast<quint32>(sizePtr[2]) << 16) |

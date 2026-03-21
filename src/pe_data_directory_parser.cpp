@@ -1,4 +1,5 @@
 #include "pe_data_directory_parser.h"
+#include "pe_system_dll_ordinal_resolver.h"
 #include "pe_utils.h"
 #include "language_manager.h"
 #include <QDebug>
@@ -243,7 +244,8 @@ bool PEDataDirectoryParser::parseImportDirectory(quint32 rva, quint32 size, PEDa
                         quint16 ordinal = static_cast<quint16>(rawValue & 0xFFFF);
                         entry.importedByOrdinal = true;
                         entry.ordinal = ordinal;
-                        entry.name = QStringLiteral("[ - ]");
+                        const QString resolved = resolveImportOrdinalToName(dllName, ordinal, isPE64);
+                        entry.name = resolved.isEmpty() ? QStringLiteral("[ - ]") : resolved;
                     } else {
                         quint32 importByNameRVA = static_cast<quint32>(rawValue & 0xFFFFFFFF);
                         QString functionName = readStringFromRVA(importByNameRVA + 2, dataModel.getSections());

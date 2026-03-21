@@ -50,6 +50,8 @@ UIManager::UIManager(MainWindow *parent)
     , m_analysisTabWidget(nullptr)
     , m_importModulesTree(nullptr)
     , m_importFunctionsTree(nullptr)
+    , m_importHintTitleLabel(nullptr)
+    , m_importHintText(nullptr)
     , m_exportsTree(nullptr)
     , m_dependenciesTree(nullptr)
     , m_dependenciesExpandAllButton(nullptr)
@@ -139,7 +141,7 @@ void UIManager::setupFileInfoSection(QVBoxLayout *mainLayout)
     
     // Add folder icon for visual context
     QLabel *fileIconLabel = new QLabel();
-    fileIconLabel->setPixmap(QIcon(":/images/imgs/folder.ico").pixmap(24, 24));
+    fileIconLabel->setPixmap(QIcon(QStringLiteral(":/images/imgs/folder-icon.png")).pixmap(24, 24));
     fileInfoLayout->addWidget(fileIconLabel);
     
     // Create file info label with consistent styling
@@ -406,10 +408,10 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     importsLayout->setContentsMargins(0, 0, 0, 0);
     importsLayout->setSpacing(4);
 
-    QSplitter *importsSplitter = new QSplitter(Qt::Vertical);
-    importsSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    importsSplitter->setChildrenCollapsible(false);
-    importsSplitter->setHandleWidth(5);
+    QSplitter *importsOuter = new QSplitter(Qt::Horizontal);
+    importsOuter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    importsOuter->setChildrenCollapsible(false);
+    importsOuter->setHandleWidth(5);
 
     m_importModulesTree = new QTreeWidget();
     m_importModulesTree->setAlternatingRowColors(true);
@@ -419,9 +421,15 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_importModulesTree->setColumnWidth(0, 250);
     m_importModulesTree->setColumnWidth(1, 120);
 
+    QSplitter *importsRight = new QSplitter(Qt::Vertical);
+    importsRight->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    importsRight->setChildrenCollapsible(false);
+    importsRight->setHandleWidth(5);
+
     m_importFunctionsTree = new QTreeWidget();
     m_importFunctionsTree->setAlternatingRowColors(true);
-    m_importFunctionsTree->setSelectionMode(QAbstractItemView::NoSelection);
+    m_importFunctionsTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_importFunctionsTree->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_importFunctionsTree->setHeaderLabels({
         LANG("UI/imports_functions_header_name"),
         LANG("UI/imports_functions_header_offset"),
@@ -431,13 +439,40 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_importFunctionsTree->setColumnWidth(1, 140);
     m_importFunctionsTree->setColumnWidth(2, 100);
 
-    importsSplitter->addWidget(m_importModulesTree);
-    importsSplitter->addWidget(m_importFunctionsTree);
-    importsSplitter->setStretchFactor(0, 2);
-    importsSplitter->setStretchFactor(1, 3);
-    importsSplitter->setSizes({300, 300});
+    QWidget *importHintPanel = new QWidget();
+    QVBoxLayout *importHintLayout = new QVBoxLayout(importHintPanel);
+    importHintLayout->setContentsMargins(0, 0, 0, 0);
+    importHintLayout->setSpacing(4);
+    m_importHintTitleLabel = new QLabel(LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_title"), QStringLiteral("API summary")));
+    m_importHintTitleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px;"));
+    m_importHintText = new QTextBrowser();
+    m_importHintText->setReadOnly(true);
+    m_importHintText->setOpenExternalLinks(true);
+    m_importHintText->setObjectName(QStringLiteral("importHintText"));
+    m_importHintText->setMinimumHeight(96);
+    m_importHintText->setStyleSheet(
+        QStringLiteral("QTextEdit { background-color: #fafafa; border: 1px solid #ddd; border-radius: 4px; "
+                       "font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; }"));
+    m_importHintText->setPlainText(LanguageManager::getInstance().getString(
+        QStringLiteral("UI/imports_hint_placeholder"),
+        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative only—not live Microsoft data).")));
+    importHintLayout->addWidget(m_importHintTitleLabel);
+    importHintLayout->addWidget(m_importHintText, 1);
 
-    importsLayout->addWidget(importsSplitter);
+    importsRight->addWidget(m_importFunctionsTree);
+    importsRight->addWidget(importHintPanel);
+    importsRight->setStretchFactor(0, 3);
+    importsRight->setStretchFactor(1, 2);
+    importsRight->setSizes({280, 220});
+
+    importsOuter->addWidget(m_importModulesTree);
+    importsOuter->addWidget(importsRight);
+    importsOuter->setStretchFactor(0, 1);
+    importsOuter->setStretchFactor(1, 3);
+    importsOuter->setSizes({280, 720});
+
+    importsLayout->addWidget(importsOuter);
     m_analysisTabWidget->addTab(importsTab, LANG("UI/tab_imports"));
 
     // --------------------------------------------------------------------
@@ -646,6 +681,9 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
     if (m_importModulesTree) {
         connect(m_importModulesTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportModuleSelected);
+    }
+    if (m_importFunctionsTree) {
+        connect(m_importFunctionsTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportFunctionSelected);
     }
     // Use currentItemChanged to avoid duplicate work with itemClicked.
     // It also covers keyboard navigation and mouse selection.

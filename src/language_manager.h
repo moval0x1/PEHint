@@ -135,6 +135,11 @@ public:
      */
     bool isInitialized() const;
 
+    /**
+     * @brief Finds a configuration file in multiple possible locations (same search as language INI).
+     */
+    QString findConfigFile(const QString &fileName) const;
+
 signals:
     /**
      * @brief Emitted when language changes
@@ -183,19 +188,6 @@ private:
      * @return Text with substituted parameters
      */
     QString substituteParameters(const QString &text, const QMap<QString, QString> &params) const;
-    
-    /**
-     * @brief Finds a configuration file in multiple possible locations
-     * @param fileName Name of the configuration file to find
-     * @return Full path to the found configuration file, or empty string if not found
-     * 
-     * This method searches for configuration files in multiple locations:
-     * 1. Relative to executable (for deployed builds)
-     * 2. Relative to executable but going up to project root (for development builds)
-     * 3. Current working directory
-     * 4. Source directory (for development builds)
-     */
-    QString findConfigFile(const QString &fileName) const;
 
     /**
      * @brief Get Qt translator for a language

@@ -55,8 +55,8 @@ private:
     // Write to log file
     void writeToLog(const QString &level, const QString &component, const QString &message, const QString &details = "");
     
-    // Create crash dump file
-    void createCrashDump(const QString &crashType, const QString &details);
+    // Create crash dump file. winExceptionPointers: from UnhandledExceptionFilter (required for useful dumps); nullptr otherwise.
+    void createCrashDump(const QString &crashType, const QString &details, void *winExceptionPointers = nullptr);
     
     // Windows exception handler
     static LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo);

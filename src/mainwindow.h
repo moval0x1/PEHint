@@ -78,6 +78,7 @@ public slots:
     void onCollapseAllDependencies();
     void onHexViewerOptions();
     void onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+    void onImportFunctionSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onStringsFilterChanged();
     void onStringsExtractionFinished();
     void onCancelStringsExtraction();
@@ -123,9 +124,10 @@ private:
     qint64 m_lastHexHighlightOffset = -1; ///< Last structure highlight start in hex (-1 = none)
     quint32 m_lastHexHighlightSize = 0;
     quint32 m_lastHexHighlightRgba = 0; ///< QColor::rgba() of last structure highlight
-    
 
-    
+    /// Bumped on each in-flight language refresh so superseded staged UI work exits before mutating widgets.
+    quint64 m_languageRefreshEpoch = 0;
+
     // UI Setup
     void setupUI();
     void setupConnections();
@@ -150,7 +152,8 @@ private:
     void analysisDisplayPhaseHexSetData();
     void analysisDisplayPhaseStringsTab();
     void scheduleStagedAnalysisDisplay(const QString &pathGuard,
-                                       std::function<void()> onComplete = nullptr);
+                                       std::function<void()> onComplete = nullptr,
+                                       quint64 languageRefreshEpoch = 0);
     void populateImportFunctions(const QString &moduleName);
     void applyStringsFilter();  ///< Refill strings tree from m_extractedStrings using current filter
     
@@ -179,7 +182,7 @@ private:
 
     /// Full static + data refresh after LanguageManager loads a new INI
     void onApplicationLanguageChanged(const QString &languageCode);
-    void refreshOpenFileAfterLanguageChange();
+    void refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch);
 
     /** Cancel strings worker and wait so a stale finished() cannot race with setFuture(). */
     void stopStringsExtractionSynchronously();

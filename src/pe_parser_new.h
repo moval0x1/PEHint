@@ -471,7 +471,7 @@ private:
     QByteArray m_optionalHeaderBuffer; ///< Buffer for optional header when reading from file
     IMAGE_DOS_HEADER m_cachedDosHeader; ///< Persistent DOS header for streaming mode
     IMAGE_FILE_HEADER m_cachedFileHeader; ///< Persistent File header for streaming mode
-    QVector<IMAGE_SECTION_HEADER> m_cachedSections; ///< Persistent section headers for streaming mode
+    QVector<IMAGE_SECTION_HEADER> m_cachedSections; ///< Section headers (PEDataModel lists point here; avoids QByteArray detach)
     PEDataModel m_dataModel;         ///< NEW: Organized storage for parsed data
     PEDataDirectoryParser m_dataDirectoryParser; ///< NEW: Specialized data directory parser
     

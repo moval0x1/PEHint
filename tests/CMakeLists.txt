@@ -33,6 +33,7 @@ target_sources(PEHintTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_import_export_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/language_manager.cpp
