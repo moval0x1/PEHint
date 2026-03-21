@@ -1,7 +1,7 @@
 # PEHint - PE Header Learning Tool
 
 [![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/moval0x1/PEHint)
-[![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
+[![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
 [![GitHub downloads](https://img.shields.io/github/downloads/moval0x1/PEHint/total?label=Downloads&logo=github)](https://github.com/moval0x1/PEHint/releases)
@@ -37,7 +37,7 @@ PEHint is a visual PE file analyzer for analysts, reverse engineers, and student
 - **English** - Default language
 - **Portuguese (Brazil)** - Complete Brazilian Portuguese support
 
-## Optional: Import API hints (`third_party`)
+## Import API hints (`third_party`)
 
 The **Imports** tab can show curated API summaries (signature, parameters, links to Microsoft Learn) **only when** PEHint can read local Markdown from cloned Microsoft documentation repos. Nothing is bundled in the release binary—you must supply the content yourself.
 
