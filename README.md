@@ -1,76 +1,68 @@
 # PEHint - PE Header Learning Tool
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/moval0x1/PEHint)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
+[![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/moval0x1/PEHint)
+[![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-![GitHub all releases](https://img.shields.io/github/downloads/moval0x1/PEHint/total)
-![GitHub release downloads](https://img.shields.io/github/downloads/moval0x1/PEHint/latest/total)
-
+[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
+[![GitHub downloads](https://img.shields.io/github/downloads/moval0x1/PEHint/total?label=Downloads&logo=github)](https://github.com/moval0x1/PEHint/releases)
+[![GitHub stars](https://img.shields.io/github/stars/moval0x1/PEHint?label=Stars&logo=github)](https://github.com/moval0x1/PEHint/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/moval0x1/PEHint?label=Forks&logo=github)](https://github.com/moval0x1/PEHint/network/members)
 
 ## Overview
 
-PEHint is a visual PE file analyzer designed for analysts, reverse engineers, and students who need quick insight into Windows executables. It offers an interactive PE structure tree, contextual explanations, and a synchronized hex viewer so you can move from headers to bytes without leaving the same window.
-
-## Key Features
-
-- Complete header coverage: DOS header, NT headers, optional header, sections, and all 16 data directories
-- Contextual explanations with security notes for high-risk fields
-- Structured Imports/Exports tabs with module counts, offsets, and ordinals
-- Hex viewer with offset syncing for tree selections
-- Language packs (English and Portuguese) and configuration-driven explanations
-
-## What’s New in v0.4.0
-
-- Accurate import/export parsing for PE32 and PE32+ binaries, including ordinal handling and thunk offsets
-- Dedicated Imports/Exports tabs that list modules, function counts, offsets, and ordinals
-- Field explanations extended with analyst-focused notes on import/export usage patterns
-- Uniform hexadecimal formatting (uppercase with 0x prefix) across the tree and hex viewer
-- Drag-and-drop loading and clipboard-friendly exports of tree data
-- Removal of the large-file shortcut path—64-bit samples now receive a full parse by default
+PEHint is a visual PE file analyzer for analysts, reverse engineers, and students who need quick insight into Windows executables. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports**, **Exports**, **Dependencies**, and **Strings** (filters, async extraction, export to file). Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the app still lists modules and symbols normally.
 
 ## Screenshots
 
 ### Main Interface
-![PEHint Main Interface](/resources/imgs/start_opened_file.png)
-
-**What the screenshot illustrates:**
-- The structure tree lists DOS, NT, and section entries with synchronized offset/size columns
-- The details pane highlights the currently selected field so you can inspect offsets immediately
-- The lower hex viewer shows the raw bytes for the selection, keeping tree context and hex data aligned
+![PEHint Main Interface](/resources/imgs/screenshots/start_opened_file.png)
 
 ### Field Explanations
-![DOS Header Field Explanation](/resources/imgs/dos_header_explanation.png)
-
-**What the screenshot illustrates:**
-- Selecting `DOS Header` opens the explanatory text block with description, purpose, and security notes
-- The hex viewer is auto-highlighted to the header bytes referenced in the explanation
-- The panel reinforces the educational flow—click, read, correlate addresses—without leaving the main window
+![DOS Header Field Explanation](/resources/imgs/screenshots/dos_header_explanation.png)
 
 ### Imports View
-![Imports Tab](/resources/imgs/imports.png)
-
-**What the screenshot illustrates:**
-- The top tree lists DLLs alongside decimal function counts so you can gauge API use at a glance
-- The lower list breaks out each imported function with its thunk RVA offset and ordinal value
-- Analysts can compare module usage and spot suspicious APIs without leaving the imports tab
+![Imports Tab](/resources/imgs/screenshots/imports.png)
 
 ### Exports View
-![Exports Tab](/resources/imgs/exports.png)
+![Exports Tab](/resources/imgs/screenshots/exports.png)
 
-**What the screenshot illustrates:**
-- Exported symbols are shown with their resolved names (or bracketed ordinals when unnamed)
-- Column layout includes RVA and ordinal for quick correlation with the export address table
-- Useful for spotting ordinal-only exports, potential proxy tables, and DLL sideloading behaviour
+### Dependencies View
+![Dependencies Tab](/resources/imgs/screenshots/dependencies.png)
+
+### Strings View
+![Strings Tab](/resources/imgs/screenshots/strings.png)
 
 ## Languages
 
-- **🇺🇸 English** - Default language
-- **🇧🇷 Portuguese** - Complete Brazilian Portuguese support
+- **English** - Default language
+- **Portuguese (Brazil)** - Complete Brazilian Portuguese support
 
-## References
-- https://0xrick.github.io/win-internals/pe1/
-- https://learn.microsoft.com/en-us/windows/win32/api/winnt/
-- https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/
+## Import API hints (`third_party`)
+
+The **Imports** tab can show curated API summaries (signature, parameters, links to Microsoft Learn) **only when** PEHint can read local Markdown from cloned Microsoft documentation repos. Nothing is bundled in the release binary—you must supply the content yourself.
+
+**Requirement (for full import hints):** clone the repos under `third_party/` and use the folder layout and optional environment variables described in **[third_party/README.txt](third_party/README.txt)**:
+
+- **MicrosoftDocs/sdk-api** — Win32 API reference (`nf-*.md` under the repo `content` tree); override with `PEHINT_SDK_API_CONTENT` if needed.
+- **MicrosoftDocs/Console-Docs** (optional) — console APIs not covered by sdk-api; override with `PEHINT_WINDOWS_CONSOLE_DOCS`.
+
+PEHint discovers `third_party/sdk-api` and `third_party/console-docs` next to the executable - same folder as `PEHint.exe`. Without these clones, the Imports panel still lists DLLs and symbols, but the API summary area shows a short “no summary” message instead of topic text.
+
+## References (PE format & Windows)
+
+- [Microsoft PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) — official PE/COFF specification (goes well with what PEHint shows in the tree)
+- [PE Format — win.internals (0xRick)](https://0xrick.github.io/win-internals/pe1/) — approachable overview
+- [Windows data types & structures (`winnt.h`)](https://learn.microsoft.com/en-us/windows/win32/api/winnt/)
+- [DbgHelp API](https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/) — related debugging/symbol APIs
+
+Optional deeper reading: *"An In-Depth Look into the Win32 Portable Executable File Format"* (MSJ articles, often mirrored).
+
+## Greetz
+
+Huge thanks to everyone who kicked the tires on PEHint, reported rough edges, and suggested ideas—your testing and feedback shaped what shipped.
+
+- [P4nd3m1cb0y](https://x.com/P4nd3m1cb0y) / Imports API summary suggestion
+
 
 ## License
 
@@ -78,4 +70,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**PEHint v0.4.0** — Making PE header analysis accessible and educational with modern C++, Qt 6, and SOLID principles.
+**PEHint v0.4.5** — Making PE header analysis accessible and educational with modern C++ and Qt 6.

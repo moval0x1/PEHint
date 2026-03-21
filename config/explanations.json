@@ -30,6 +30,12 @@
       "purpose": "Locate important data structures for loading and execution",
       "security_notes": "Import/Export directories are critical for security analysis. Check for suspicious imports, unexpected exports, and verify directory integrity"
     },
+    "WIN_CERTIFICATE": {
+      "title": "WIN_CERTIFICATE (Attribute Certificate)",
+      "description": "Holds an Authenticode signature or other attribute certificate appended to the PE file. The Certificate Directory entry’s VirtualAddress field is a raw file offset to this structure (not an RVA). dwLength covers the whole record; wCertificateType is often 0x0002 (WIN_CERT_TYPE_PKCS_SIGNED_DATA) for PKCS#7 signed data.",
+      "purpose": "Code signing, integrity, and publisher identity for the image",
+      "security_notes": "Compare with catalog signatures on disk; stripped or mismatched certificates can indicate tampering. The payload in bCertificate is ASN.1 / PKCS#7 — use a dedicated tool to parse the full chain."
+    },
     "e_magic": {
       "title": "Magic Number (e_magic)",
       "description": "This 16-bit value must be 0x5A4D ('MZ' in ASCII). It's the signature that identifies this file as a valid DOS executable. The 'MZ' stands for Mark Zbikowski, one of the original DOS developers.",
@@ -121,6 +127,13 @@
       "purpose": "Locate the PE header for modern Windows execution",
       "calculation": "File offset from beginning of file to PE signature",
       "security_notes": "Suspicious if offset is very large (>0x1000) - could indicate file padding to hide malicious content. Also check if offset points to valid PE signature."
+    },
+    "DOS_STUB": {
+      "title": "DOS stub",
+      "description": "This 64-byte region (when the PE signature is at 0x80) sits right after the 64-byte IMAGE_DOS_HEADER (0x00–0x3F). It is the MS-DOS stub: a small 16-bit real-mode program the linker embeds in the file. If someone runs the file under MS-DOS, the CPU executes this code; it typically prints a message such as “This program cannot be run in DOS mode” and exits. Under Windows, the loader ignores this path and uses e_lfanew at offset 0x3C to find the PE header (“PE\\0\\0”) instead. The bytes are 8086/8088 machine code and data — not another formal PE structure.",
+      "purpose": "Legacy compatibility only; the stub runs only in a DOS environment. It fills the gap between the fixed DOS header and the PE block at e_lfanew.",
+      "note": "Developers can replace the default stub with custom 16-bit code (e.g. CTF/crackme challenges) using the linker /STUB option or similar tools. If e_lfanew is less than 0x80, only part of 0x40–0x7F is stub; bytes from e_lfanew onward belong to the PE layout.",
+      "security_notes": "Custom or packed stubs may differ from the default Microsoft message. Compare with known linkers; unusual stub size, entropy, or behavior can warrant deeper analysis."
     },
     "Signature": {
       "title": "PE Signature",
@@ -311,9 +324,9 @@
     },
     "DllCharacteristics": {
       "title": "DLL Characteristics",
-      "description": "Flags that describe DLL-specific properties: 0x0001 (High entropy VA), 0x0002 (Dynamic base), 0x0004 (Force integrity), 0x0008 (NX compatible), 0x0010 (Isolation aware), 0x0020 (No SEH), 0x0040 (Do not bind), 0x0080 (App container), 0x0100 (WDM driver), 0x2000 (Terminal server aware).",
-      "purpose": "Define DLL behavior and security features",
-      "security_notes": "Missing security flags (NX compatible, Force integrity) might indicate vulnerable code. High entropy VA and Dynamic base help prevent ASLR bypasses."
+      "description": "16-bit bitmask in the optional header (PE spec). Official values: 0x0020 High entropy VA (64-bit ASLR space), 0x0040 Dynamic base (ASLR), 0x0080 Force integrity, 0x0100 NX compatible (DEP), 0x0200 No isolation, 0x0400 No SEH, 0x0800 No bind, 0x1000 AppContainer, 0x2000 WDM driver, 0x4000 Control Flow Guard (CFG), 0x8000 Terminal server aware. The Meaning column and the “This image” box list which of these are set in the opened file.",
+      "purpose": "Define DLL behavior and security features for the Windows loader",
+      "security_notes": "Missing NX or CFG on modern binaries can weaken exploit resistance. Compare the decoded list with what you expect from the toolchain."
     },
     "SizeOfStackReserve": {
       "title": "Size of Stack Reserve",
@@ -431,6 +444,325 @@
       "purpose": "Configure security features and loading behavior",
       "security_notes": "Critical for security analysis - check for disabled security features that might indicate malicious intent"
     },
+    "Exc RuntimeFunctionCount": {
+      "title": "Estimated runtime function entries",
+      "description": "For x64 images the Exception Directory is usually an array of IMAGE_RUNTIME_FUNCTION entries (12 bytes each: begin RVA, end RVA, unwind info RVA). Dividing the directory size by 12 estimates how many functions publish unwind data for x64 exception handling.",
+      "purpose": "Orient analysis of stack unwinding / reversed execution flow",
+      "note": "ARM64 and other architectures use different entry layouts—see architecture-specific PE documentation.",
+      "security_notes": "Malware may alter or strip exception tables; very low counts in large modules can be suspicious."
+    },
+    "Exc First BeginRVA": {
+      "title": "First RUNTIME_FUNCTION.BeginAddress",
+      "description": "RVA of the first byte of the first function that has an associated unwind/exception record in this table.",
+      "purpose": "Anchor into the exception directory blob when learning the format",
+      "security_notes": "Compare against code sections; mismatches can hint at hand-crafted tables."
+    },
+    "Exc First EndRVA": {
+      "title": "First RUNTIME_FUNCTION.EndAddress",
+      "description": "RVA just past the last byte of the first function region described by the entry.",
+      "purpose": "Define the RVA span covered by the unwind metadata",
+      "security_notes": "End before begin or spans outside executable sections warrant a closer look."
+    },
+    "Exc First UnwindRVA": {
+      "title": "First RUNTIME_FUNCTION.UnwindData / UnwindInfoAddress",
+      "description": "Points to unwind info (x64: UNWIND_INFO structures) that tell the OS how to walk stack frames for this function.",
+      "purpose": "Link each function range to its unwind metadata",
+      "security_notes": "Unwind chains are occasionally abused for obfuscation; verify the target lies in a valid section."
+    },
+    "Exc Note": {
+      "title": "Exception directory note",
+      "description": "PEHint currently expands the classic x64 three-DWORD RUNTIME_FUNCTION row in the tree. Other machine types may use packed ARM64 records or legacy x86 SEH chains instead.",
+      "purpose": "Set expectations when browsing non-x64 binaries",
+      "security_notes": "Always confirm architecture from the PE Header Machine field before interpreting this directory."
+    },
+    "TLS StartOfRawData": {
+      "title": "TLS StartAddressOfRawData",
+      "description": "Virtual address where the template for thread-local initialized data begins—the loader copies from this range when creating TLS storage.",
+      "purpose": "Locate TLS template bytes in the image",
+      "security_notes": "TLS callbacks run early during process init; malware sometimes hides code behind TLS directories."
+    },
+    "TLS EndOfRawData": {
+      "title": "TLS EndAddressOfRawData",
+      "description": "Virtual address marking the end of the TLS template region (exclusive, per Microsoft convention).",
+      "purpose": "Bound the TLS template for validation",
+      "security_notes": "Implausible span sizes may indicate corruption or tampering."
+    },
+    "TLS AddressOfIndex": {
+      "title": "TLS AddressOfIndex",
+      "description": "Address of the TLS slot index variable the loader updates so the runtime can find each thread's TLS block.",
+      "purpose": "Support runtime TLS addressing",
+      "security_notes": "Useful when correlating disassembly with thread-local accesses."
+    },
+    "TLS AddressOfCallBacks": {
+      "title": "TLS AddressOfCallBacks",
+      "description": "Pointer to an array of TLS callback RVAs (null-terminated). Callbacks run before the normal entry point.",
+      "purpose": "Run per-process initialization tied to TLS setup",
+      "security_notes": "Extra callbacks or callbacks pointing into odd sections are a common packer / anti-analysis signal."
+    },
+    "TLS SizeOfZeroFill": {
+      "title": "TLS SizeOfZeroFill",
+      "description": "Extra byte count of TLS storage that should be zero-initialized beyond the templated region.",
+      "purpose": "Account for BSS-style TLS bytes",
+      "security_notes": "Very large values can hint at suspicious allocations."
+    },
+    "TLS Characteristics": {
+      "title": "TLS Characteristics",
+      "description": "Reserved flags for future TLS features; usually zero in modern binaries.",
+      "purpose": "Forward compatibility for the TLS directory",
+      "security_notes": "Non-zero unexpected bits deserve documentation-level verification."
+    },
+    "LoadCfg StructureSize": {
+      "title": "Load Config Size",
+      "description": "Self-reported byte length of the IMAGE_LOAD_CONFIG_DIRECTORY variant actually present in the image. Larger sizes include optional tail fields (e.g., Control Flow Guard metadata) introduced in newer Visual Studio toolchains.",
+      "purpose": "Version the load configuration block and know how much follows",
+      "security_notes": "Size smaller than claimed fields means the PE is inconsistent or truncated—treat guard flags skeptically."
+    },
+    "LoadCfg TimeDateStamp": {
+      "title": "Load Config TimeDateStamp",
+      "description": "Optional timestamp associated with the load configuration block (often mirrors the link time of the toolchain that produced the structure).",
+      "purpose": "Correlate security mitigations with build era",
+      "security_notes": "Mismatch with the PE header timestamp is not inherently malicious but can indicate post-link edits."
+    },
+    "LoadCfg MajorVersion": {
+      "title": "Load Config MajorVersion",
+      "description": "Major version of the load configuration structure layout understood by the linker.",
+      "purpose": "Infer which optional tail fields may exist",
+      "security_notes": "Pairs with MinorVersion; consult Microsoft docs for exact sizes per version."
+    },
+    "LoadCfg MinorVersion": {
+      "title": "Load Config MinorVersion",
+      "description": "Minor version of the load configuration structure layout.",
+      "purpose": "Fine-grained identification of structure extensions",
+      "security_notes": "Newer minors add mitigations (e.g., EH continuation, retpoline metadata) beyond the base struct."
+    },
+    "LoadCfg SecurityCookie": {
+      "title": "SecurityCookie pointer",
+      "description": "For PE32 this is typically an RVA to the stack cookie used by /GS; for PE32+ it is the VA of that cookie. The runtime XORs it to detect stack buffer overflows.",
+      "purpose": "Enable compiler-generated stack protection",
+      "security_notes": "Stripped or duplicated cookies weaken protections—common in deliberately unsafe builds or obfuscated samples."
+    },
+    "LoadCfg SEHandlerTable": {
+      "title": "SE Handler Table",
+      "description": "Pointer (RVA on 32-bit, VA on 64-bit) to the SafeSEH handler table when SafeSEH mitigations are enabled.",
+      "purpose": "Restrict which exception handlers may run on 32-bit images",
+      "security_notes": "Absence on 32-bit binaries with many SEH records can hint at older toolchains or tampering."
+    },
+    "LoadCfg SEHandlerCount": {
+      "title": "SE Handler Count",
+      "description": "Number of entries described by the SafeSEH table (when present).",
+      "purpose": "Quickly gauge exception-handler hardening",
+      "security_notes": "Huge counts in tiny programs may indicate malformed metadata."
+    },
+    "LoadCfg GuardCFCheckFunction": {
+      "title": "Guard CF check function pointer",
+      "description": "Address of the compiler-generated Control Flow Guard validation stub invoked before indirect calls.",
+      "purpose": "Enforce indirect call targets at runtime on CFG-enabled systems",
+      "security_notes": "Zero when /guard:cf is off; repointing this value is a common exploitation target."
+    },
+    "LoadCfg GuardCFDispatchFunction": {
+      "title": "Guard CF dispatch function pointer",
+      "description": "Helper used by the loader/runtime for CFG dispatch paths (implementation detail of MSVC mitigations).",
+      "purpose": "Wire CFG bookkeeping together with the check stub",
+      "security_notes": "Should reside in trusted system or module code—unexpected modules warrant investigation."
+    },
+    "LoadCfg GuardCFFunctionTable": {
+      "title": "Guard CF function table",
+      "description": "Pointer to the bitmap/table describing valid indirect-call targets for Control Flow Guard.",
+      "purpose": "Tell the kernel which call sites are legitimate when mitigation is active",
+      "security_notes": "Manipulating this table can widen ROP gadgets—compare against known-good baselines."
+    },
+    "LoadCfg GuardCFFunctionCount": {
+      "title": "Guard CF function count",
+      "description": "Companion counter for entries encoded in the CFG function table—exact interpretation depends on toolchain version.",
+      "purpose": "Relate table size to image complexity",
+      "security_notes": "Zero with instrumentation flags set can indicate a broken or hand-built PE."
+    },
+    "LoadCfg GuardFlags": {
+      "title": "GuardFlags bitmask",
+      "description": "Bitfield describing which mitigations accompany the load config tail—common bits include CF_INSTRUMENTED, CF_FUNCTION_TABLE_PRESENT, RF_INSTRUMENTED (Return Flow Guard / related features), and export-suppression helpers.",
+      "purpose": "Summarize modern exploit mitigations baked into the image",
+      "security_notes": "Missing CFG bits on newer Microsoft binaries is unusual; malware may strip mitigations to simplify exploitation."
+    },
+    "Res Characteristics": {
+      "title": "Resource directory Characteristics",
+      "description": "First dword of the root IMAGE_RESOURCE_DIRECTORY. Usually zero; reserved in the PE specification for future use.",
+      "purpose": "Reserved field at the start of the resource tree header",
+      "security_notes": "Non-zero values are rare—verify the file is not hand-crafted or corrupted."
+    },
+    "Res TimeDateStamp": {
+      "title": "Resource directory TimeDateStamp",
+      "description": "Unix-style time stamp for when the resource data was built, if the toolchain filled it in. Often zero in practice.",
+      "purpose": "Optional build-time metadata for the resource section",
+      "security_notes": "Mismatches with other timestamps can hint at post-build resource injection."
+    },
+    "Res MajorVersion": {
+      "title": "Resource major version",
+      "description": "Major version number associated with the resource directory header (toolchain-specific; often zero).",
+      "purpose": "Version metadata for resource tooling",
+      "security_notes": "Unusual values alone are rarely actionable—combine with other anomalies."
+    },
+    "Res MinorVersion": {
+      "title": "Resource minor version",
+      "description": "Minor version number paired with Res MajorVersion (often zero).",
+      "purpose": "Version metadata for resource tooling",
+      "security_notes": "See Res MajorVersion."
+    },
+    "Res NumberOfNamedEntries": {
+      "title": "NumberOfNamedEntries",
+      "description": "Count of directory entries that use string names (high bit set in the name field). These appear before ID entries in the entry array.",
+      "purpose": "Tell the loader how many named entries follow the header",
+      "security_notes": "Named entries at the type level are less common than numeric RT_* types; large counts may warrant manual inspection."
+    },
+    "Res NumberOfIdEntries": {
+      "title": "NumberOfIdEntries",
+      "description": "Count of directory entries identified by numeric ID (e.g. RT_MANIFEST=24, RT_VERSION=16). Listed after named entries.",
+      "purpose": "Enumerate resource types or next-level IDs in the tree",
+      "security_notes": "Missing expected types (e.g. no manifest on a GUI app) can be a packaging choice or tampering signal in context."
+    },
+    "Res TypeId": {
+      "title": "Resource type ID (first level)",
+      "description": "Numeric resource type at the root directory level. Well-known values include RT_ICON (3), RT_DIALOG (5), RT_MANIFEST (24), RT_VERSION (16). PEHint labels common RT_* names when recognized.",
+      "purpose": "Identify which resource branch (icons, dialogs, manifest XML, etc.) this entry describes",
+      "security_notes": "RT_MANIFEST holds application/dll manifest XML used for UAC, DPI, and side-by-side—inspect embedded content for unexpected elevation or dependency tricks."
+    },
+    "Manifest DataRVA": {
+      "title": "Embedded manifest RVA",
+      "description": "Relative virtual address of the raw bytes of the RT_MANIFEST resource (typically UTF-8 XML). PEHint locates the first manifest leaf under type 24 when present.",
+      "purpose": "Let the loader read the Win32 side-by-side / compatibility manifest",
+      "security_notes": "Manifests can request administrator rights, declare dependencies, or influence DLL search—compare with expected application behavior."
+    },
+    "Manifest Size": {
+      "title": "Embedded manifest size",
+      "description": "Size in bytes of the manifest resource blob at Manifest DataRVA.",
+      "purpose": "Bound the manifest for mapping and validation",
+      "security_notes": "Very small or huge sizes relative to peers can indicate truncation or appended content—verify with a hex view."
+    },
+    "Manifest Preview": {
+      "title": "Manifest text preview",
+      "description": "Short UTF-8 preview of the manifest XML (truncated for display). Full content is in the mapped section at the manifest RVA.",
+      "purpose": "Quickly spot requestedExecutionLevel, dependency assemblies, or dpiAware settings",
+      "security_notes": "Do not rely on the preview alone for compliance—export or open the full resource for auditing."
+    },
+    "CLR cb (reported)": {
+      "title": "CLR header size (truncated image)",
+      "description": "The cb field read from IMAGE_COR20_HEADER when the on-disk directory region is smaller than a full COR20 header. Indicates the structure is incomplete or the image is truncated.",
+      "purpose": "Report how many bytes the image claims for the COM+ descriptor",
+      "security_notes": "Broken .NET headers can appear in corrupted downloads or intentional anti-analysis—compare with a known-good build."
+    },
+    "CLR cb": {
+      "title": "CLR header size (bytes)",
+      "description": "Size in bytes of the CLR/COM+ header structure (IMAGE_COR20_HEADER), including fields actually present in the image.",
+      "purpose": "Version and extend the CLI descriptor consistently across runtimes",
+      "security_notes": "cb smaller than expected for the runtime version can indicate tampering or stripped metadata."
+    },
+    "CLR MajorRuntimeVersion": {
+      "title": "CLR major runtime version",
+      "description": "Major version of the CLR runtime the image targets (paired with MinorRuntimeVersion).",
+      "purpose": "Help the loader pick compatible CLR behavior",
+      "security_notes": "Mismatches with metadata version or unusual pairings can flag mixed or repacked assemblies."
+    },
+    "CLR MinorRuntimeVersion": {
+      "title": "CLR minor runtime version",
+      "description": "Minor version number paired with MajorRuntimeVersion for the CLI header.",
+      "purpose": "Refine runtime compatibility checks",
+      "security_notes": "See CLR MajorRuntimeVersion."
+    },
+    "CLR MetaData RVA": {
+      "title": "CLR metadata RVA",
+      "description": "Relative virtual address of the CLI metadata root (#~ stream, strings, etc.) described in ECMA-335.",
+      "purpose": "Locate tables for types, methods, resources, and assembly identity",
+      "security_notes": "Managed reverse engineering and signing analysis typically start here—metadata RVA 0 with ILONLY set is suspicious."
+    },
+    "CLR MetaData Size": {
+      "title": "CLR metadata size",
+      "description": "Size in bytes of the metadata blob referenced by CLR MetaData RVA.",
+      "purpose": "Bound the metadata for mapping",
+      "security_notes": "Tiny or zero size with non-zero RVA often indicates a broken or crafted file."
+    },
+    "CLR Flags": {
+      "title": "CLR COM+ flags",
+      "description": "Bitfield for COMIMAGE_FLAGS (e.g. ILONLY, 32BITREQUIRED, STRONGNAMESIGNED, TRACKDEBUGDATA). Decoded in the Meaning column when recognized.",
+      "purpose": "Declare whether the module is pure IL, requires 32-bit, is strong-named, etc.",
+      "security_notes": "Strong-name and IL-only flags affect trust and loading—verify with signing tools if security decisions depend on them."
+    },
+    "CLR EntryPointToken": {
+      "title": "CLR entry point token / RVA",
+      "description": "If ILONLY: metadata token for the managed entry method; otherwise may be an RVA to a native stub. Interpretation follows the flag bits.",
+      "purpose": "Tell the CLR where execution begins",
+      "security_notes": "Unexpected tokens or RVAs can point to obfuscated or native interop entry points."
+    },
+    "CLR Resources RVA": {
+      "title": "CLR managed resources RVA",
+      "description": "RVA of embedded .NET resources (not the Win32 RT_RCDATA tree—this is the managed resource section).",
+      "purpose": "Load localized strings, images, and other embedded assets for the assembly",
+      "security_notes": "Large resource blobs can hide payloads—scan with appropriate .NET tools."
+    },
+    "CLR Resources Size": {
+      "title": "CLR managed resources size",
+      "description": "Size of the managed resource block referenced by CLR Resources RVA.",
+      "purpose": "Bound managed resources in the image",
+      "security_notes": "See CLR Resources RVA."
+    },
+    "CLR StrongNameSignature RVA": {
+      "title": "Strong name signature RVA",
+      "description": "RVA of the strong-name signature blob used when the assembly is signed (hash over the image).",
+      "purpose": "Support integrity and identity for strongly named assemblies",
+      "security_notes": "Present signature with STRONGNAMESIGNED flag cleared (or vice versa) deserves verification."
+    },
+    "CLR StrongNameSignature Size": {
+      "title": "Strong name signature size",
+      "description": "Size of the strong-name signature data.",
+      "purpose": "Locate the full signature block",
+      "security_notes": "See CLR StrongNameSignature RVA."
+    },
+    "CLR CodeManagerTable RVA": {
+      "title": "Code manager table RVA",
+      "description": "Historical/optional table for CLR code managers; often zero in modern images.",
+      "purpose": "Extensibility hook for execution engines",
+      "security_notes": "Non-zero values are uncommon—verify against tooling expectations."
+    },
+    "CLR CodeManagerTable Size": {
+      "title": "Code manager table size",
+      "description": "Size of the code manager table.",
+      "purpose": "Bound the table if present",
+      "security_notes": "See CLR CodeManagerTable RVA."
+    },
+    "CLR VTableFixups RVA": {
+      "title": "VTable fixups RVA",
+      "description": "RVA of VTable fixup records for C++/CLI and interop scenarios.",
+      "purpose": "Patch vtables when loading mixed-mode images",
+      "security_notes": "Relevant mainly for mixed assemblies—unexpected fixups may indicate interop surface area."
+    },
+    "CLR VTableFixups Size": {
+      "title": "VTable fixups size",
+      "description": "Size of the VTable fixup array.",
+      "purpose": "Bound fixup records",
+      "security_notes": "See CLR VTableFixups RVA."
+    },
+    "CLR ExportAddressTableJumps RVA": {
+      "title": "Export address table jumps RVA",
+      "description": "RVA of jump thunks related to exported managed methods in some scenarios (often unused).",
+      "purpose": "Support CLR export forwarding edge cases",
+      "security_notes": "Rarely populated—non-zero values merit context from the compiler toolchain."
+    },
+    "CLR ExportAddressTableJumps Size": {
+      "title": "Export address table jumps size",
+      "description": "Size of the export jump table.",
+      "purpose": "Bound the structure if present",
+      "security_notes": "See CLR ExportAddressTableJumps RVA."
+    },
+    "CLR ManagedNativeHeader RVA": {
+      "title": "Managed native header RVA",
+      "description": "RVA of the COR20 managed native header (NGEN/ReadyToRun style data) when present.",
+      "purpose": "Support precompiled native code for managed assemblies",
+      "security_notes": "Presence indicates native image optimization—analysis may differ from pure IL."
+    },
+    "CLR ManagedNativeHeader Size": {
+      "title": "Managed native header size",
+      "description": "Size of the managed native header block.",
+      "purpose": "Bound precompiled native metadata",
+      "security_notes": "See CLR ManagedNativeHeader RVA."
+    },
     "Bound Import Directory": {
       "title": "Bound Import Directory",
       "description": "Contains pre-bound import information that can speed up loading by avoiding runtime import resolution.",
@@ -508,7 +840,7 @@
       "note": "Usually 0 for most sections in modern executables",
       "security_notes": "High number of relocations in unusual sections might indicate code injection or manipulation. Check if relocations point to suspicious addresses."
     },
-    "NumberOfLinenumbers": {
+    "NumberOfLineNumbers": {
       "title": "Number of Line Numbers",
       "description": "The number of line number entries for this section. These are used for debugging to map machine code back to source code.",
       "purpose": "Support debugging and development",

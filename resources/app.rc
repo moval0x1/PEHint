@@ -21,11 +21,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "PEHint Project"
+            VALUE "CompanyName", "moval0x1"
             VALUE "FileDescription", "PE Header Analysis Tool"
             VALUE "FileVersion", "@PEHINT_VERSION_MAJOR@.@PEHINT_VERSION_MINOR@.@PEHINT_VERSION_PATCH@.0"
             VALUE "InternalName", "PEHint.exe"
-            VALUE "LegalCopyright", "Copyright (C) 2024 PEHint Project"
+            VALUE "LegalCopyright", "Copyright (C) 2026 moval0x1"
             VALUE "OriginalFilename", "PEHint.exe"
             VALUE "ProductName", "PEHint"
             VALUE "ProductVersion", "@PEHINT_VERSION_MAJOR@.@PEHINT_VERSION_MINOR@.@PEHINT_VERSION_PATCH@.0"

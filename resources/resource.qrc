@@ -1,10 +1,5 @@
 <RCC>
     <qresource prefix="/images">
-        <file>imgs/PEHint.png</file>
-        <file>imgs/PEHint-ico.ico</file>
-        <file>imgs/about.ico</file>
-        <file>imgs/folder.ico</file>
-        <file>imgs/logout.ico</file>
         <file>imgs/copy.png</file>
         <file>imgs/save.png</file>
         <file>imgs/search.png</file>
@@ -16,5 +11,10 @@
         <file>imgs/collapse.png</file>
         <file>imgs/settings.png</file>
         <file>imgs/language.png</file>
+        <file>imgs/about.png</file>
+        <file>imgs/PEHint.ico</file>
+        <file>imgs/PEHint.png</file>
+        <file>imgs/logout.png</file>
+        <file>imgs/clear.png</file>
     </qresource>
 </RCC>

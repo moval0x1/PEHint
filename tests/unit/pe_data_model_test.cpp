@@ -112,14 +112,27 @@ void PEDataModelTest::testImports()
 void PEDataModelTest::testExports()
 {
     PEDataModel model;
-    
-    QStringList exports;
-    exports << "ExportFunction1" << "ExportFunction2";
-    
-    model.setExports(exports);
-    
-    QCOMPARE(model.getExports().size(), 2);
-    QVERIFY(model.getExports().contains("ExportFunction1"));
+ 
+    QList<PEDataModel::ExportFunctionEntry> exports;
+    PEDataModel::ExportFunctionEntry entry1;
+    entry1.name = "ExportFunction1";
+    entry1.ordinal = 1;
+    entry1.rva = 0x2000;
+    exports.append(entry1);
+
+    PEDataModel::ExportFunctionEntry entry2;
+    entry2.name = "ExportFunction2";
+    entry2.ordinal = 2;
+    entry2.rva = 0x3000;
+    exports.append(entry2);
+
+    model.setExportFunctions(exports);
+
+    const auto &stored = model.getExportFunctions();
+    QCOMPARE(stored.size(), 2);
+    QCOMPARE(stored[0].name, QString("ExportFunction1"));
+    QCOMPARE(stored[0].ordinal, static_cast<quint16>(1));
+    QCOMPARE(stored[0].rva, static_cast<quint32>(0x2000));
 }
 
 void PEDataModelTest::testClear()
@@ -194,6 +207,4 @@ IMAGE_SECTION_HEADER PEDataModelTest::createTestSectionHeader()
     header.Characteristics = 0x60000020; // IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ
     return header;
 }
-
-#include "pe_data_model_test.moc"
 

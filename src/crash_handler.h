@@ -32,6 +32,7 @@ public:
     QString getLogFilePath() const;
     
     // Manual crash logging methods
+    // In Release (NDEBUG): only logError / logCrashInfo write to the log file; logInfo/logWarning/logDebug are no-ops there.
     void logError(const QString &component, const QString &message, const QString &details = "");
     void logWarning(const QString &component, const QString &message, const QString &details = "");
     void logInfo(const QString &component, const QString &message);
@@ -54,8 +55,8 @@ private:
     // Write to log file
     void writeToLog(const QString &level, const QString &component, const QString &message, const QString &details = "");
     
-    // Create crash dump file
-    void createCrashDump(const QString &crashType, const QString &details);
+    // Create crash dump file. winExceptionPointers: from UnhandledExceptionFilter (required for useful dumps); nullptr otherwise.
+    void createCrashDump(const QString &crashType, const QString &details, void *winExceptionPointers = nullptr);
     
     // Windows exception handler
     static LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo);

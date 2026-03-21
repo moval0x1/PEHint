@@ -110,6 +110,13 @@ public:
     bool hasString(const QString &key) const;
 
     /**
+     * @brief Look up a string from loaded INI only (no Qt translator fallback).
+     * Tries @a key and the usual UI/ mirror; returns empty if missing — unlike getString(),
+     * this never returns the key as a placeholder.
+     */
+    QString getIniString(const QString &key) const;
+
+    /**
      * @brief Reload language configuration
      * @return true if reload successful, false otherwise
      */
@@ -127,6 +134,11 @@ public:
      * @return true if initialized, false otherwise
      */
     bool isInitialized() const;
+
+    /**
+     * @brief Finds a configuration file in multiple possible locations (same search as language INI).
+     */
+    QString findConfigFile(const QString &fileName) const;
 
 signals:
     /**
@@ -176,19 +188,6 @@ private:
      * @return Text with substituted parameters
      */
     QString substituteParameters(const QString &text, const QMap<QString, QString> &params) const;
-    
-    /**
-     * @brief Finds a configuration file in multiple possible locations
-     * @param fileName Name of the configuration file to find
-     * @return Full path to the found configuration file, or empty string if not found
-     * 
-     * This method searches for configuration files in multiple locations:
-     * 1. Relative to executable (for deployed builds)
-     * 2. Relative to executable but going up to project root (for development builds)
-     * 3. Current working directory
-     * 4. Source directory (for development builds)
-     */
-    QString findConfigFile(const QString &fileName) const;
 
     /**
      * @brief Get Qt translator for a language

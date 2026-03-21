@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFileInfo>
 #include <QDateTime>
 #include <QSysInfo>
 #include <QApplication>
@@ -25,6 +26,15 @@
 CrashHandler* CrashHandler::s_instance = nullptr;
 #endif
 
+namespace {
+// Release builds: avoid disk I/O and noise from INFO/WARN/DEBUG (focus log file on errors and crashes).
+#if defined(NDEBUG)
+constexpr bool kVerboseCrashFileLog = false;
+#else
+constexpr bool kVerboseCrashFileLog = true;
+#endif
+} // namespace
+
 CrashHandler::CrashHandler()
     : m_logFile(nullptr)
     , m_logStream(nullptr)
@@ -38,7 +48,9 @@ CrashHandler::CrashHandler()
 CrashHandler::~CrashHandler()
 {
     if (m_loggingEnabled && m_logFile && m_logStream) {
-        logInfo("CrashHandler", "Crash handler shutting down");
+        if (kVerboseCrashFileLog) {
+            logInfo("CrashHandler", "Crash handler shutting down");
+        }
         m_logStream->flush();
         m_logFile->close();
         delete m_logStream;
@@ -86,17 +98,22 @@ void CrashHandler::initialize()
         *m_logStream << "Working Directory: " << QDir::currentPath() << Qt::endl;
         *m_logStream << "Application Path: " << QCoreApplication::applicationFilePath() << Qt::endl;
         *m_logStream << "=====================================" << Qt::endl;
+        if (!kVerboseCrashFileLog) {
+            QString timestampQuiet = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+            *m_logStream << QString("[%1] [INFO] [CrashHandler] Release logging: only ERROR, CRASH, and Qt Critical/Fatal are written to this file.")
+                              .arg(timestampQuiet)
+                         << Qt::endl;
+        }
         m_logStream->flush();
         
-        // Write initialization messages directly to avoid recursion
-        QString timestamp2 = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
-        *m_logStream << QString("[%1] [INFO] [CrashHandler] Crash handling system initialized successfully").arg(timestamp2) << Qt::endl;
-        *m_logStream << QString("[%1] [INFO] [CrashHandler] Log file: %2").arg(timestamp2, m_logFilePath) << Qt::endl;
-        m_logStream->flush();
-        
-        // Also output to console for immediate visibility
-        qDebug() << "Crash handling system initialized successfully";
-        qDebug() << "Log file:" << m_logFilePath;
+        if (kVerboseCrashFileLog) {
+            QString timestamp2 = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+            *m_logStream << QString("[%1] [INFO] [CrashHandler] Crash handling system initialized successfully").arg(timestamp2) << Qt::endl;
+            *m_logStream << QString("[%1] [INFO] [CrashHandler] Log file: %2").arg(timestamp2, m_logFilePath) << Qt::endl;
+            m_logStream->flush();
+            qDebug() << "Crash handling system initialized successfully";
+            qDebug() << "Log file:" << m_logFilePath;
+        }
     } else {
         m_loggingEnabled = false;
         qWarning() << "Failed to open crash log file:" << m_logFilePath;
@@ -152,7 +169,7 @@ void CrashHandler::setupWindowsCrashHandling()
         throw std::runtime_error(crashType.toStdString());
     });
     
-    if (m_loggingEnabled) {
+    if (m_loggingEnabled && kVerboseCrashFileLog) {
         QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
         *m_logStream << QString("[%1] [INFO] [CrashHandler] Windows crash handling initialized").arg(timestamp) << Qt::endl;
         m_logStream->flush();
@@ -165,17 +182,18 @@ void CrashHandler::setupQtCrashHandling()
     // Setup Qt signal handlers for application termination
     if (qApp) {
         connect(qApp, &QApplication::aboutToQuit, this, [this]() {
-            if (m_loggingEnabled) {
+            if (m_loggingEnabled && kVerboseCrashFileLog && m_logStream) {
                 QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
                 *m_logStream << QString("[%1] [INFO] [CrashHandler] Application about to quit").arg(timestamp) << Qt::endl;
                 m_logStream->flush();
             }
         });
         
-        // Handle application focus changes
+        // Handle application focus changes (verbose builds only — very noisy otherwise)
         connect(qApp, &QApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-            if (!m_loggingEnabled) return;
-            
+            if (!m_loggingEnabled || !kVerboseCrashFileLog || !m_logStream) {
+                return;
+            }
             QString stateStr;
             switch (state) {
                 case Qt::ApplicationActive: stateStr = "Application became active"; break;
@@ -184,7 +202,6 @@ void CrashHandler::setupQtCrashHandling()
                 case Qt::ApplicationSuspended: stateStr = "Application suspended"; break;
                 default: stateStr = "Unknown state"; break;
             }
-            
             QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
             *m_logStream << QString("[%1] [INFO] [CrashHandler] %2").arg(timestamp, stateStr) << Qt::endl;
             m_logStream->flush();
@@ -194,7 +211,7 @@ void CrashHandler::setupQtCrashHandling()
     // Handle Qt fatal errors
     qInstallMessageHandler(qtMessageHandler);
     
-    if (m_loggingEnabled) {
+    if (m_loggingEnabled && kVerboseCrashFileLog && m_logStream) {
         QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
         *m_logStream << QString("[%1] [INFO] [CrashHandler] Qt crash handling initialized").arg(timestamp) << Qt::endl;
         m_logStream->flush();
@@ -280,9 +297,9 @@ LONG WINAPI CrashHandler::unhandledExceptionFilter(EXCEPTION_POINTERS* exception
     // Log the crash if we can access the instance
     if (s_instance) {
         s_instance->logCrashInfo(crashType, details);
-        s_instance->createCrashDump(crashType, details);
+        s_instance->createCrashDump(crashType, details, exceptionInfo);
     }
-    
+
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -319,6 +336,8 @@ void CrashHandler::logCrashInfo(const QString &crashType, const QString &details
         crashStream << "Architecture: " << QSysInfo::currentCpuArchitecture() << Qt::endl;
         crashStream << "Crash Type: " << crashType << Qt::endl;
         crashStream << "Details: " << details << Qt::endl;
+        crashStream << "Note: Open the matching .dmp in Visual Studio (File → Open → File) or WinDbg; it is not plain text."
+                      << Qt::endl;
         crashStream << "Application Path: " << QCoreApplication::applicationFilePath() << Qt::endl;
         crashStream << "Working Directory: " << QDir::currentPath() << Qt::endl;
         crashStream << "=====================================" << Qt::endl;
@@ -330,47 +349,90 @@ void CrashHandler::logCrashInfo(const QString &crashType, const QString &details
     qCritical() << "Details:" << details;
 }
 
-void CrashHandler::createCrashDump(const QString &crashType, const QString &details)
+void CrashHandler::createCrashDump(const QString &crashType, const QString &details, void *winExceptionPointers)
 {
 #ifdef Q_OS_WIN
-    // Create a crash dump file
+    auto *exceptionPointers = reinterpret_cast<EXCEPTION_POINTERS *>(winExceptionPointers);
+
     QString appDir = QCoreApplication::applicationDirPath();
     QString crashDumpPath = appDir + "/crashes/";
     QDir().mkpath(crashDumpPath);
-    
+
     QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString dumpFileName = crashDumpPath + "crash_dump_" + timestamp + ".dmp";
-    
+
     HANDLE dumpFile = CreateFileW(
-        (LPCWSTR)dumpFileName.utf16(),
+        reinterpret_cast<LPCWSTR>(dumpFileName.utf16()),
         GENERIC_WRITE,
         0,
         nullptr,
         CREATE_ALWAYS,
         FILE_ATTRIBUTE_NORMAL,
-        nullptr
-    );
-    
-    if (dumpFile != INVALID_HANDLE_VALUE) {
-        MINIDUMP_EXCEPTION_INFORMATION exceptionInfo;
-        exceptionInfo.ThreadId = GetCurrentThreadId();
-        exceptionInfo.ExceptionPointers = nullptr; // We don't have the exception pointers here
-        exceptionInfo.ClientPointers = TRUE;
-        
-        MiniDumpWriteDump(
-            GetCurrentProcess(),
-            GetCurrentProcessId(),
-            dumpFile,
-            MiniDumpNormal,
-            &exceptionInfo,
-            nullptr,
-            nullptr
-        );
-        
-        CloseHandle(dumpFile);
-        
-        logInfo("CrashHandler", QString("Crash dump created: %1").arg(dumpFileName));
+        nullptr);
+
+    auto writeDumpLogLine = [this](const QString &msg) {
+        if (!m_loggingEnabled || !m_logFile || !m_logStream) {
+            return;
+        }
+        const QString ts = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+        *m_logStream << QString("[%1] [CRASH] [CrashHandler] %2").arg(ts, msg) << Qt::endl;
+        m_logStream->flush();
+        m_logFile->flush();
+    };
+
+    if (dumpFile == INVALID_HANDLE_VALUE) {
+        writeDumpLogLine(QStringLiteral("Failed to create dump file (CreateFileW): %1 — %2")
+                               .arg(dumpFileName)
+                               .arg(QString::number(static_cast<qulonglong>(GetLastError()))));
+        return;
     }
+
+    MINIDUMP_EXCEPTION_INFORMATION mei = {};
+    mei.ThreadId = GetCurrentThreadId();
+    mei.ExceptionPointers = exceptionPointers;
+    // In-process: addresses are in this process; FALSE matches MSDN for local minidumps.
+    mei.ClientPointers = FALSE;
+
+    PMINIDUMP_EXCEPTION_INFORMATION pMei = exceptionPointers ? &mei : nullptr;
+
+    // MiniDumpNormal + non-null ExceptionPointers yields a usable stack for the faulting thread.
+    // Extra flags can fail on some dbghelp versions; keep defaults for broad compatibility.
+    const MINIDUMP_TYPE dumpType = MiniDumpNormal;
+
+    const BOOL ok = MiniDumpWriteDump(GetCurrentProcess(),
+                                      GetCurrentProcessId(),
+                                      dumpFile,
+                                      dumpType,
+                                      pMei,
+                                      nullptr,
+                                      nullptr);
+
+    const DWORD lastErr = GetLastError();
+    CloseHandle(dumpFile);
+
+    if (!ok) {
+        writeDumpLogLine(QStringLiteral("MiniDumpWriteDump failed for %1 — GetLastError=%2 (exception context %3)")
+                               .arg(dumpFileName)
+                               .arg(QString::number(static_cast<qulonglong>(lastErr)))
+                               .arg(exceptionPointers ? QStringLiteral("included") : QStringLiteral("absent")));
+        QFile::remove(dumpFileName);
+        return;
+    }
+
+    const qint64 sz = QFileInfo(dumpFileName).size();
+    writeDumpLogLine(QStringLiteral("Crash dump written: %1 (%2 bytes); open in Visual Studio or WinDbg with PEHint.pdb.")
+                           .arg(dumpFileName)
+                           .arg(QString::number(sz)));
+
+    if (kVerboseCrashFileLog) {
+        logInfo("CrashHandler", QStringLiteral("Crash dump: %1").arg(dumpFileName));
+    }
+    Q_UNUSED(crashType);
+    Q_UNUSED(details);
+#else
+    Q_UNUSED(crashType);
+    Q_UNUSED(details);
+    Q_UNUSED(winExceptionPointers);
 #endif
 }
 
@@ -392,7 +454,9 @@ void CrashHandler::logWarning(const QString &component, const QString &message, 
     if (!m_loggingEnabled || !m_logFile || !m_logStream) {
         return;
     }
-    
+    if (!kVerboseCrashFileLog) {
+        return;
+    }
     writeToLog("WARN", component, message, details);
     qWarning() << "[WARN]" << component << ":" << message;
     if (!details.isEmpty()) {
@@ -405,7 +469,9 @@ void CrashHandler::logInfo(const QString &component, const QString &message)
     if (!m_loggingEnabled || !m_logFile || !m_logStream) {
         return;
     }
-    
+    if (!kVerboseCrashFileLog) {
+        return;
+    }
     writeToLog("INFO", component, message);
     qDebug() << "[INFO]" << component << ":" << message;
 }
@@ -415,7 +481,9 @@ void CrashHandler::logDebug(const QString &component, const QString &message)
     if (!m_loggingEnabled || !m_logFile || !m_logStream) {
         return;
     }
-    
+    if (!kVerboseCrashFileLog) {
+        return;
+    }
     writeToLog("DEBUG", component, message);
     qDebug() << "[DEBUG]" << component << ":" << message;
 }

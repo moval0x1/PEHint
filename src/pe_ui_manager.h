@@ -39,9 +39,13 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QTreeWidget>
+#include <QTextBrowser>
 #include <QTextEdit>
 #include <QTabWidget>
 #include <QMenu>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QSpinBox>
 #include "hexviewer.h"
 
 class MainWindow;
@@ -90,9 +94,21 @@ public:
     QTabWidget *m_analysisTabWidget; ///< Tab widget for structure/import/export views
     QTreeWidget *m_importModulesTree; ///< Displays import modules list
     QTreeWidget *m_importFunctionsTree; ///< Displays functions for selected import module
+    QLabel *m_importHintTitleLabel;     ///< Heading above import API summary text
+    QTextBrowser *m_importHintText;   ///< Microsoft Learn–style HTML summary for selected import
     QTreeWidget *m_exportsTree;       ///< Displays export functions list
-    QPushButton *m_securityButton;  ///< Performs security analysis
+    QTreeWidget *m_dependenciesTree;  ///< Displays DLL dependencies and resolve status
+    QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
+    QPushButton *m_dependenciesCollapseAllButton;   ///< Collapse all rows in the dependencies tree
+    QTreeWidget *m_stringsTree;       ///< Displays extracted strings (offset, type, value)
+    QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring
+    QComboBox *m_stringsTypeCombo;    ///< Filter by type: All / ASCII / Unicode
+    QSpinBox *m_stringsMinLengthSpin; ///< Minimum extracted string length
+    QComboBox *m_stringsSectionCombo; ///< Scope extraction to section or all
+    QPushButton *m_stringsCancelButton; ///< Cancel async string extraction
+    QPushButton *m_stringsExportButton; ///< Export visible strings as CSV/TXT/JSON
     QTreeWidget *m_peTree;         ///< Displays PE structure hierarchy
+    QLabel *m_fieldExplanationTitleLabel; ///< "Field explanations" heading above the detail text
     QTextEdit *m_fieldExplanationText; ///< Shows field explanations
     QMenu *m_contextMenu;           ///< Right-click context menu
     HexViewer *m_hexViewer;        ///< Hex viewer for binary data display

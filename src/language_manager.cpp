@@ -263,6 +263,30 @@ QString LanguageManager::getString(const QString &key, const QString &defaultVal
     return defaultValue.isEmpty() ? key : defaultValue;
 }
 
+QString LanguageManager::getIniString(const QString &key) const
+{
+    if (!m_initialized) {
+        return {};
+    }
+    QString value = m_strings.value(key, QString());
+    if (!value.isEmpty()) {
+        return value;
+    }
+    if (key.startsWith(QStringLiteral("UI/"))) {
+        const QString stripped = key.mid(3);
+        value = m_strings.value(stripped, QString());
+        if (!value.isEmpty()) {
+            return value;
+        }
+    } else {
+        value = m_strings.value(QStringLiteral("UI/") + key, QString());
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return {};
+}
+
 QString LanguageManager::getString(const QString &key, const QMap<QString, QString> &params, const QString &defaultValue) const
 {
     QString text = getString(key, defaultValue);
@@ -446,12 +470,13 @@ bool LanguageManager::loadLanguageConfiguration()
 QString LanguageManager::substituteParameters(const QString &text, const QMap<QString, QString> &params) const
 {
     QString result = text;
-    
+
+    // INI templates must use named placeholders like {field_name}, not Qt %1 / sprintf-style.
     for (auto it = params.constBegin(); it != params.constEnd(); ++it) {
-        QString placeholder = QString("{%1}").arg(it.key());
+        const QString placeholder = QLatin1Char('{') + it.key() + QLatin1Char('}');
         result.replace(placeholder, it.value());
     }
-    
+
     return result;
 }
 

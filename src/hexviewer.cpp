@@ -1,90 +1,111 @@
 #include "hexviewer.h"
+#include "virtual_hex_widget.h"
 #include "language_manager.h"
-#include <QTextCursor>
-#include <QTextCharFormat>
-#include <QScrollBar>
+#include "pe_utils.h"
+
 #include <QApplication>
 #include <QClipboard>
-#include <QInputDialog>
-#include <QMessageBox>
-#include <QFontDatabase>
 #include <QDialog>
-#include <QLineEdit>
-#include <QCheckBox>
-#include <QVBoxLayout>
+#include <QDialogButtonBox>
 #include <QHBoxLayout>
-#include <QTimer>
+#include <QCheckBox>
+#include <QGroupBox>
+#include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
-#include <QMouseEvent>
+#include <QSpinBox>
+#include <QVBoxLayout>
+#include <QSignalBlocker>
 #include <QFocusEvent>
+#include <QPalette>
+#include <QStyle>
+#include <limits>
+
+namespace {
+
+QString hexUiString(const QString &key, const QString &englishFallback)
+{
+    return LanguageManager::getInstance().getString(key, englishFallback);
+}
+
+} // namespace
 
 HexViewer::HexViewer(QWidget *parent)
     : QWidget(parent)
-    , m_showAscii(true)
-    , m_showOffset(true)
-    , m_bytesPerLine(16)
-    , m_currentSearchIndex(-1)
-    , m_lastSearchCaseSensitive(false)
-    , m_offsetLabel(nullptr)
-    , m_bytesLabel(nullptr)
 {
     setupUI();
     setupConnections();
 }
 
-HexViewer::~HexViewer()
+HexViewer::~HexViewer() = default;
+
+void HexViewer::applyHexFont()
 {
+    QFont hf;
+    const QString fam = LANG("UI/font_consolas");
+    hf.setFamily(fam.isEmpty() ? QStringLiteral("Consolas") : fam);
+    hf.setStyleHint(QFont::Monospace);
+    hf.setFixedPitch(true);
+    hf.setPointSize(9);
+    if (m_virtualHex) {
+        m_virtualHex->setFont(hf);
+    }
 }
 
 void HexViewer::setupUI()
 {
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    
-    // Control panel
-    QHBoxLayout *controlLayout = new QHBoxLayout();
-    
-    // Offset control
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(4, 4, 4, 4);
+
+    auto *controlLayout = new QHBoxLayout();
     m_offsetLabel = new QLabel(LANG("UI/hex_go_to_offset"), this);
     m_offsetSpinBox = new QSpinBox(this);
     m_offsetSpinBox->setRange(0, 0);
     m_offsetSpinBox->setPrefix(LANG("UI/hex_prefix"));
     m_offsetSpinBox->setDisplayIntegerBase(16);
     m_offsetSpinBox->setMaximumWidth(120);
-    
-    // Bytes per line control
+
     m_bytesLabel = new QLabel(LANG("UI/hex_bytes_per_line"), this);
     m_bytesPerLineSpinBox = new QSpinBox(this);
     m_bytesPerLineSpinBox->setRange(8, 64);
     m_bytesPerLineSpinBox->setValue(16);
     m_bytesPerLineSpinBox->setMaximumWidth(80);
-    
-    // Display options
+
     m_showOffsetButton = new QPushButton(LANG("UI/hex_show_offset"), this);
     m_showOffsetButton->setCheckable(true);
     m_showOffsetButton->setChecked(true);
-    
+
     m_showAsciiButton = new QPushButton(LANG("UI/hex_show_ascii"), this);
     m_showAsciiButton->setCheckable(true);
     m_showAsciiButton->setChecked(true);
-    
-    // Action buttons
-    m_copyButton = new QPushButton(LANG("UI/button_copy_hex"), this);
-    m_copyButton->setIcon(QIcon(":/images/imgs/copy.png"));
+
+    m_copyHexButton = new QPushButton(LANG("UI/hex_copy_hex"), this);
+    m_copyHexButton->setIcon(QIcon(":/images/imgs/copy.png"));
+    m_copyHexButton->setToolTip(LANG("UI/hex_copy_hex_tooltip"));
+    m_copyAsciiButton = new QPushButton(LANG("UI/hex_copy_ascii"), this);
+    m_copyAsciiButton->setIcon(QIcon(":/images/imgs/copy.png"));
+    m_copyAsciiButton->setToolTip(LANG("UI/hex_copy_ascii_tooltip"));
     m_findButton = new QPushButton(LANG("UI/button_find"), this);
     m_findButton->setIcon(QIcon(":/images/imgs/search.png"));
-    
-    // Search navigation buttons (initially disabled)
-    m_findNextButton = new QPushButton("↓", this);
+
+    m_findNextButton = new QPushButton(this);
+    m_findNextButton->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    m_findNextButton->setIconSize(QSize(16, 16));
     m_findNextButton->setToolTip(LANG("UI/hex_search_find_next"));
-    m_findNextButton->setMaximumWidth(30);
+    m_findNextButton->setAccessibleName(LANG("UI/hex_search_find_next"));
+    m_findNextButton->setMaximumWidth(34);
     m_findNextButton->setEnabled(false);
-    
-    m_findPrevButton = new QPushButton("↑", this);
+
+    m_findPrevButton = new QPushButton(this);
+    m_findPrevButton->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+    m_findPrevButton->setIconSize(QSize(16, 16));
     m_findPrevButton->setToolTip(LANG("UI/hex_search_find_previous"));
-    m_findPrevButton->setMaximumWidth(30);
+    m_findPrevButton->setAccessibleName(LANG("UI/hex_search_find_previous"));
+    m_findPrevButton->setMaximumWidth(34);
     m_findPrevButton->setEnabled(false);
-    
+
     controlLayout->addWidget(m_offsetLabel);
     controlLayout->addWidget(m_offsetSpinBox);
     controlLayout->addWidget(m_bytesLabel);
@@ -92,137 +113,148 @@ void HexViewer::setupUI()
     controlLayout->addStretch();
     controlLayout->addWidget(m_showOffsetButton);
     controlLayout->addWidget(m_showAsciiButton);
-    controlLayout->addWidget(m_copyButton);
+    controlLayout->addWidget(m_copyHexButton);
+    controlLayout->addWidget(m_copyAsciiButton);
     controlLayout->addWidget(m_findButton);
     controlLayout->addWidget(m_findPrevButton);
     controlLayout->addWidget(m_findNextButton);
-    
+
     mainLayout->addLayout(controlLayout);
-    
-    // Hex display
-    m_hexText = new QTextEdit(this);
-    m_hexText->setFontFamily(LANG("UI/font_consolas"));
-    m_hexText->setFontPointSize(9);
-    m_hexText->setReadOnly(true);
-    m_hexText->setLineWrapMode(QTextEdit::NoWrap);
-    m_hexText->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_hexText->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    // Customize selection appearance to remove blue selection line and ensure proper interaction
-    m_hexText->setStyleSheet(
-        "QTextEdit::selection { background-color: transparent; }"
-        "QTextEdit { selection-background-color: transparent; }"
-    );
-    
-    mainLayout->addWidget(m_hexText);
-    
-    // Status bar
-    QHBoxLayout *statusLayout = new QHBoxLayout();
-    QLabel *statusLabel = new QLabel("", this); // Start with empty status
-    statusLabel->setObjectName("hexViewerStatusLabel"); // Add object name for easier identification
-    statusLayout->addWidget(statusLabel);
+
+    m_virtualHex = new VirtualHexWidget(this);
+    {
+        QPalette vp = m_virtualHex->viewport()->palette();
+        vp.setColor(QPalette::Base, QColor(255, 255, 255));
+        vp.setColor(QPalette::Text, QColor(0, 0, 0));
+        m_virtualHex->viewport()->setPalette(vp);
+        m_virtualHex->viewport()->setAutoFillBackground(true);
+    }
+    applyHexFont();
+    m_virtualHex->setHeaderLabels(LANG("UI/hex_header_offset_label"), LANG("UI/hex_header_decoded_label"));
+    m_virtualHex->setBytesPerLine(m_bytesPerLine);
+    m_virtualHex->setShowOffset(m_showOffset);
+    m_virtualHex->setShowAscii(m_showAscii);
+    mainLayout->addWidget(m_virtualHex, 1);
+
+    auto *statusLayout = new QHBoxLayout();
+    m_statusLabel = new QLabel(QString(), this);
+    m_statusLabel->setObjectName(QStringLiteral("hexViewerStatusLabel"));
+    m_statusLabel->setMinimumWidth(120);
+    m_statusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    statusLayout->addWidget(m_statusLabel);
     statusLayout->addStretch();
-    
     mainLayout->addLayout(statusLayout);
 }
 
 void HexViewer::setupConnections()
 {
-    // Connect offset control
-    connect(m_offsetSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &HexViewer::onOffsetChanged);
-    
-    // Connect bytes per line control
-    connect(m_bytesPerLineSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &HexViewer::onBytesPerLineChanged);
-    
-    // Connect display option buttons
-    connect(m_showOffsetButton, &QPushButton::toggled,
-            this, &HexViewer::onShowOffsetToggled);
-    connect(m_showAsciiButton, &QPushButton::toggled,
-            this, &HexViewer::onShowAsciiToggled);
-    
-    // Connect action buttons
-    connect(m_copyButton, &QPushButton::clicked,
-            this, &HexViewer::onCopySelection);
-    connect(m_findButton, &QPushButton::clicked,
-            this, &HexViewer::onFindText);
-    
-    // Connect search navigation buttons
-    connect(m_findNextButton, &QPushButton::clicked,
-            this, &HexViewer::findNext);
-    connect(m_findPrevButton, &QPushButton::clicked,
-            this, &HexViewer::findPrevious);
-    
-    // Install event filter for mouse clicks
-    m_hexText->installEventFilter(this);
+    connect(m_offsetSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &HexViewer::onOffsetChanged);
+    connect(m_bytesPerLineSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            &HexViewer::onBytesPerLineChanged);
+    connect(m_showOffsetButton, &QPushButton::toggled, this, &HexViewer::onShowOffsetToggled);
+    connect(m_showAsciiButton, &QPushButton::toggled, this, &HexViewer::onShowAsciiToggled);
+    connect(m_copyHexButton, &QPushButton::clicked, this, &HexViewer::onCopyHexSelection);
+    connect(m_copyAsciiButton, &QPushButton::clicked, this, &HexViewer::onCopyAsciiSelection);
+    connect(m_findButton, &QPushButton::clicked, this, &HexViewer::onFindText);
+    connect(m_findNextButton, &QPushButton::clicked, this, &HexViewer::findNext);
+    connect(m_findPrevButton, &QPushButton::clicked, this, &HexViewer::findPrevious);
+
+    connect(m_virtualHex, &VirtualHexWidget::selectionChanged, this, &HexViewer::updateSelectionOffsetStatus);
+    connect(m_virtualHex, &VirtualHexWidget::byteClicked, this, [this](qint64 off, int len) {
+        clearHighlights();
+        {
+            QSignalBlocker b(m_offsetSpinBox);
+            const int mx = std::numeric_limits<int>::max();
+            m_offsetSpinBox->setValue(static_cast<int>(qMin(off, static_cast<qint64>(mx))));
+        }
+        emit byteClicked(off, len);
+    });
 }
 
-void HexViewer::setData(const QByteArray &data)
+void HexViewer::syncHighlightsToWidget()
+{
+    if (!m_virtualHex) {
+        return;
+    }
+    QList<VirtualHexWidget::HighlightSeg> segs;
+    segs.reserve(m_highlights.size());
+    for (const HighlightRange &h : m_highlights) {
+        VirtualHexWidget::HighlightSeg s;
+        s.start = h.startOffset;
+        s.length = h.length;
+        s.color = h.color;
+        if (s.color.alpha() < 150) {
+            s.color.setAlpha(200);
+        }
+        segs.append(s);
+    }
+    m_virtualHex->setHighlights(segs);
+}
+
+void HexViewer::setData(const QByteArray &data, qint64 logicalTotalBytes)
 {
     m_data = data;
-    m_offsetSpinBox->setRange(0, qMax(0, data.size() - 1));
-    
-    // Debug: Print data information
-    qDebug() << "HexViewer::setData called with" << data.size() << "bytes";
-    
-    // Enable/disable controls based on data availability
-    bool hasData = !data.isEmpty();
+    m_logicalDataSize = (logicalTotalBytes >= 0) ? logicalTotalBytes : static_cast<qint64>(data.size());
+
+    const bool hasData = !data.isEmpty();
     m_findButton->setEnabled(hasData);
     m_offsetSpinBox->setEnabled(hasData);
     m_bytesPerLineSpinBox->setEnabled(hasData);
     m_showOffsetButton->setEnabled(hasData);
     m_showAsciiButton->setEnabled(hasData);
-    m_copyButton->setEnabled(hasData);
-    
-    // Clear search results when new data is loaded
-    clearSearchResults();
-    
-    updateDisplay();
+    m_copyHexButton->setEnabled(hasData);
+    m_copyAsciiButton->setEnabled(hasData);
+
+    clearSearchResults(false);
+
+    {
+        QSignalBlocker blockOffset(m_offsetSpinBox);
+        updateDisplay();
+        const qint64 maxByteIndex = data.isEmpty() ? 0 : qMax<qint64>(0, data.size() - 1);
+        const int spinMax = data.isEmpty()
+            ? 0
+            : static_cast<int>(qMin(maxByteIndex, static_cast<qint64>(std::numeric_limits<int>::max())));
+        m_offsetSpinBox->setRange(0, spinMax);
+        int v = m_offsetSpinBox->value();
+        v = qBound(0, v, spinMax);
+        m_offsetSpinBox->setValue(v);
+    }
+
+    emit hexContentReady();
+}
+
+qint64 HexViewer::logicalDataSize() const
+{
+    return m_logicalDataSize >= 0 ? m_logicalDataSize : static_cast<qint64>(m_data.size());
 }
 
 void HexViewer::clear()
 {
     m_data.clear();
-    m_hexText->clear();
-    m_offsetSpinBox->setRange(0, 0);
+    m_logicalDataSize = -1;
+    m_highlights.clear();
+    if (m_virtualHex) {
+        m_virtualHex->setData(nullptr);
+        m_virtualHex->clearHighlights();
+    }
+    {
+        QSignalBlocker block(m_offsetSpinBox);
+        m_offsetSpinBox->setRange(0, 0);
+    }
     clearSearchResults();
+    emit hexContentReady();
 }
 
 void HexViewer::goToOffset(qint64 offset)
 {
-    if (offset >= 0 && offset < m_data.size()) {
-        m_offsetSpinBox->setValue(static_cast<int>(offset));
-        
-        // Calculate which line contains this offset
-        qint64 targetLine = offset / m_bytesPerLine;
-        
-        // Calculate the character position in the text for this line
-        qint64 lineStartInText = 0;
-        
-        // Count characters in previous lines
-        for (qint64 prevLine = 0; prevLine < targetLine; ++prevLine) {
-            qint64 lineLength = 0;
-            if (m_showOffset) lineLength += 10; // "00000000  " format
-            lineLength += m_bytesPerLine * 3; // Two hex chars + space per byte
-            if (m_showAscii) lineLength += 2 + m_bytesPerLine; // "  " + ascii chars
-            lineLength += 1; // newline
-            lineStartInText += lineLength;
-        }
-        
-        // Calculate the character position for the specific offset within the line
-        qint64 offsetInLine = offset % m_bytesPerLine;
-        qint64 hexStartPos = lineStartInText + (m_showOffset ? 10 : 0);
-        qint64 targetCharPos = hexStartPos + (offsetInLine * 3); // 3 chars per byte (XX )
-        
-        // Set cursor position and ensure it's visible
-        QTextCursor cursor = m_hexText->textCursor();
-        cursor.setPosition(static_cast<int>(targetCharPos));
-        m_hexText->setTextCursor(cursor);
-        m_hexText->ensureCursorVisible();
-        
-        // Highlight the specific byte
-        highlightOffset(offset);
+    if (!m_virtualHex || m_data.isEmpty() || offset < 0 || offset >= m_data.size()) {
+        return;
     }
+    {
+        QSignalBlocker b(m_offsetSpinBox);
+        m_offsetSpinBox->setValue(static_cast<int>(qMin(offset, static_cast<qint64>(std::numeric_limits<int>::max()))));
+    }
+    m_virtualHex->scrollToByteOffset(offset, false);
 }
 
 void HexViewer::setBytesPerLine(int bytesPerLine)
@@ -236,739 +268,236 @@ void HexViewer::setShowAscii(bool show)
 {
     m_showAscii = show;
     m_showAsciiButton->setChecked(show);
-    updateDisplay();
+    if (m_virtualHex) {
+        m_virtualHex->setShowAscii(show);
+    }
 }
 
 void HexViewer::setShowOffset(bool show)
 {
     m_showOffset = show;
     m_showOffsetButton->setChecked(show);
-    updateDisplay();
+    if (m_virtualHex) {
+        m_virtualHex->setShowOffset(show);
+    }
 }
 
 void HexViewer::updateDisplay()
 {
     if (m_data.isEmpty()) {
-        m_hexText->clear();
+        m_highlights.clear();
+        if (m_virtualHex) {
+            m_virtualHex->setData(nullptr);
+            m_virtualHex->clearHighlights();
+        }
+        if (m_statusLabel) {
+            m_statusLabel->clear();
+        }
         return;
     }
-    
-    renderHexData();
-}
-
-void HexViewer::renderHexData()
-{
-    m_hexText->clear();
-    
-    QTextCursor cursor = m_hexText->textCursor();
-    QTextCharFormat normalFormat = cursor.charFormat();
-    QTextCharFormat offsetFormat = normalFormat;
-    offsetFormat.setForeground(Qt::blue);
-    offsetFormat.setFontWeight(QFont::Bold);
-    
-    QString hexContent;
-    
-    for (qint64 offset = 0; offset < m_data.size(); offset += m_bytesPerLine) {
-        QByteArray lineData = getLineData(offset, m_bytesPerLine);
-        
-        QString line;
-        
-        // Offset
-        if (m_showOffset) {
-            line += formatOffset(offset);
-            line += "  ";
-        }
-        
-        // Hex data
-        line += formatHexLine(lineData, offset);
-        
-        // ASCII representation
-        if (m_showAscii) {
-            line += "  ";
-            line += formatAsciiLine(lineData);
-        }
-        
-        hexContent += line + "\n";
+    if (m_virtualHex) {
+        m_virtualHex->setBytesPerLine(m_bytesPerLine);
+        m_virtualHex->setShowOffset(m_showOffset);
+        m_virtualHex->setShowAscii(m_showAscii);
+        m_virtualHex->setData(&m_data);
+        syncHighlightsToWidget();
     }
-    
-    m_hexText->setPlainText(hexContent);
-    
-    // Apply highlights
-    applyHighlights();
+    updateSelectionOffsetStatus();
 }
 
-QString HexViewer::formatHexLine(const QByteArray &lineData, qint64 offset)
+void HexViewer::highlightRange(quint32 startOffset, quint32 length, const QColor &color)
 {
-    QString hexLine;
-    
-    for (int i = 0; i < m_bytesPerLine; ++i) {
-        if (i < lineData.size()) {
-            quint8 byte = static_cast<quint8>(lineData[i]);
-            hexLine += QString("%1 ").arg(byte, 2, 16, QChar('0')).toUpper();
-        } else {
-            hexLine += "   "; // Padding for incomplete lines
-        }
-        
-        // Add extra space every 8 bytes for readability
-        if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
-            hexLine += " ";
-        }
+    if (m_data.isEmpty() || startOffset >= static_cast<quint32>(m_data.size()) || !m_virtualHex) {
+        return;
     }
-    
-    return hexLine;
-}
-
-QString HexViewer::formatAsciiLine(const QByteArray &lineData)
-{
-    QString asciiLine;
-    
-    for (int i = 0; i < m_bytesPerLine; ++i) {
-        if (i < lineData.size()) {
-            char c = lineData[i];
-            if (c >= 32 && c <= 126) {
-                asciiLine += c;
-            } else {
-                asciiLine += "."; // Non-printable character
-            }
-        } else {
-            asciiLine += " "; // Padding
-        }
+    m_highlights.clear();
+    HighlightRange h;
+    h.startOffset = startOffset;
+    h.length = qMin(length, static_cast<quint32>(m_data.size() - startOffset));
+    QColor highlightColor = color;
+    if (highlightColor.alpha() < 150) {
+        highlightColor.setAlpha(200);
     }
-    
-    return asciiLine;
+    h.color = highlightColor;
+    m_highlights.append(h);
+    syncHighlightsToWidget();
+    const qint64 go = static_cast<qint64>(startOffset);
+    goToOffset(go);
 }
 
-QString HexViewer::formatOffset(qint64 offset)
+void HexViewer::clearHighlights()
 {
-    QString digits = QString::number(static_cast<quint64>(offset), 16).toUpper();
-    digits = digits.rightJustified(8, '0');
-    return QStringLiteral("0x") + digits;
-}
-
-QByteArray HexViewer::getLineData(qint64 offset, int maxBytes)
-{
-    int remainingBytes = m_data.size() - offset;
-    int bytesToRead = qMin(maxBytes, remainingBytes);
-    
-    if (bytesToRead <= 0) {
-        return QByteArray();
+    m_highlights.clear();
+    if (m_virtualHex) {
+        m_virtualHex->clearHighlights();
     }
-    
-    return m_data.mid(offset, bytesToRead);
 }
 
-void HexViewer::highlightOffset(qint64 offset)
-{
-    if (m_data.isEmpty()) return;
-    
-    // Calculate line number
-    int lineNumber = offset / m_bytesPerLine;
-    
-    // Get the text cursor and move to the line
-    QTextCursor cursor = m_hexText->textCursor();
-    cursor.movePosition(QTextCursor::Start);
-    cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, lineNumber);
-    
-    // Select the entire line
-    cursor.movePosition(QTextCursor::StartOfLine);
-    cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
-    
-    // Highlight the line
-    QTextCharFormat highlightFormat;
-    highlightFormat.setBackground(Qt::yellow);
-    cursor.mergeCharFormat(highlightFormat);
-    
-    // Set cursor position and ensure visibility
-    m_hexText->setTextCursor(cursor);
-    m_hexText->ensureCursorVisible();
-}
-
-// Private slots
 void HexViewer::onOffsetChanged(int value)
 {
-    goToOffset(value);
+    if (m_virtualHex && !m_data.isEmpty()) {
+        m_virtualHex->scrollToByteOffset(static_cast<qint64>(value), false);
+    }
+    updateSelectionOffsetStatus();
 }
 
 void HexViewer::onBytesPerLineChanged(int value)
 {
-    m_bytesPerLine = value;
+    m_bytesPerLine = qBound(8, value, 64);
     updateDisplay();
 }
 
 void HexViewer::onShowAsciiToggled(bool checked)
 {
     m_showAscii = checked;
-    updateDisplay();
+    if (m_virtualHex) {
+        m_virtualHex->setShowAscii(checked);
+    }
 }
 
 void HexViewer::onShowOffsetToggled(bool checked)
 {
     m_showOffset = checked;
-    updateDisplay();
-}
-
-void HexViewer::onCopySelection()
-{
-    QTextCursor cursor = m_hexText->textCursor();
-    if (cursor.hasSelection()) {
-        QString selectedText = cursor.selectedText();
-        QApplication::clipboard()->setText(selectedText);
-    } else {
-        // Copy all content if nothing is selected
-        QApplication::clipboard()->setText(m_hexText->toPlainText());
+    if (m_virtualHex) {
+        m_virtualHex->setShowOffset(checked);
     }
 }
 
-void HexViewer::onFindText()
+void HexViewer::onCopyHexSelection()
 {
-    // Create a custom search dialog for better hex search experience
-    QDialog searchDialog(this);
-    searchDialog.setWindowTitle(LANG("UI/hex_find_text"));
-    searchDialog.setModal(true);
-    searchDialog.resize(400, 200);
-    
-    QVBoxLayout *mainLayout = new QVBoxLayout(&searchDialog);
-    
-    // Search pattern input
-    QHBoxLayout *patternLayout = new QHBoxLayout();
-    QLabel *patternLabel = new QLabel(LANG("UI/hex_search_pattern"), &searchDialog);
-    QLineEdit *patternEdit = new QLineEdit(&searchDialog);
-    patternEdit->setPlaceholderText(LANG("UI/hex_search_placeholder"));
-    patternEdit->setMinimumWidth(250);
-    patternLayout->addWidget(patternLabel);
-    patternLayout->addWidget(patternEdit);
-    
-    // Search options
-    QHBoxLayout *optionsLayout = new QHBoxLayout();
-    QCheckBox *caseSensitiveCheck = new QCheckBox(LANG("UI/hex_search_case_sensitive"), &searchDialog);
-    QCheckBox *hexOnlyCheck = new QCheckBox(LANG("UI/hex_search_hex_only"), &searchDialog);
-    hexOnlyCheck->setChecked(true);
-    optionsLayout->addWidget(caseSensitiveCheck);
-    optionsLayout->addWidget(hexOnlyCheck);
-    
-    // Buttons
-    QHBoxLayout *buttonLayout = new QHBoxLayout();
-    QPushButton *findButton = new QPushButton(LANG("UI/hex_search_find"), &searchDialog);
-    QPushButton *cancelButton = new QPushButton(LANG("UI/hex_search_cancel"), &searchDialog);
-    findButton->setDefault(true);
-    buttonLayout->addWidget(findButton);
-    buttonLayout->addWidget(cancelButton);
-    
-    // Add layouts to main layout
-    mainLayout->addLayout(patternLayout);
-    mainLayout->addLayout(optionsLayout);
-    mainLayout->addLayout(buttonLayout);
-    
-    // Connect signals
-    connect(findButton, &QPushButton::clicked, &searchDialog, &QDialog::accept);
-    connect(cancelButton, &QPushButton::clicked, &searchDialog, &QDialog::reject);
-    
-    // Focus on pattern input
-    patternEdit->setFocus();
-    
-    if (searchDialog.exec() == QDialog::Accepted) {
-        QString pattern = patternEdit->text().trimmed();
-        if (!pattern.isEmpty()) {
-            bool caseSensitive = caseSensitiveCheck->isChecked();
-            bool hexOnly = hexOnlyCheck->isChecked();
-            
-            // Process the pattern based on options
-            if (hexOnly) {
-                // Remove spaces and common separators
-                pattern = pattern.simplified().remove(' ');
-            }
-            
-            // Perform the search
-            findHexPattern(pattern, caseSensitive);
-        }
-    }
-}
-
-void HexViewer::highlightRange(quint32 startOffset, quint32 length, const QColor &color)
-{
-    if (m_data.isEmpty() || startOffset >= m_data.size()) return;
-    
-    // Clear previous highlights first
-    clearHighlights();
-    
-    // Add highlight to the list with improved color
-    HighlightRange highlight;
-    highlight.startOffset = startOffset;
-    highlight.length = qMin(length, static_cast<quint32>(m_data.size() - startOffset));
-    
-    // Use a more visible color if the provided color is too transparent
-    QColor highlightColor = color;
-    if (highlightColor.alpha() < 150) {
-        highlightColor.setAlpha(200); // Make it more opaque
-    }
-    highlight.color = highlightColor;
-    
-    m_highlights.append(highlight);
-    
-    // Apply highlights to the existing content
-    applyHighlights();
-    
-    // Ensure the highlighted area is visible
-    goToOffset(startOffset);
-}
-
-void HexViewer::clearHighlights()
-{
-    m_highlights.clear();
-    // Don't call updateDisplay() as it clears the content
-    // Just clear the highlights and force a repaint
-    if (m_hexText) {
-        // Clear any existing formatting
-        QTextCursor cursor = m_hexText->textCursor();
-        cursor.select(QTextCursor::Document);
-        QTextCharFormat normalFormat;
-        normalFormat.setBackground(Qt::transparent);
-        normalFormat.setForeground(Qt::black);
-        normalFormat.setFontWeight(QFont::Normal);
-        cursor.mergeCharFormat(normalFormat);
-        
-        // Force repaint
-        m_hexText->viewport()->update();
-    }
-}
-
-void HexViewer::applyHighlights()
-{
-    if (m_highlights.isEmpty()) return;
-    
-    QTextCursor cursor = m_hexText->textCursor();
-    QString content = m_hexText->toPlainText();
-    
-    // Safety check - ensure we have content to highlight
-    if (content.isEmpty()) return;
-    
-    // Debug: Print highlight information
-    qDebug() << "Applying highlights:" << m_highlights.size() << "highlight(s)";
-    for (const HighlightRange &highlight : m_highlights) {
-        qDebug() << "Highlight: offset" << highlight.startOffset << "length" << highlight.length;
-    }
-    
-    for (const HighlightRange &highlight : m_highlights) {
-        // Calculate which lines this highlight spans
-        qint64 startLine = highlight.startOffset / m_bytesPerLine;
-        qint64 endLine = (highlight.startOffset + highlight.length - 1) / m_bytesPerLine;
-        
-        for (qint64 line = startLine; line <= endLine; ++line) {
-            // Find the line in the text
-            QStringList lines = content.split('\n');
-            if (line >= lines.size()) continue;
-            
-            QString currentLine = lines[line];
-            qint64 lineStartOffset = line * m_bytesPerLine;
-            
-            // Calculate highlight positions within this line
-            qint64 highlightStartInLine = qMax(static_cast<qint64>(highlight.startOffset), lineStartOffset);
-            qint64 highlightEndInLine = qMin(static_cast<qint64>(highlight.startOffset + highlight.length), lineStartOffset + m_bytesPerLine);
-            
-            if (highlightStartInLine < highlightEndInLine) {
-                // Calculate character positions for the hex portion
-                qint64 offsetInLine = highlightStartInLine - lineStartOffset;
-                qint64 lengthInLine = highlightEndInLine - highlightStartInLine;
-                
-                // Position after offset display (if enabled)
-                qint64 hexStartPos = m_showOffset ? 10 : 0; // "00000000  " format
-                
-                // Calculate character position accounting for extra spaces every 8 bytes
-                qint64 charStart = hexStartPos;
-                for (qint64 i = 0; i < offsetInLine; ++i) {
-                    charStart += 3; // Each byte takes 3 chars (XX )
-                    if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
-                        charStart += 1; // Extra space every 8 bytes
-                    }
-                }
-                
-                qint64 charEnd = charStart;
-                for (qint64 i = 0; i < lengthInLine; ++i) {
-                    charEnd += 3; // Each byte takes 3 chars (XX )
-                    if ((offsetInLine + i + 1) % 8 == 0 && (offsetInLine + i) < m_bytesPerLine - 1) {
-                        charEnd += 1; // Extra space every 8 bytes
-                    }
-                }
-                charEnd -= 1; // Don't include trailing space
-                
-                // Ensure we don't exceed line bounds
-                if (charStart < currentLine.length() && charEnd < currentLine.length()) {
-                    // Calculate absolute position in the entire text
-                    qint64 absoluteStart = 0;
-                    for (qint64 i = 0; i < line; ++i) {
-                        absoluteStart += lines[i].length() + 1; // +1 for newline
-                    }
-                    absoluteStart += charStart;
-                    
-                    qint64 absoluteEnd = absoluteStart + (charEnd - charStart + 1);
-                    
-                    // Apply highlight to hex portion
-                    cursor.setPosition(static_cast<int>(absoluteStart));
-                    cursor.setPosition(static_cast<int>(absoluteEnd), QTextCursor::KeepAnchor);
-                    
-                    QTextCharFormat highlightFormat;
-                    highlightFormat.setBackground(Qt::transparent); // No background color
-                    highlightFormat.setForeground(QColor(220, 20, 60)); // Crimson red text
-                    highlightFormat.setFontWeight(QFont::Bold); // Keep bold text
-                    // Make the format persistent
-                    highlightFormat.setProperty(QTextFormat::UserProperty, true);
-                    cursor.mergeCharFormat(highlightFormat);
-                    
-                    // Also highlight the ASCII portion if enabled
-                    if (m_showAscii) {
-                        // Calculate ASCII position (after hex portion + separator)
-                        qint64 asciiStartPos = hexStartPos + (m_bytesPerLine * 3) + 2; // +2 for "  " separator
-                        
-                        // Add extra spaces for the offsetInLine bytes
-                        for (qint64 i = 0; i < offsetInLine; ++i) {
-                            if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
-                                asciiStartPos += 1; // Extra space every 8 bytes
-                            }
-                        }
-                        
-                        qint64 asciiCharStart = asciiStartPos + offsetInLine;
-                        qint64 asciiCharEnd = asciiCharStart + lengthInLine - 1;
-                        
-                        if (asciiCharStart < currentLine.length() && asciiCharEnd < currentLine.length()) {
-                            // Calculate absolute position for ASCII
-                            qint64 asciiAbsoluteStart = 0;
-                            for (qint64 i = 0; i < line; ++i) {
-                                asciiAbsoluteStart += lines[i].length() + 1; // +1 for newline
-                            }
-                            asciiAbsoluteStart += asciiCharStart;
-                            
-                            qint64 asciiAbsoluteEnd = asciiAbsoluteStart + (asciiCharEnd - asciiCharStart + 1);
-                            
-                            // Apply highlight to ASCII portion
-                            cursor.setPosition(static_cast<int>(asciiAbsoluteStart));
-                            cursor.setPosition(static_cast<int>(asciiAbsoluteEnd), QTextCursor::KeepAnchor);
-                            cursor.mergeCharFormat(highlightFormat);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // Restore cursor position
-    m_hexText->setTextCursor(cursor);
-}
-
-// ============================================================================
-// Enhanced Hexadecimal Search Implementation
-// ============================================================================
-
-void HexViewer::findHexPattern(const QString &pattern, bool caseSensitive)
-{
-    if (m_data.isEmpty() || pattern.isEmpty()) return;
-    
-    // Parse the hex pattern
-    QByteArray hexPattern = parseHexPattern(pattern);
-    if (hexPattern.isEmpty()) {
-        QMessageBox::warning(this, LANG("UI/hex_search_invalid_pattern"), 
-            LANG("UI/hex_search_invalid_message"));
+    qint64 a = 0;
+    qint64 b = 0;
+    if (!selectedFileByteRange(a, b)) {
         return;
     }
-    
-    // Store search parameters
-    m_lastSearchPattern = hexPattern;
-    m_lastSearchCaseSensitive = caseSensitive;
-    
-    // Find all occurrences
-    m_searchResults = findPatternInData(hexPattern, caseSensitive);
-    m_currentSearchIndex = -1;
-    
-    if (m_searchResults.isEmpty()) {
-        QMessageBox::information(this, LANG("UI/hex_search_no_results"), 
-            LANG_PARAM("UI/hex_search_no_matches", "pattern", pattern));
-        clearSearchResults();
+    QApplication::clipboard()->setText(clipboardHexForRange(a, b));
+}
+
+void HexViewer::onCopyAsciiSelection()
+{
+    qint64 a = 0;
+    qint64 b = 0;
+    if (!selectedFileByteRange(a, b)) {
         return;
     }
-    
-    // Show results count
-    QMap<QString, QString> params;
-    params["count"] = QString::number(m_searchResults.size());
-    params["pattern"] = pattern;
-    QMessageBox::information(this, LANG("UI/hex_search_no_results"), 
-        LANG_PARAMS("UI/hex_search_results_found", params));
-    
-    // Enable navigation buttons
-    m_findNextButton->setEnabled(true);
-    m_findPrevButton->setEnabled(true);
-    
-    // Highlight all search results
-    highlightSearchResults();
-    
-    // Go to first result
-    if (!m_searchResults.isEmpty()) {
-        goToSearchResult(0);
-    }
+    QApplication::clipboard()->setText(clipboardAsciiForRange(a, b));
 }
 
-QByteArray HexViewer::parseHexPattern(const QString &pattern)
+bool HexViewer::selectedFileByteRange(qint64 &start, qint64 &end) const
 {
-    QString cleanPattern = pattern.trimmed();
-    
-    // Remove common prefixes and separators
-    cleanPattern = cleanPattern.remove("0x", Qt::CaseInsensitive);
-    cleanPattern = cleanPattern.remove("h", Qt::CaseInsensitive);
-    cleanPattern = cleanPattern.remove("\\x");
-    cleanPattern = cleanPattern.remove(" ");
-    cleanPattern = cleanPattern.remove("\t");
-    cleanPattern = cleanPattern.remove(",");
-    cleanPattern = cleanPattern.remove(";");
-    
-    // Validate hex pattern
-    if (cleanPattern.isEmpty() || cleanPattern.length() % 2 != 0) {
-        return QByteArray();
+    if (!m_virtualHex || m_data.isEmpty()) {
+        return false;
     }
-    
-    // Convert to byte array
-    QByteArray result;
-    for (int i = 0; i < cleanPattern.length(); i += 2) {
-        QString byteStr = cleanPattern.mid(i, 2);
-        bool ok;
-        char byte = static_cast<char>(byteStr.toInt(&ok, 16));
-        if (!ok) {
-            return QByteArray(); // Invalid hex
+    if (!m_virtualHex->hasSelection()) {
+        // No click in hex yet: use "Go to offset" as the implicit caret (avoids bogus byte 0).
+        if (!m_offsetSpinBox) {
+            return false;
         }
-        result.append(byte);
-    }
-    
-    return result;
-}
-
-QList<HexViewer::SearchResult> HexViewer::findPatternInData(const QByteArray &pattern, bool caseSensitive)
-{
-    QList<SearchResult> results;
-    if (pattern.isEmpty() || m_data.isEmpty()) return results;
-    
-    QByteArray searchData = m_data;
-    QByteArray searchPattern = pattern;
-    
-    if (!caseSensitive) {
-        searchData = searchData.toLower();
-        searchPattern = searchPattern.toLower();
-    }
-    
-    int offset = 0;
-    while (true) {
-        int index = searchData.indexOf(searchPattern, offset);
-        if (index == -1) break;
-        
-        SearchResult result;
-        result.offset = index;
-        result.length = pattern.size();
-        result.pattern = pattern;
-        results.append(result);
-        
-        offset = index + 1; // Continue searching from next position
-    }
-    
-    return results;
-}
-
-void HexViewer::findNext()
-{
-    if (m_searchResults.isEmpty()) return;
-    
-    m_currentSearchIndex = (m_currentSearchIndex + 1) % m_searchResults.size();
-    goToSearchResult(m_currentSearchIndex);
-}
-
-void HexViewer::findPrevious()
-{
-    if (m_searchResults.isEmpty()) return;
-    
-    m_currentSearchIndex = (m_currentSearchIndex - 1 + m_searchResults.size()) % m_searchResults.size();
-    goToSearchResult(m_currentSearchIndex);
-}
-
-void HexViewer::clearSearchResults()
-{
-    m_searchResults.clear();
-    m_currentSearchIndex = -1;
-    m_lastSearchPattern.clear();
-    
-    // Disable navigation buttons
-    m_findNextButton->setEnabled(false);
-    m_findPrevButton->setEnabled(false);
-    
-    // Clear search highlights
-    clearHighlights();
-}
-
-void HexViewer::highlightSearchResults()
-{
-    if (m_searchResults.isEmpty()) return;
-    
-    // Clear previous highlights
-    clearHighlights();
-    
-    // Add highlights for all search results
-    for (const SearchResult &result : m_searchResults) {
-        QColor searchColor(255, 0, 255, 150); // Magenta with transparency
-        highlightRange(static_cast<quint32>(result.offset), 
-                      static_cast<quint32>(result.length), 
-                      searchColor);
-    }
-}
-
-void HexViewer::goToSearchResult(int index)
-{
-    if (index < 0 || index >= m_searchResults.size()) return;
-    
-    const SearchResult &result = m_searchResults[index];
-    m_currentSearchIndex = index;
-    
-    // Go to the offset
-    goToOffset(result.offset);
-    
-    // Update status
-    QMap<QString, QString> params;
-    params["current"] = QString::number(index + 1);
-    params["total"] = QString::number(m_searchResults.size());
-    params["offset"] = QString::number(result.offset, 16);
-    QString status = LANG_PARAMS("UI/hex_search_result_status", params);
-    
-    // Find status label and update it using object name
-    QLabel *statusLabel = findChild<QLabel*>("hexViewerStatusLabel");
-    if (statusLabel) {
-        statusLabel->setText(status);
-    }
-}
-
-void HexViewer::onHexTextClicked()
-{
-    // This method is called when the hex text is clicked
-    // The actual click handling is done in the eventFilter
-}
-
-bool HexViewer::eventFilter(QObject *obj, QEvent *event)
-{
-    if (obj == m_hexText && event->type() == QEvent::MouseButtonPress) {
-        QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
-        if (mouseEvent->button() == Qt::LeftButton) {
-            qint64 offset = calculateOffsetFromPosition(mouseEvent->pos());
-            if (offset >= 0 && offset < m_data.size()) {
-                // Emit signal with clicked byte offset and length (1 byte for single click)
-                emit byteClicked(offset, 1);
-                
-                // Highlight the clicked byte
-                clearHighlights();
-                highlightRange(static_cast<quint32>(offset), 1, Qt::transparent); // Use transparent background
-            }
+        const qint64 off = static_cast<qint64>(m_offsetSpinBox->value());
+        if (off < 0 || off >= m_data.size()) {
+            return false;
         }
+        start = end = off;
+        return true;
     }
-    
-    // Call the parent event filter
-    return QWidget::eventFilter(obj, event);
+    start = m_virtualHex->selectionStart();
+    end = m_virtualHex->selectionEnd();
+    if (start > end) {
+        const qint64 t = start;
+        start = end;
+        end = t;
+    }
+    if (start < 0 || start >= m_data.size()) {
+        return false;
+    }
+    end = qMin(end, static_cast<qint64>(m_data.size() - 1));
+    return true;
 }
 
-qint64 HexViewer::calculateOffsetFromPosition(const QPoint &pos)
+
+QString HexViewer::clipboardHexForRange(qint64 start, qint64 end) const
 {
-    if (!m_hexText || m_data.isEmpty()) {
-        return -1;
+    if (!m_virtualHex) {
+        return {};
     }
-    
-    // Get the text cursor at the clicked position
-    QTextCursor cursor = m_hexText->cursorForPosition(pos);
-    int cursorPos = cursor.position();
-    
-    // Calculate the line number from cursor position
-    QString text = m_hexText->toPlainText();
-    int lineStart = 0;
-    int lineNumber = 0;
-    
-    for (int i = 0; i < cursorPos && i < text.length(); ++i) {
-        if (text[i] == '\n') {
-            lineStart = i + 1;
-            lineNumber++;
+    return m_virtualHex->hexClipboardText(start, end);
+}
+
+QString HexViewer::clipboardAsciiForRange(qint64 start, qint64 end) const
+{
+    if (!m_virtualHex) {
+        return {};
+    }
+    return m_virtualHex->asciiClipboardText(start, end);
+}
+
+void HexViewer::updateSelectionOffsetStatus()
+{
+    if (!m_statusLabel || m_data.isEmpty() || !m_virtualHex) {
+        return;
+    }
+    if (!m_virtualHex->hasSelection()) {
+        const qint64 off = m_offsetSpinBox ? static_cast<qint64>(m_offsetSpinBox->value()) : 0LL;
+        if (off >= 0 && off < m_data.size()) {
+            QMap<QString, QString> p;
+            p[QStringLiteral("offset")] = PEUtils::formatHexWidth(static_cast<quint64>(off), 8);
+            m_statusLabel->setText(LANG_PARAMS(QStringLiteral("UI/hex_status_at_offset"), p));
+        } else {
+            m_statusLabel->clear();
         }
+        return;
     }
-    
-    // Calculate offset from line number
-    qint64 offset = lineNumber * m_bytesPerLine;
-    
-    // Calculate position within the line
-    int posInLine = cursorPos - lineStart;
-    
-    // Account for offset display if enabled
-    if (m_showOffset) {
-        // Skip offset part (8 characters + space)
-        posInLine -= 9;
+    qint64 start = m_virtualHex->selectionStart();
+    qint64 end = m_virtualHex->selectionEnd();
+    if (start > end) {
+        const qint64 t = start;
+        start = end;
+        end = t;
     }
-    
-    // Calculate byte position within the line
-    // Each byte takes 3 characters (2 hex + space), but there are extra spaces every 8 bytes
-    int bytePos = 0;
-    int charCount = 0;
-    for (int i = 0; i < m_bytesPerLine && charCount < posInLine; ++i) {
-        charCount += 3; // Each byte takes 3 chars (XX )
-        if ((i + 1) % 8 == 0 && i < m_bytesPerLine - 1) {
-            charCount += 1; // Extra space every 8 bytes
-        }
-        if (charCount <= posInLine) {
-            bytePos = i + 1;
-        }
+    end = qMin(end, static_cast<qint64>(m_data.size() - 1));
+    if (start == end) {
+        QMap<QString, QString> p;
+        p[QStringLiteral("offset")] = PEUtils::formatHexWidth(static_cast<quint64>(start), 8);
+        m_statusLabel->setText(LANG_PARAMS(QStringLiteral("UI/hex_status_at_offset"), p));
+        return;
     }
-    
-    // Final offset
-    qint64 finalOffset = offset + bytePos;
-    
-    // Ensure offset is within bounds
-    if (finalOffset >= 0 && finalOffset < m_data.size()) {
-        return finalOffset;
-    }
-    
-    return -1;
+    const qint64 count = end - start + 1;
+    QMap<QString, QString> p;
+    p[QStringLiteral("start")] = PEUtils::formatHexWidth(static_cast<quint64>(start), 8);
+    p[QStringLiteral("end")] = PEUtils::formatHexWidth(static_cast<quint64>(end), 8);
+    p[QStringLiteral("count")] = QString::number(count);
+    m_statusLabel->setText(LANG_PARAMS(QStringLiteral("UI/hex_selection_range"), p));
 }
 
 void HexViewer::focusInEvent(QFocusEvent *event)
 {
-    // When the hex viewer gains focus, reapply highlights to ensure they're visible
-    // But only if we're not in the middle of processing a click event
-    if (!m_highlights.isEmpty()) {
-        // Use a timer to avoid conflicts with click event processing
-        QTimer::singleShot(10, this, [this]() {
-            if (!m_highlights.isEmpty()) {
-                applyHighlights();
-            }
-        });
-    }
-    
-    // Call the parent implementation
     QWidget::focusInEvent(event);
 }
 
 void HexViewer::focusOutEvent(QFocusEvent *event)
 {
-    // When losing focus, preserve the highlights by ensuring they stay applied
-    // This prevents the QTextEdit from clearing our custom formatting
-    if (!m_highlights.isEmpty()) {
-        // Force preserve highlights when losing focus
-        QTimer::singleShot(5, this, [this]() {
-            if (!m_highlights.isEmpty()) {
-                applyHighlights();
-            }
-        });
-    }
-    
-    // Call the parent implementation
     QWidget::focusOutEvent(event);
 }
 
 void HexViewer::updateLanguage()
 {
-    // Update button texts
+    if (m_offsetSpinBox) {
+        QSignalBlocker blockOffset(m_offsetSpinBox);
+        m_offsetSpinBox->setPrefix(LANG("UI/hex_prefix"));
+    }
     if (m_showOffsetButton) {
         m_showOffsetButton->setText(LANG("UI/hex_show_offset"));
     }
     if (m_showAsciiButton) {
         m_showAsciiButton->setText(LANG("UI/hex_show_ascii"));
     }
-    if (m_copyButton) {
-        m_copyButton->setText(LANG("UI/button_copy_hex"));
+    if (m_copyHexButton) {
+        m_copyHexButton->setText(LANG("UI/hex_copy_hex"));
+        m_copyHexButton->setToolTip(LANG("UI/hex_copy_hex_tooltip"));
+    }
+    if (m_copyAsciiButton) {
+        m_copyAsciiButton->setText(LANG("UI/hex_copy_ascii"));
+        m_copyAsciiButton->setToolTip(LANG("UI/hex_copy_ascii_tooltip"));
     }
     if (m_findButton) {
         m_findButton->setText(LANG("UI/button_find"));
@@ -979,12 +508,298 @@ void HexViewer::updateLanguage()
     if (m_findPrevButton) {
         m_findPrevButton->setToolTip(LANG("UI/hex_search_find_previous"));
     }
-    
-    // Update labels using stored member variables
     if (m_offsetLabel) {
         m_offsetLabel->setText(LANG("UI/hex_go_to_offset"));
     }
     if (m_bytesLabel) {
         m_bytesLabel->setText(LANG("UI/hex_bytes_per_line"));
+    }
+    if (m_virtualHex) {
+        m_virtualHex->setHeaderLabels(LANG("UI/hex_header_offset_label"), LANG("UI/hex_header_decoded_label"));
+    }
+    applyHexFont();
+    if (!m_data.isEmpty()) {
+        updateDisplay();
+    } else {
+        updateSelectionOffsetStatus();
+    }
+}
+
+// --- Search ---
+
+void HexViewer::findHexPattern(const QString &pattern, bool caseSensitive)
+{
+    if (m_data.isEmpty() || pattern.isEmpty()) {
+        return;
+    }
+    const QByteArray hexPattern = parseHexPattern(pattern);
+    if (hexPattern.isEmpty()) {
+        QMessageBox::warning(this,
+                             hexUiString(QStringLiteral("UI/hex_search_invalid_pattern"), QStringLiteral("Invalid Pattern")),
+                             hexUiString(QStringLiteral("UI/hex_search_invalid_message"),
+                                         QStringLiteral("Invalid hexadecimal pattern. Please use format like: 90, 0x4D5A, or 90 90 90")));
+        return;
+    }
+    m_lastSearchPattern = hexPattern;
+    m_lastSearchCaseSensitive = caseSensitive;
+    m_searchResults = findPatternInData(hexPattern, caseSensitive);
+    m_currentSearchIndex = -1;
+
+    if (m_searchResults.isEmpty()) {
+        QMessageBox::information(
+            this,
+            hexUiString(QStringLiteral("UI/hex_search_no_results"), QStringLiteral("Search Results")),
+            LanguageManager::getInstance().getString(QStringLiteral("UI/hex_search_no_matches"),
+                                                     QMap<QString, QString>{{QStringLiteral("pattern"), pattern}},
+                                                     QStringLiteral("No matches found for pattern: {pattern}")));
+        clearSearchResults();
+        return;
+    }
+
+    QMap<QString, QString> params;
+    params[QStringLiteral("count")] = QString::number(m_searchResults.size());
+    params[QStringLiteral("pattern")] = pattern;
+    QMessageBox::information(
+        this,
+        hexUiString(QStringLiteral("UI/hex_search_no_results"), QStringLiteral("Search Results")),
+        LanguageManager::getInstance().getString(QStringLiteral("UI/hex_search_results_found"), params,
+                                                 QStringLiteral("Found {count} match(es) for pattern: {pattern}")));
+
+    m_findNextButton->setEnabled(true);
+    m_findPrevButton->setEnabled(true);
+    highlightSearchResults();
+    goToSearchResult(0);
+}
+
+void HexViewer::findTextPattern(const QString &text, bool caseSensitive)
+{
+    if (m_data.isEmpty()) {
+        return;
+    }
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        QMessageBox::warning(this,
+                             hexUiString(QStringLiteral("UI/hex_search_invalid_pattern"), QStringLiteral("Invalid Pattern")),
+                             hexUiString(QStringLiteral("UI/hex_search_pattern_empty"),
+                                         QStringLiteral("Please enter a search pattern.")));
+        return;
+    }
+    const QByteArray needle = trimmed.toUtf8();
+    m_lastSearchPattern = needle;
+    m_lastSearchCaseSensitive = caseSensitive;
+    m_searchResults = findPatternInData(needle, caseSensitive);
+    m_currentSearchIndex = -1;
+
+    if (m_searchResults.isEmpty()) {
+        QMessageBox::information(
+            this,
+            hexUiString(QStringLiteral("UI/hex_search_no_results"), QStringLiteral("Search Results")),
+            LanguageManager::getInstance().getString(QStringLiteral("UI/hex_search_no_matches"),
+                                                     QMap<QString, QString>{{QStringLiteral("pattern"), trimmed}},
+                                                     QStringLiteral("No matches found for pattern: {pattern}")));
+        clearSearchResults();
+        return;
+    }
+
+    QMap<QString, QString> params;
+    params[QStringLiteral("count")] = QString::number(m_searchResults.size());
+    params[QStringLiteral("pattern")] = trimmed;
+    QMessageBox::information(
+        this,
+        hexUiString(QStringLiteral("UI/hex_search_no_results"), QStringLiteral("Search Results")),
+        LanguageManager::getInstance().getString(QStringLiteral("UI/hex_search_results_found"), params,
+                                                 QStringLiteral("Found {count} match(es) for pattern: {pattern}")));
+
+    m_findNextButton->setEnabled(true);
+    m_findPrevButton->setEnabled(true);
+    highlightSearchResults();
+    goToSearchResult(0);
+}
+
+QByteArray HexViewer::parseHexPattern(const QString &pattern)
+{
+    QString cleanPattern = pattern.trimmed();
+    cleanPattern = cleanPattern.remove("0x", Qt::CaseInsensitive);
+    cleanPattern = cleanPattern.remove("h", Qt::CaseInsensitive);
+    cleanPattern = cleanPattern.remove("\\x");
+    cleanPattern = cleanPattern.remove(" ");
+    cleanPattern = cleanPattern.remove("\t");
+    cleanPattern = cleanPattern.remove(",");
+    cleanPattern = cleanPattern.remove(";");
+    if (cleanPattern.isEmpty() || cleanPattern.length() % 2 != 0) {
+        return QByteArray();
+    }
+    QByteArray result;
+    for (int i = 0; i < cleanPattern.length(); i += 2) {
+        const QString byteStr = cleanPattern.mid(i, 2);
+        bool ok = false;
+        const char byte = static_cast<char>(byteStr.toInt(&ok, 16));
+        if (!ok) {
+            return QByteArray();
+        }
+        result.append(byte);
+    }
+    return result;
+}
+
+QList<HexViewer::SearchResult> HexViewer::findPatternInData(const QByteArray &pattern, bool caseSensitive)
+{
+    QList<SearchResult> results;
+    if (pattern.isEmpty() || m_data.isEmpty()) {
+        return results;
+    }
+    QByteArray searchData = m_data;
+    QByteArray searchPattern = pattern;
+    if (!caseSensitive) {
+        searchData = searchData.toLower();
+        searchPattern = searchPattern.toLower();
+    }
+    int offset = 0;
+    while (true) {
+        const int index = searchData.indexOf(searchPattern, offset);
+        if (index == -1) {
+            break;
+        }
+        SearchResult result;
+        result.offset = index;
+        result.length = pattern.size();
+        result.pattern = pattern;
+        results.append(result);
+        offset = index + 1;
+    }
+    return results;
+}
+
+void HexViewer::findNext()
+{
+    if (m_searchResults.isEmpty()) {
+        return;
+    }
+    m_currentSearchIndex = (m_currentSearchIndex + 1) % m_searchResults.size();
+    goToSearchResult(m_currentSearchIndex);
+}
+
+void HexViewer::findPrevious()
+{
+    if (m_searchResults.isEmpty()) {
+        return;
+    }
+    m_currentSearchIndex = (m_currentSearchIndex - 1 + m_searchResults.size()) % m_searchResults.size();
+    goToSearchResult(m_currentSearchIndex);
+}
+
+void HexViewer::clearSearchResults(bool rebuildHex)
+{
+    Q_UNUSED(rebuildHex);
+    m_searchResults.clear();
+    m_currentSearchIndex = -1;
+    m_lastSearchPattern.clear();
+    m_findNextButton->setEnabled(false);
+    m_findPrevButton->setEnabled(false);
+    if (rebuildHex) {
+        clearHighlights();
+    } else {
+        m_highlights.clear();
+        syncHighlightsToWidget();
+    }
+}
+
+void HexViewer::highlightSearchResults()
+{
+    if (m_searchResults.isEmpty()) {
+        return;
+    }
+    m_highlights.clear();
+    const QColor searchColor(255, 0, 255, 150);
+    for (const SearchResult &result : m_searchResults) {
+        if (result.offset < 0 || result.offset >= m_data.size()) {
+            continue;
+        }
+        HighlightRange h;
+        h.startOffset = static_cast<quint32>(result.offset);
+        h.length = static_cast<quint32>(qMin<qint64>(result.length, m_data.size() - result.offset));
+        h.color = searchColor;
+        m_highlights.append(h);
+    }
+    syncHighlightsToWidget();
+}
+
+void HexViewer::goToSearchResult(int index)
+{
+    if (index < 0 || index >= m_searchResults.size()) {
+        return;
+    }
+    const SearchResult &result = m_searchResults[index];
+    m_currentSearchIndex = index;
+    goToOffset(result.offset);
+
+    QMap<QString, QString> params;
+    params[QStringLiteral("current")] = QString::number(index + 1);
+    params[QStringLiteral("total")] = QString::number(m_searchResults.size());
+    params[QStringLiteral("offset")] = QString::number(result.offset, 16);
+    if (m_statusLabel) {
+        m_statusLabel->setText(LANG_PARAMS("UI/hex_search_result_status", params));
+    }
+}
+
+void HexViewer::onFindText()
+{
+    QDialog searchDialog(this);
+    searchDialog.setWindowTitle(hexUiString(QStringLiteral("UI/hex_find_text"), QStringLiteral("Find Text")));
+    searchDialog.setModal(true);
+    searchDialog.resize(400, 200);
+
+    auto *mainLayout = new QVBoxLayout(&searchDialog);
+    auto *patternLayout = new QHBoxLayout();
+    auto *patternLabel = new QLabel(hexUiString(QStringLiteral("UI/hex_search_pattern"), QStringLiteral("Search Pattern:")), &searchDialog);
+    auto *patternEdit = new QLineEdit(&searchDialog);
+    patternEdit->setMinimumWidth(250);
+    patternLayout->addWidget(patternLabel);
+    patternLayout->addWidget(patternEdit);
+
+    auto *optionsLayout = new QHBoxLayout();
+    auto *caseSensitiveCheck = new QCheckBox(hexUiString(QStringLiteral("UI/hex_search_case_sensitive"), QStringLiteral("Case Sensitive")), &searchDialog);
+    auto *hexOnlyCheck = new QCheckBox(hexUiString(QStringLiteral("UI/hex_search_hex_only"), QStringLiteral("Hex Only (no spaces)")), &searchDialog);
+    hexOnlyCheck->setChecked(true);
+    optionsLayout->addWidget(caseSensitiveCheck);
+    optionsLayout->addWidget(hexOnlyCheck);
+
+    const auto refreshPlaceholder = [&]() {
+        if (hexOnlyCheck->isChecked()) {
+            patternEdit->setPlaceholderText(hexUiString(QStringLiteral("UI/hex_search_placeholder"),
+                                                        QStringLiteral("Enter hex pattern (e.g., 90, 0x4D5A, 90 90 90)")));
+        } else {
+            patternEdit->setPlaceholderText(hexUiString(QStringLiteral("UI/hex_search_placeholder_text"),
+                                                        QStringLiteral("Enter text (searched as UTF-8 bytes), e.g. KERNEL32")));
+        }
+    };
+    QObject::connect(hexOnlyCheck, &QCheckBox::toggled, &searchDialog, [refreshPlaceholder](bool) { refreshPlaceholder(); });
+    refreshPlaceholder();
+
+    auto *buttonLayout = new QHBoxLayout();
+    auto *findButton = new QPushButton(hexUiString(QStringLiteral("UI/hex_search_find"), QStringLiteral("Find")), &searchDialog);
+    auto *cancelButton = new QPushButton(hexUiString(QStringLiteral("UI/hex_search_cancel"), QStringLiteral("Cancel")), &searchDialog);
+    findButton->setDefault(true);
+    buttonLayout->addWidget(findButton);
+    buttonLayout->addWidget(cancelButton);
+
+    mainLayout->addLayout(patternLayout);
+    mainLayout->addLayout(optionsLayout);
+    mainLayout->addLayout(buttonLayout);
+
+    connect(findButton, &QPushButton::clicked, &searchDialog, &QDialog::accept);
+    connect(cancelButton, &QPushButton::clicked, &searchDialog, &QDialog::reject);
+    patternEdit->setFocus();
+
+    if (searchDialog.exec() == QDialog::Accepted) {
+        const QString pattern = patternEdit->text();
+        if (pattern.trimmed().isEmpty()) {
+            return;
+        }
+        if (hexOnlyCheck->isChecked()) {
+            findHexPattern(pattern, caseSensitiveCheck->isChecked());
+        } else {
+            findTextPattern(pattern, caseSensitiveCheck->isChecked());
+        }
     }
 }

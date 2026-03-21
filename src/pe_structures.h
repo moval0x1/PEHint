@@ -589,6 +589,25 @@ struct IMAGE_RUNTIME_FUNCTION_ENTRY_X64 {
     quint32 UnwindInfoAddress;
 };
 
+// ============================================================================
+// .NET / CLR COM+ descriptor (data directory index 14)
+// ============================================================================
+
+struct IMAGE_COR20_HEADER {
+    quint32 cb; // Bytes of this structure (includes trailing fields present in image)
+    quint16 MajorRuntimeVersion;
+    quint16 MinorRuntimeVersion;
+    IMAGE_DATA_DIRECTORY MetaData;
+    quint32 Flags;
+    quint32 EntryPointToken; // ILONLY: metadata token; else RVA of entry stub
+    IMAGE_DATA_DIRECTORY Resources;
+    IMAGE_DATA_DIRECTORY StrongNameSignature;
+    IMAGE_DATA_DIRECTORY CodeManagerTable;
+    IMAGE_DATA_DIRECTORY VTableFixups;
+    IMAGE_DATA_DIRECTORY ExportAddressTableJumps;
+    IMAGE_DATA_DIRECTORY ManagedNativeHeader;
+};
+
 #pragma pack(pop)
 
 #endif // PE_STRUCTURES_H
