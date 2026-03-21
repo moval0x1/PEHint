@@ -412,9 +412,11 @@ QString SdkApiMarkdownReader::defaultContentRoot()
         qCWarning(lcSdkApi) << "PEHINT_SDK_API_CONTENT is set but not found:" << env;
     }
 
-    if (QCoreApplication::instance()) {
+    const QString appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
+    if (!appDir.isEmpty()) {
+        // Release layout: PEHint.exe and third_party/ in the same folder (see create_release_package.ps1).
         const QString fromExe = findContentRootWalkingUp(
-            QCoreApplication::applicationDirPath(),
+            appDir,
             {QStringLiteral("third_party/sdk-api/sdk-api-src/content"),
              QStringLiteral("third_party/sdk-api/docs/sdk-api-src/content")});
         if (!fromExe.isEmpty()) {
@@ -422,18 +424,7 @@ QString SdkApiMarkdownReader::defaultContentRoot()
             return fromExe;
         }
     }
-    {
-        const QString fromCwd = findContentRootWalkingUp(
-            QDir::currentPath(),
-            {QStringLiteral("third_party/sdk-api/sdk-api-src/content"),
-             QStringLiteral("third_party/sdk-api/docs/sdk-api-src/content")});
-        if (!fromCwd.isEmpty()) {
-            qCDebug(lcSdkApi) << "sdk-api content (from cwd walk):" << fromCwd;
-            return fromCwd;
-        }
-    }
 
-    const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList relPaths = {
         QStringLiteral("sdk-api/docs/sdk-api-src/content"),
         QStringLiteral("sdk-api/sdk-api-src/content"),
@@ -444,11 +435,13 @@ QString SdkApiMarkdownReader::defaultContentRoot()
         QStringLiteral("../../../third_party/sdk-api/docs/sdk-api-src/content"),
         QStringLiteral("../../../third_party/sdk-api/sdk-api-src/content"),
     };
-    for (const QString &rel : relPaths) {
-        const QString c = QDir(appDir).absoluteFilePath(rel);
-        if (QDir(c).exists()) {
-            qCDebug(lcSdkApi) << "sdk-api content (relative to exe):" << c;
-            return QDir(c).absolutePath();
+    if (!appDir.isEmpty()) {
+        for (const QString &rel : relPaths) {
+            const QString c = QDir(appDir).absoluteFilePath(rel);
+            if (QDir(c).exists()) {
+                qCDebug(lcSdkApi) << "sdk-api content (relative to exe):" << c;
+                return QDir(c).absolutePath();
+            }
         }
     }
     qCDebug(lcSdkApi) << "sdk-api content folder not found; set PEHINT_SDK_API_CONTENT or clone under third_party/sdk-api";
@@ -470,32 +463,27 @@ QString SdkApiMarkdownReader::defaultConsoleDocsRoot()
     const QStringList tails = {QStringLiteral("third_party/console-docs/docs"),
                                QStringLiteral("third_party/Console-Docs/docs")};
 
-    if (QCoreApplication::instance()) {
-        const QString fromExe = findContentRootWalkingUp(QCoreApplication::applicationDirPath(), tails);
+    const QString appDirConsole = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
+    if (!appDirConsole.isEmpty()) {
+        const QString fromExe = findContentRootWalkingUp(appDirConsole, tails);
         if (!fromExe.isEmpty()) {
             qCDebug(lcSdkApi) << "Console-Docs (exe walk):" << fromExe;
             return fromExe;
         }
     }
-    {
-        const QString fromCwd = findContentRootWalkingUp(QDir::currentPath(), tails);
-        if (!fromCwd.isEmpty()) {
-            qCDebug(lcSdkApi) << "Console-Docs (cwd walk):" << fromCwd;
-            return fromCwd;
-        }
-    }
 
-    const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList relPaths = {
         QStringLiteral("../third_party/console-docs/docs"),
         QStringLiteral("../third_party/Console-Docs/docs"),
         QStringLiteral("../../third_party/console-docs/docs"),
         QStringLiteral("../../third_party/Console-Docs/docs"),
     };
-    for (const QString &rel : relPaths) {
-        const QString c = QDir(appDir).absoluteFilePath(rel);
-        if (QDir(c).exists()) {
-            return QDir(c).absolutePath();
+    if (!appDirConsole.isEmpty()) {
+        for (const QString &rel : relPaths) {
+            const QString c = QDir(appDirConsole).absoluteFilePath(rel);
+            if (QDir(c).exists()) {
+                return QDir(c).absolutePath();
+            }
         }
     }
     qCDebug(lcSdkApi) << "Console-Docs folder not found; optional clone MicrosoftDocs/Console-Docs (docs/) or set PEHINT_WINDOWS_CONSOLE_DOCS";

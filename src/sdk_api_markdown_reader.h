@@ -51,7 +51,7 @@ public:
     /** Best-effort: build ImportApiHint from local markdown when repos are present. */
     ImportApiHint hintForImport(const QString &moduleDll, const QString &functionName) const;
 
-    /** Probe common locations (env, next to exe, repo third_party). */
+    /** Probe common locations: env override, then third_party next to the executable (and parents for dev layouts). */
     static QString defaultContentRoot();
     static QString defaultConsoleDocsRoot();
 

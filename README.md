@@ -46,7 +46,7 @@ The **Imports** tab can show curated API summaries (signature, parameters, links
 - **MicrosoftDocs/sdk-api** — Win32 API reference (`nf-*.md` under the repo `content` tree); override with `PEHINT_SDK_API_CONTENT` if needed.
 - **MicrosoftDocs/Console-Docs** (optional) — console APIs not covered by sdk-api; override with `PEHINT_WINDOWS_CONSOLE_DOCS`.
 
-PEHint discovers `third_party/sdk-api` and `third_party/console-docs` by walking up from the executable and current working directory. Without these clones, the Imports panel still lists DLLs and symbols, but the API summary area shows a short “no summary” message instead of topic text.
+PEHint discovers `third_party/sdk-api` and `third_party/console-docs` next to the executable - same folder as `PEHint.exe`. Without these clones, the Imports panel still lists DLLs and symbols, but the API summary area shows a short “no summary” message instead of topic text.
 
 ## References (PE format & Windows)
 

@@ -382,6 +382,22 @@ if (Test-Path "README.md") {
 }
 
 Write-Host ""
+Write-Host "Copying third_party (SDK / bundled docs)..." -ForegroundColor Yellow
+
+if (Test-Path "third_party") {
+    Write-Host "Copying third_party directory..." -ForegroundColor Green
+    Copy-Item "third_party" $PackageDir -Recurse -Force
+    if (Test-Path "$PackageDir\third_party") {
+        $tpFiles = Get-ChildItem -Path "$PackageDir\third_party" -Recurse -File -ErrorAction SilentlyContinue
+        Write-Host "[OK] third_party copied successfully ($($tpFiles.Count) files)" -ForegroundColor Green
+    } else {
+        Write-Host "[FAIL] third_party copy failed!" -ForegroundColor Red
+    }
+} else {
+    Write-Host "WARNING: third_party directory not found (init submodules if you use them: git submodule update --init --recursive)" -ForegroundColor Yellow
+}
+
+Write-Host ""
 Write-Host "Creating version info file..." -ForegroundColor Yellow
 
 # Create version info
@@ -440,6 +456,12 @@ if (Test-Path "$PackageDir\docs") {
     Write-Host "[OK] docs found (optional)" -ForegroundColor Green
 } else {
     Write-Host "INFO: docs not present (optional)" -ForegroundColor Gray
+}
+
+if (Test-Path "$PackageDir\third_party") {
+    Write-Host "[OK] third_party found (optional)" -ForegroundColor Green
+} else {
+    Write-Host "INFO: third_party not present (optional; required if the app loads bundled SDK/docs from disk)" -ForegroundColor Gray
 }
 
 Write-Host ""
