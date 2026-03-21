@@ -12,6 +12,18 @@
 
 PEHint is a visual PE file analyzer for analysts, reverse engineers, and students who need quick insight into Windows executables. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports**, **Exports**, **Dependencies**, and **Strings** (filters, async extraction, export to file). Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the app still lists modules and symbols normally.
 
+## Key Features
+
+- Complete header coverage: DOS header, NT headers, optional header, sections, and all 16 data directories
+- Contextual field explanations with in-place reading flow
+- Structured **Imports** / **Exports** tabs: module lists, thunk offsets, ordinals; ordinal-only imports often get a **resolved name** from the system copy of the exporting DLL when PEHint can read its export table
+- **Dependencies** tab: resolve imported DLLs against the PE directory, PATH, and system folders
+- **Strings** tab: ASCII / UTF-16LE strings with offset, type filter, min-length/section controls, async extraction, export, and **double-click a row to jump to that string in the hex viewer** (highlighted)
+- **Hex viewer**: virtualized, paint-based dump (no giant `QTextDocument`) so scrolling and large PEs stay fast; stays in sync with tree selections and field highlights
+- **Find** in hex: search **hex byte patterns** or, with “Hex only” off, **plain text as UTF-8 bytes**; case-sensitive option; next/previous through matches
+- Language packs (English and Portuguese) and configuration-driven explanations
+- **Imports** API summaries from local Microsoft Learn Markdown: optional—clone **sdk-api** (and optionally **Console-Docs**) into `third_party/` (see `third_party/README.txt`); set `PEHINT_SDK_API_CONTENT` / `PEHINT_WINDOWS_CONSOLE_DOCS` if paths are non-standard
+
 ## Screenshots
 
 ### Main Interface
