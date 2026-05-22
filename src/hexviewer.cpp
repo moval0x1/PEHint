@@ -255,6 +255,7 @@ void HexViewer::goToOffset(qint64 offset)
         m_offsetSpinBox->setValue(static_cast<int>(qMin(offset, static_cast<qint64>(std::numeric_limits<int>::max()))));
     }
     m_virtualHex->scrollToByteOffset(offset, false);
+    updateSelectionOffsetStatus();
 }
 
 void HexViewer::setBytesPerLine(int bytesPerLine)
@@ -323,6 +324,7 @@ void HexViewer::highlightRange(quint32 startOffset, quint32 length, const QColor
     syncHighlightsToWidget();
     const qint64 go = static_cast<qint64>(startOffset);
     goToOffset(go);
+    updateSelectionOffsetStatus();
 }
 
 void HexViewer::clearHighlights()
@@ -437,6 +439,23 @@ void HexViewer::updateSelectionOffsetStatus()
         return;
     }
     if (!m_virtualHex->hasSelection()) {
+        if (!m_highlights.isEmpty()) {
+            const HighlightRange &h = m_highlights.first();
+            const quint64 endOff = static_cast<quint64>(h.startOffset)
+                                   + static_cast<quint64>(qMax(1u, h.length)) - 1u;
+            if (h.length <= 1) {
+                QMap<QString, QString> p;
+                p[QStringLiteral("offset")] = PEUtils::formatHexWidth(h.startOffset, 8);
+                m_statusLabel->setText(LANG_PARAMS(QStringLiteral("UI/hex_status_at_offset"), p));
+            } else {
+                QMap<QString, QString> p;
+                p[QStringLiteral("start")] = PEUtils::formatHexWidth(h.startOffset, 8);
+                p[QStringLiteral("end")] = PEUtils::formatHexWidth(endOff, 8);
+                p[QStringLiteral("count")] = QString::number(h.length);
+                m_statusLabel->setText(LANG_PARAMS(QStringLiteral("UI/hex_selection_range"), p));
+            }
+            return;
+        }
         const qint64 off = m_offsetSpinBox ? static_cast<qint64>(m_offsetSpinBox->value()) : 0LL;
         if (off >= 0 && off < m_data.size()) {
             QMap<QString, QString> p;

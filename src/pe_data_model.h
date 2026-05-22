@@ -2,6 +2,7 @@
 #define PE_DATA_MODEL_H
 
 #include "pe_structures.h"
+#include "pe_analysis.h"
 #include <QString>
 #include <QList>
 #include <QMap>
@@ -132,6 +133,16 @@ public:
     void setCOMRuntimeDetails(const QMap<QString, QString> &details);
     QStringList getCOMRuntimeInfo() const;
     QMap<QString, QString> getCOMRuntimeDetails() const;
+
+    // File analysis (overlay, entropy, PDB) — filled after parse via PEAnalysis
+    void setOverlayInfo(const PEOverlayInfo &info);
+    PEOverlayInfo getOverlayInfo() const;
+    void setEntropySummary(const PEEntropySummary &summary);
+    PEEntropySummary getEntropySummary() const;
+    void setPdbInfo(const PEPdbInfo &info);
+    PEPdbInfo getPdbInfo() const;
+    /** Shannon entropy for a section name from the last analysis, or -1 if unknown. */
+    double sectionEntropy(const QString &sectionName) const;
     
     // Validation
     bool isValid() const;
@@ -210,6 +221,10 @@ private:
     // COM+ Runtime info
     QStringList m_comRuntimeInfo;
     QMap<QString, QString> m_comRuntimeDetails;
+
+    PEOverlayInfo m_overlayInfo;
+    PEEntropySummary m_entropySummary;
+    PEPdbInfo m_pdbInfo;
 };
 
 #endif // PE_DATA_MODEL_H

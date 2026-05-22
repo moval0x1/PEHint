@@ -7,12 +7,20 @@ find_package(Qt6 6.10.2 REQUIRED COMPONENTS Test)
 # Use CMAKE_CURRENT_SOURCE_DIR since this CMakeLists.txt is in tests/ subdirectory
 add_executable(PEHintTests
     unit/pe_parser_test.cpp
+    unit/pe_parser_test.h
     unit/pe_data_model_test.cpp
+    unit/pe_data_model_test.h
     unit/pe_utils_test.cpp
+    unit/pe_utils_test.h
     unit/pe_dependency_analyzer_test.cpp
+    unit/pe_dependency_analyzer_test.h
     unit/pe_string_extractor_test.cpp
+    unit/pe_string_extractor_test.h
     unit/test_main.cpp
+    unit/pe_analysis_self_test.cpp
 )
+
+set_target_properties(PEHintTests PROPERTIES AUTOMOC ON)
 
 # Link Qt6 Test library
 target_link_libraries(PEHintTests PRIVATE
@@ -40,6 +48,7 @@ target_sources(PEHintTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/pe_error_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
 )
 
 # One POST_BUILD block: multiple TARGET POST_BUILD commands can overwrite each other on some generators.

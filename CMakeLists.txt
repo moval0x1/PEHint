@@ -146,6 +146,8 @@ set(PROJECT_SOURCES
     src/pe_structures.h
     src/pe_utils.cpp
     src/pe_utils.h
+    src/pe_analysis.cpp
+    src/pe_analysis.h
     src/pe_data_model.cpp
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp

@@ -112,6 +112,24 @@ constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
 constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
 
+/** Parse "(0xNNNN bytes)" from File Insights value text when tree size role is zero. */
+bool parseInsightByteSizeFromValue(const QString &valueText, quint32 &outSize)
+{
+    static const QRegularExpression sizeInParens(
+        QStringLiteral("\\(0x([0-9A-Fa-f]+) bytes\\)"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = sizeInParens.match(valueText);
+    if (!match.hasMatch()) {
+        return false;
+    }
+    bool ok = false;
+    const quint32 parsed = match.captured(1).toUInt(&ok, 16);
+    if (!ok || parsed == 0) {
+        return false;
+    }
+    outSize = parsed;
+    return true;
+}
+
 QString importHintPlaceholderText()
 {
     return LanguageManager::getInstance().getString(
@@ -1256,8 +1274,11 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                 // Most reliable source: explicit metadata attached by parser.
                 const QVariant roleOffset = item->data(0, kFieldOffsetRole);
                 const QVariant roleSize = item->data(0, kFieldSizeRole);
-                if (roleOffset.isValid() && roleSize.isValid()) {
+                const bool hasRoleSize = roleSize.isValid();
+                if (roleOffset.isValid()) {
                     offsetValue = roleOffset.toUInt(&offsetOk);
+                }
+                if (hasRoleSize) {
                     sizeValue = roleSize.toUInt(&sizeOk);
                 }
 
@@ -1269,7 +1290,7 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                 }
 
                 // Size column is usually like "0x2 bytes" - extract the first hex literal.
-                if (!sizeOk) {
+                if (!hasRoleSize) {
                     const QString sizeText = item->text(3);
                     const QRegularExpression sizeHexRe(QStringLiteral("0x([0-9A-Fa-f]+)"));
                     const QRegularExpressionMatch sizeMatch = sizeHexRe.match(sizeText);
@@ -1278,13 +1299,25 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                     }
                 }
 
-                // Fallback to parser lookup when the row does not carry a usable offset/size.
-                if (!offsetOk || !sizeOk || sizeValue == 0) {
+                if (offsetOk && sizeValue == 0) {
+                    quint32 parsedSize = 0;
+                    if (parseInsightByteSizeFromValue(item->text(1), parsedSize)) {
+                        sizeValue = parsedSize;
+                        sizeOk = true;
+                    }
+                }
+
+                // Fallback only when offset is missing, or size was never set on the row (not explicit zero).
+                if (!offsetOk || (!hasRoleSize && !sizeOk)) {
                     const QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
-                    offsetValue = fieldOffset.first;
-                    sizeValue = fieldOffset.second;
-                    offsetOk = true;
-                    sizeOk = (sizeValue > 0);
+                    if (!offsetOk) {
+                        offsetValue = fieldOffset.first;
+                        offsetOk = true;
+                    }
+                    if (!hasRoleSize && sizeValue == 0 && fieldOffset.second > 0) {
+                        sizeValue = fieldOffset.second;
+                        sizeOk = true;
+                    }
                 }
 
                 if (offsetOk && sizeOk && sizeValue > 0) {
@@ -1307,6 +1340,11 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                             m_lastHexHighlightSize = sizeValue;
                             m_lastHexHighlightRgba = rgba;
                         }
+                    }
+                } else if (offsetOk) {
+                    HexViewer *hex = m_uiManager->m_hexViewer;
+                    if (hex) {
+                        hex->goToOffset(static_cast<qint64>(offsetValue));
                     }
                 } else {
                     statusBar()->showMessage(LANG_PARAM("UI/field_no_offset", "field_name", displayFieldName), 3000);
@@ -1706,6 +1744,28 @@ void MainWindow::updateFileInfo()
     params["filename"] = fileInfo.fileName();
     params["size"] = getFileSizeString(fileInfo.size());
     QString info = LANG_PARAMS("UI/file_info_format", params);
+
+    if (m_peParser && m_peParser->isValid()) {
+        const PEDataModel &dm = m_peParser->getDataModel();
+        const PEOverlayInfo overlay = dm.getOverlayInfo();
+        const PEEntropySummary entropy = dm.getEntropySummary();
+        const PEPdbInfo pdb = dm.getPdbInfo();
+
+        QMap<QString, QString> ap;
+        ap["overlay"] = overlay.present ? LANG("UI/overlay_present_short") : LANG("UI/overlay_none_short");
+        if (entropy.fileEntropyValid) {
+            ap["entropy"] = QStringLiteral("%1 %2").arg(QString::number(entropy.fileEntropy, 'f', 2),
+                                                        LANG("UI/entropy_unit"));
+        } else {
+            ap["entropy"] = QStringLiteral("-");
+        }
+        if (pdb.present && !pdb.path.isEmpty()) {
+            ap["pdb"] = QFileInfo(pdb.path).fileName();
+        } else {
+            ap["pdb"] = LANG("UI/pdb_none_short");
+        }
+        info += QStringLiteral(" | ") + LANG_PARAMS("UI/file_analysis_summary", ap);
+    }
     
     m_uiManager->m_fileInfoLabel->setText(info);
     m_uiManager->m_refreshButton->setEnabled(true);

@@ -440,6 +440,10 @@ private:
      */
     void addDataDirectoryFields(QTreeWidgetItem *parent);
     void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
+    void addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems);
+    void addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
+                             const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
+                             bool highlightInHex, const QString &meaningOverride = QString());
 
     void appendExceptionDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
     /** Security directory: @p filePointer is optional-header VirtualAddress (a file offset, not an RVA). */

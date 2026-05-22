@@ -1103,6 +1103,54 @@
       "purpose": "Este campo indica quantos bytes o Diretório Reservado ocupa. Combinado com o campo RVA, define o intervalo completo de memória onde os dados do diretório estão localizados.",
       "note": "Se tanto RVA quanto Tamanho forem 0, o diretório não é usado neste arquivo PE. O tamanho é tipicamente fixo para cada tipo de diretório, mas pode variar para alguns diretórios como Recursos.",
       "security_notes": "Tamanhos incomuns podem indicar injeção de dados ou manipulação."
+    },
+    "File Insights": {
+      "title": "Resumo do arquivo",
+      "description": "Resumo de overlay, entropia de Shannon e caminho PDB (símbolos de depuração) após a análise. Útil para triagem rápida de malware antes de examinar cada cabeçalho.",
+      "purpose": "Destacar anomalias que não são um único campo do cabeçalho PE",
+      "security_notes": "Entropia alta, overlays grandes e caminhos PDB ausentes ou estranhos são indicadores comuns de empacotamento, adulteração ou builds debug vs. release."
+    },
+    "Overlay": {
+      "title": "Overlay",
+      "description": "Bytes extras após os dados brutos da última seção no disco. O carregador PE não mapeia esta região; ainda faz parte do arquivo.",
+      "purpose": "Transportar payloads anexados (instaladores, certificados, recursos ou dados maliciosos)",
+      "security_notes": "Overlays relevantes merecem inspeção na visão hex. Packers e droppers frequentemente escondem dados aqui."
+    },
+    "File Entropy": {
+      "title": "Entropia do arquivo",
+      "description": "Entropia de Shannon de todo o arquivo (0–8 bits por byte). Distribuições aleatórias pontuam mais alto.",
+      "purpose": "Estimar o quão comprimido ou criptografado o arquivo parece",
+      "security_notes": "Entropia muito alta em seções de código ou no arquivo inteiro pode indicar empacotamento ou criptografia."
+    },
+    "PDB Path": {
+      "title": "Caminho PDB",
+      "description": "Caminho do arquivo de banco de dados do programa no diretório de debug CodeView (registro RSDS ou NB10), quando presente.",
+      "purpose": "Ligar o binário aos arquivos de símbolos para depuração",
+      "security_notes": "Caminhos podem revelar diretórios da máquina de build. Ausência em binário 'release' é normal; presença em malware pode ajudar atribuição."
+    },
+    "PDB Raw": {
+      "title": "PDB bruto (CodeView)",
+      "description": "Pré-visualização em hex do registro CodeView (cabeçalho RSDS ou NB10 e caminho PDB embutido). O destaque no hex cobre apenas este registro, não o SizeOfData completo do diretório de debug.",
+      "purpose": "Inspecionar assinatura, GUID, idade e bytes do caminho na imagem do ficheiro",
+      "security_notes": "Entradas de debug malformadas ou excessivamente grandes às vezes confundem analisadores; compare o Size na árvore com o intervalo destacado."
+    },
+    "PDB GUID": {
+      "title": "GUID PDB",
+      "description": "Identificador único (GUID) do PDB no registro CodeView RSDS. Usado com a idade para localizar o ficheiro de símbolos correto num servidor de símbolos.",
+      "purpose": "Associar este binário a um PDB específico em disco ou num servidor",
+      "security_notes": "Junto com o caminho PDB, pode ajudar a correlacionar amostras da mesma máquina ou toolchain."
+    },
+    "PDB Age": {
+      "title": "Idade PDB",
+      "description": "Contador incremental de build (idade) do registro CodeView, com o GUID. O sufixo de formato (RSDS ou NB10) indica a variante CodeView.",
+      "purpose": "Distinguir PDBs quando o mesmo nome existe em várias builds",
+      "security_notes": "Idades invulgares ou zero são incomuns em builds de produção, mas não são inerentemente maliciosas."
+    },
+    "Section Entropy": {
+      "title": "Entropia da seção",
+      "description": "Entropia de Shannon calculada sobre os bytes brutos desta seção no disco (0–8 bits por byte).",
+      "purpose": "Detetar conteúdo empacotado, comprimido ou criptografado na seção",
+      "security_notes": "Entropia muito alta em .text ou .data pode indicar packing; compare com seções vizinhas."
     }
   },
   "security_highlights": {

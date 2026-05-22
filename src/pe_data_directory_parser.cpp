@@ -1,4 +1,5 @@
 #include "pe_data_directory_parser.h"
+#include "pe_analysis.h"
 #include "pe_system_dll_ordinal_resolver.h"
 #include "pe_utils.h"
 #include "language_manager.h"
@@ -357,6 +358,40 @@ bool PEDataDirectoryParser::parseDebugDirectory(quint32 rva, quint32 size, PEDat
             debugParams["rva"] = PEUtils::formatHex(debugDir->AddressOfRawData);
             debugParams["raw"] = PEUtils::formatHex(debugDir->PointerToRawData);
             QString debugDetailsStr = LANG_PARAMS("UI/debug_details_format", debugParams);
+
+            if (debugDir->Type == IMAGE_DEBUG_TYPE_CODEVIEW && debugDir->SizeOfData > 0) {
+                quint32 cvFileOffset = debugDir->PointerToRawData;
+                if (cvFileOffset == 0 && debugDir->AddressOfRawData != 0) {
+                    cvFileOffset = rvaToFileOffset(debugDir->AddressOfRawData, dataModel.getSections());
+                }
+                if (cvFileOffset == 0) {
+                    continue;
+                }
+                const PEPdbInfo pdb = PEAnalysis::parseCodeViewDebugData(
+                    m_fileData, cvFileOffset, debugDir->SizeOfData);
+                if (pdb.present) {
+                    PEPdbInfo merged = pdb;
+                    merged.codeViewFileOffset = cvFileOffset;
+                    merged.codeViewSize = PEAnalysis::codeViewRecordByteSize(
+                        m_fileData, cvFileOffset, debugDir->SizeOfData);
+                    if (merged.codeViewSize == 0) {
+                        merged.codeViewSize = debugDir->SizeOfData;
+                    }
+                    PEPdbInfo existing = dataModel.getPdbInfo();
+                    const bool replace = !existing.present || existing.path.isEmpty()
+                                         || (merged.codeViewFileOffset > 0
+                                             && existing.codeViewFileOffset == 0);
+                    if (replace) {
+                        dataModel.setPdbInfo(merged);
+                    }
+                    QString pdbExtra = QStringLiteral("%1 | %2 | age %3")
+                                           .arg(pdb.format, pdb.path, QString::number(pdb.age));
+                    if (!pdb.guid.isEmpty()) {
+                        pdbExtra += QStringLiteral(" | %1").arg(pdb.guid);
+                    }
+                    debugDetailsStr += QStringLiteral("\n") + pdbExtra;
+                }
+            }
             
             debugInfo.append(debugType);
             debugDetails[debugType] = debugDetailsStr;

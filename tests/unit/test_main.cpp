@@ -7,17 +7,19 @@
 #include "pe_dependency_analyzer_test.h"
 #include "pe_string_extractor_test.h"
 
+bool runPeAnalysisSelfTests();
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
-    // QTest::qExec returns number of failed test functions; sum (do not use |= — wrong when multiple suites fail)
     int failures = 0;
     auto runSuite = [&failures, argc, argv](const char *name, QObject *suite) {
         const int f = QTest::qExec(suite, argc, argv);
         delete suite;
-        if (f != 0)
+        if (f != 0) {
             std::cerr << "Test suite " << name << " reported " << f << " failed function(s)\n";
+        }
         failures += f;
     };
     runSuite("PEParserTest", new PEParserTest);
@@ -26,6 +28,10 @@ int main(int argc, char *argv[])
     runSuite("PEDependencyAnalyzerTest", new PEDependencyAnalyzerTest);
     runSuite("PEStringExtractorTest", new PEStringExtractorTest);
 
+    if (!runPeAnalysisSelfTests()) {
+        std::cerr << "PE analysis self-tests failed\n";
+        ++failures;
+    }
+
     return failures > 0 ? 1 : 0;
 }
-

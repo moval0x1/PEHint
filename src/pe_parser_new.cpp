@@ -1,5 +1,6 @@
 #include "pe_parser_new.h"
 #include "pe_utils.h"
+#include "pe_analysis.h"
 #include "language_manager.h"
 #include <QDebug>
 #include <QFileInfo>
@@ -10,6 +11,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
+#include <QSet>
 #include <QtGlobal>
 #include <QRegularExpression>
 #include <functional>
@@ -72,6 +74,107 @@ void clearFieldExplanationCachesInternal()
     c.languageJsonCache.clear();
     c.languageJsonMtime.clear();
     c.explanationsPathByLanguage.clear();
+}
+
+QString resolveExplanationsLanguageKey(const QJsonObject &root, const QString &currentLanguage)
+{
+    if (root.contains(currentLanguage) && root.value(currentLanguage).isObject()) {
+        return currentLanguage;
+    }
+    if (root.contains(QStringLiteral("en")) && root.value(QStringLiteral("en")).isObject()) {
+        return QStringLiteral("en");
+    }
+    if (root.contains(QStringLiteral("pt")) && root.value(QStringLiteral("pt")).isObject()) {
+        return QStringLiteral("pt");
+    }
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        if (it.value().isObject()) {
+            return it.key();
+        }
+    }
+    return QString();
+}
+
+bool isFieldExplanationPlaceholder(const QString &fieldName, const QString &html)
+{
+    if (html.isEmpty()) {
+        return true;
+    }
+    QString plain = html;
+    plain.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
+    plain = plain.simplified();
+    const QString placeholder =
+        LANG_PARAM(QStringLiteral("UI/field_explanation_placeholder"), QStringLiteral("fieldname"), fieldName)
+            .simplified();
+    if (!placeholder.isEmpty() && plain == placeholder) {
+        return true;
+    }
+    if (plain.contains(QStringLiteral("Field explanation for"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return plain.contains(QStringLiteral("Coming soon"), Qt::CaseInsensitive)
+           || plain.contains(QStringLiteral("Em breve"), Qt::CaseInsensitive);
+}
+
+bool isFileInsightJsonKey(const QString &jsonFieldKey)
+{
+    static const QSet<QString> kKeys = {
+        QStringLiteral("File Insights"),
+        QStringLiteral("Overlay"),
+        QStringLiteral("File Entropy"),
+        QStringLiteral("PDB Path"),
+        QStringLiteral("PDB Raw"),
+        QStringLiteral("PDB GUID"),
+        QStringLiteral("PDB Age"),
+    };
+    return kKeys.contains(jsonFieldKey);
+}
+
+QString insightMeaningText(const QString &jsonFieldKey)
+{
+    struct Row {
+        const char *fieldKey;
+        const char *iniKey;
+        const char *enFallback;
+    };
+    static const Row kRows[] = {
+        { "Overlay", "UI/overlay_meaning",
+          "Data appended after the last section on disk; common in installers, self-extractors, and some packers." },
+        { "File Entropy", "UI/entropy_meaning_normal",
+          "Shannon entropy of the whole file (0-8 bits per byte); high values often indicate packing or encryption." },
+        { "PDB Path", "UI/pdb_path_meaning",
+          "Program database path from the CodeView debug directory (RSDS or NB10)." },
+        { "PDB Raw", "UI/pdb_raw_meaning",
+          "Raw RSDS/NB10 bytes at the CodeView offset (preview truncated in the tree)." },
+        { "PDB GUID", "UI/pdb_guid_meaning",
+          "Unique PDB identifier used with age to locate symbols on a symbol server." },
+        { "PDB Age", "UI/pdb_age_meaning",
+          "Incremental build counter paired with the GUID to match the correct PDB file." },
+        { "File Insights", "UI/tree_file_insights_hint",
+          "Quick triage: appended overlay, Shannon entropy, and PDB path from CodeView." },
+    };
+    for (const Row &row : kRows) {
+        if (jsonFieldKey != QLatin1String(row.fieldKey)) {
+            continue;
+        }
+        const QString fromIni = LanguageManager::getInstance().getIniString(QString::fromLatin1(row.iniKey));
+        if (!fromIni.isEmpty()) {
+            return fromIni;
+        }
+        return QString::fromUtf8(row.enFallback);
+    }
+    return QString();
+}
+
+QString insightExplanationHtml(const QString &jsonFieldKey)
+{
+    const QString text = insightMeaningText(jsonFieldKey);
+    if (text.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("<div style='margin-bottom: 8px; line-height: 1.6; color: #1f2937;'>%1</div>")
+        .arg(text.toHtmlEscaped());
 }
 
 /** Last-resort English when INI has no entry (must match config/language_config.ini). */
@@ -393,6 +496,10 @@ bool PEParserNew::loadFile(const QString &filePath)
     }
     
     emit parsingProgress(50, LANG("UI/progress_data_directories"));
+
+    PEAnalysis::analyzeIntoModel(m_fileData, m_dataModel);
+    emit parsingProgress(60, LANG("UI/progress_file_analysis"));
+    clearFieldExplanationCaches();
     
     m_dataModel.setValid(true);
     m_isValid = true;
@@ -552,6 +659,37 @@ void PEParserNew::ensureFieldOffsetLookup()
     }
     quint32 dataDirectoriesSize = 16 * sizeof(IMAGE_DATA_DIRECTORY);
     fieldOffsets[QStringLiteral("Data Directories")] = QPair<quint32, quint32>(dataDirectoriesOffset, dataDirectoriesSize);
+
+    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
+    if (overlay.present && overlay.fileOffset > 0) {
+        quint64 overlayBytes = overlay.size;
+        if (overlayBytes == 0) {
+            const qint64 tail = qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_file.size()))
+                                - static_cast<qint64>(overlay.fileOffset);
+            if (tail > 0) {
+                overlayBytes = static_cast<quint64>(tail);
+            }
+        }
+        const quint32 overlaySize =
+            static_cast<quint32>(qMin(overlayBytes, static_cast<quint64>(UINT32_MAX)));
+        if (overlaySize > 0) {
+            fieldOffsets[QStringLiteral("Overlay")] = QPair<quint32, quint32>(overlay.fileOffset, overlaySize);
+            fieldOffsets[QStringLiteral("FILE_OVERLAY")] = fieldOffsets[QStringLiteral("Overlay")];
+        }
+    }
+
+    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
+    if (pdb.present && pdb.codeViewFileOffset > 0 && pdb.codeViewSize > 0) {
+        fieldOffsets[QStringLiteral("PDB Path")] =
+            QPair<quint32, quint32>(pdb.codeViewFileOffset, pdb.codeViewSize);
+        fieldOffsets[QStringLiteral("PDB Raw")] = fieldOffsets[QStringLiteral("PDB Path")];
+        const bool isRsds = pdb.format.compare(QStringLiteral("RSDS"), Qt::CaseInsensitive) == 0;
+        if (!pdb.guid.isEmpty() && isRsds) {
+            fieldOffsets[QStringLiteral("PDB GUID")] = QPair<quint32, quint32>(pdb.codeViewFileOffset + 4, 16);
+        }
+        const quint32 ageOff = isRsds ? pdb.codeViewFileOffset + 20 : pdb.codeViewFileOffset + 8;
+        fieldOffsets[QStringLiteral("PDB Age")] = QPair<quint32, quint32>(ageOff, 4);
+    }
 
     const QStringList &dirKeys = dataDirectoryFieldKeys();
     for (int i = 0; i < 16 && i < dirKeys.size(); ++i) {
@@ -817,7 +955,9 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
     }
 
     auto cacheAndReturn = [&](const QString &value) -> QString {
-        explanationHtmlCache.insert(htmlCacheKey, value);
+        if (!isFieldExplanationPlaceholder(fieldName, value)) {
+            explanationHtmlCache.insert(htmlCacheKey, value);
+        }
         return value;
     };
 
@@ -830,8 +970,9 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
         if (explanationsFile.open(QIODevice::ReadOnly)) {
             QJsonDocument doc = QJsonDocument::fromJson(explanationsFile.readAll());
             QJsonObject root = doc.object();
-            if (root.contains(currentLanguage)) {
-                languageJsonCache.insert(langCacheKey, root[currentLanguage].toObject());
+            const QString langKey = resolveExplanationsLanguageKey(root, currentLanguage);
+            if (!langKey.isEmpty()) {
+                languageJsonCache.insert(langCacheKey, root[langKey].toObject());
                 languageJsonMtime.insert(langCacheKey, currentMtime);
             } else {
                 languageJsonCache.remove(langCacheKey);
@@ -1029,9 +1170,15 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
             }
     }
     
-    // Fallback to placeholder if field not found in JSON
-    // All explanations should be in the config JSON files
-    return cacheAndReturn(LANG_PARAM("UI/field_explanation_placeholder", "fieldname", fieldName));
+    if (isFileInsightJsonKey(fieldName)) {
+        const QString insightHtml = insightExplanationHtml(fieldName);
+        if (!insightHtml.isEmpty()) {
+            return insightHtml;
+        }
+    }
+
+    // Do not cache misses — a later config deploy or language switch should recover without reload.
+    return LANG_PARAM("UI/field_explanation_placeholder", "fieldname", fieldName);
 }
 
 void PEParserNew::clearFieldExplanationCaches()
@@ -1222,8 +1369,152 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     addSectionFields(sectionsItem);
     
     treeItems.append(ntHeadersItem);
+
+    addFileInsightsTree(treeItems);
     
     return treeItems;
+}
+
+void PEParserNew::addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
+                                      const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
+                                      bool highlightInHex, const QString &meaningOverride)
+{
+    QTreeWidgetItem *fieldItem = new QTreeWidgetItem(parent);
+    fieldItem->setText(0, displayName);
+    fieldItem->setText(1, value);
+    fieldItem->setData(0, PEParserNew::kTreeFieldKeyRole, jsonFieldKey);
+
+    if (highlightInHex && size > 0) {
+        fieldItem->setText(2, PEUtils::formatHexWidth(fileOffset, 8));
+        fieldItem->setText(3, peTreeSizeBytesText(PEUtils::formatHexWidth(size, 0)));
+        fieldItem->setData(0, kFieldOffsetRole, fileOffset);
+        fieldItem->setData(0, kFieldSizeRole, size);
+    } else if (!highlightInHex && size > 0) {
+        fieldItem->setText(2, LANG("UI/insight_whole_file"));
+        fieldItem->setText(3, QString());
+    } else {
+        fieldItem->setText(2, LANG("UI/insight_no_offset"));
+        fieldItem->setText(3, QString());
+    }
+
+    QString meaning = meaningOverride;
+    if (meaning.isEmpty() && isFileInsightJsonKey(jsonFieldKey)) {
+        meaning = insightMeaningText(jsonFieldKey);
+    }
+    if (meaning.isEmpty()) {
+        meaning = getFieldMeaning(jsonFieldKey, value);
+        if (meaning.isEmpty()) {
+            const QString full = getFieldExplanation(jsonFieldKey);
+            if (!full.isEmpty() && !isFieldExplanationPlaceholder(jsonFieldKey, full)) {
+                meaning = full;
+                meaning.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
+                meaning = meaning.simplified();
+                if (meaning.length() > 120) {
+                    meaning = meaning.left(117) + QStringLiteral("...");
+                }
+            }
+        }
+    }
+    fieldItem->setText(4, meaning);
+}
+
+void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
+{
+    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
+    const PEEntropySummary entropy = m_dataModel.getEntropySummary();
+    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
+
+    auto entropyMeaning = [](double bits) -> QString {
+        if (bits < 0.0) {
+            return QString();
+        }
+        if (bits >= 7.2) {
+            return LANG("UI/entropy_meaning_high");
+        }
+        if (bits >= 6.5) {
+            return LANG("UI/entropy_meaning_elevated");
+        }
+        return LANG("UI/entropy_meaning_normal");
+    };
+
+    QTreeWidgetItem *insights = new QTreeWidgetItem();
+    insights->setText(0, LANG("UI/tree_file_insights"));
+    insights->setData(0, PEParserNew::kTreeFieldKeyRole, QStringLiteral("File Insights"));
+    insights->setText(1, QString());
+    insights->setText(2, QString());
+    insights->setText(3, QString());
+    insights->setText(4, LANG("UI/tree_file_insights_hint"));
+
+    if (overlay.present && overlay.fileOffset > 0) {
+        quint64 overlayBytes = overlay.size;
+        if (overlayBytes == 0) {
+            const qint64 tail = qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_file.size()))
+                                - static_cast<qint64>(overlay.fileOffset);
+            if (tail > 0) {
+                overlayBytes = static_cast<quint64>(tail);
+            }
+        }
+        const quint32 overlaySize =
+            static_cast<quint32>(qMin(overlayBytes, static_cast<quint64>(UINT32_MAX)));
+        const QString offHex = PEUtils::formatHexWidth(overlay.fileOffset, 8);
+        const QString endHex =
+            PEUtils::formatHexWidth(overlay.fileOffset + qMax(overlaySize, 1u) - 1, 8);
+        const QString overlayVal = QStringLiteral("%1 (%2) to %3")
+                                       .arg(offHex, peTreeSizeBytesText(PEUtils::formatHexWidth(overlaySize, 0)),
+                                            endHex);
+        addInsightTreeField(insights, LANG("UI/field_overlay"), overlayVal, QStringLiteral("Overlay"),
+                            overlay.fileOffset, overlaySize, overlaySize > 0,
+                            insightMeaningText(QStringLiteral("Overlay")));
+    } else {
+        addInsightTreeField(insights, LANG("UI/field_overlay"), LANG("UI/overlay_none"), QStringLiteral("Overlay"),
+                            0, 0, false);
+    }
+
+    if (entropy.fileEntropyValid) {
+        const QString entStr = QStringLiteral("%1 %2").arg(QString::number(entropy.fileEntropy, 'f', 2),
+                                                           LANG("UI/entropy_unit"));
+        addInsightTreeField(insights, LANG("UI/field_file_entropy"), entStr, QStringLiteral("File Entropy"), 0, 0,
+                            false, entropyMeaning(entropy.fileEntropy));
+        if (QTreeWidgetItem *entItem = insights->child(insights->childCount() - 1)) {
+            entItem->setText(2, LANG("UI/insight_whole_file"));
+        }
+    }
+
+    if (pdb.present) {
+        const quint32 cvBase = pdb.codeViewFileOffset;
+        const quint32 cvSize = pdb.codeViewSize;
+        const bool canHighlight = cvBase > 0 && cvSize > 0;
+        const bool isRsds = pdb.format.compare(QStringLiteral("RSDS"), Qt::CaseInsensitive) == 0;
+
+        addInsightTreeField(insights, LANG("UI/field_pdb_path"), pdb.path, QStringLiteral("PDB Path"), cvBase, cvSize,
+                            canHighlight, insightMeaningText(QStringLiteral("PDB Path")));
+
+        if (canHighlight && cvSize > 0 && cvBase + cvSize <= static_cast<quint32>(m_fileData.size())) {
+            const QByteArray cvBytes = m_fileData.mid(static_cast<int>(cvBase), static_cast<int>(cvSize));
+            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatHexPreview(cvBytes),
+                                QStringLiteral("PDB Raw"), cvBase, cvSize, true,
+                                insightMeaningText(QStringLiteral("PDB Raw")));
+        }
+
+        if (!pdb.guid.isEmpty() && isRsds) {
+            const bool guidOk = canHighlight && cvBase + 20 <= cvBase + cvSize;
+            addInsightTreeField(insights, LANG("UI/field_pdb_guid"), pdb.guid, QStringLiteral("PDB GUID"),
+                                guidOk ? cvBase + 4 : 0, guidOk ? 16u : 0u, guidOk,
+                                insightMeaningText(QStringLiteral("PDB GUID")));
+        }
+
+        const quint32 ageOff = isRsds ? cvBase + 20 : cvBase + 8;
+        const QString ageVal = QStringLiteral("%1 (%2)").arg(QString::number(pdb.age), pdb.format);
+        const bool ageOk = canHighlight && ageOff + 4 <= cvBase + cvSize;
+        addInsightTreeField(insights, LANG("UI/field_pdb_age"), ageVal, QStringLiteral("PDB Age"),
+                            ageOk ? ageOff : 0, ageOk ? 4u : 0u, ageOk,
+                            insightMeaningText(QStringLiteral("PDB Age")));
+    } else {
+        addInsightTreeField(insights, LANG("UI/field_pdb_path"), LANG("UI/pdb_none"), QStringLiteral("PDB Path"), 0, 0,
+                            false);
+    }
+
+    treeItems.prepend(insights);
 }
 
 void PEParserNew::addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader)
@@ -1368,6 +1659,23 @@ void PEParserNew::addSectionFields(QTreeWidgetItem *parent)
             addTreeField(sectionItem, "NumberOfRelocations", PEUtils::formatHexWidth(section->NumberOfRelocations, 4), 32, sizeof(quint16));
             addTreeField(sectionItem, "NumberOfLineNumbers", QStringLiteral("(deprecated)"), 34, sizeof(quint16));
             addTreeField(sectionItem, "Characteristics", PEUtils::formatHexWidth(section->Characteristics, 8), 36, sizeof(quint32));
+
+            const double secEnt = m_dataModel.sectionEntropy(sectionName);
+            if (secEnt >= 0.0) {
+                const QString entStr = QStringLiteral("%1 %2").arg(QString::number(secEnt, 'f', 2),
+                                                                     LANG("UI/entropy_unit"));
+                addTreeField(sectionItem, LANG("UI/field_section_entropy"), entStr, section->PointerToRawData,
+                             section->SizeOfRawData, QStringLiteral("Section Entropy"));
+                if (QTreeWidgetItem *entItem = sectionItem->child(sectionItem->childCount() - 1)) {
+                    if (secEnt >= 7.2) {
+                        entItem->setText(4, LANG("UI/entropy_meaning_high"));
+                    } else if (secEnt >= 6.5) {
+                        entItem->setText(4, LANG("UI/entropy_meaning_elevated"));
+                    } else {
+                        entItem->setText(4, LANG("UI/entropy_meaning_normal"));
+                    }
+                }
+            }
         }
     }
 }
@@ -1626,6 +1934,13 @@ void PEParserNew::addTreeField(QTreeWidgetItem *parent, const QString &name, con
 
 QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &value)
 {
+    if (isFileInsightJsonKey(fieldName)) {
+        const QString insight = insightMeaningText(fieldName);
+        if (!insight.isEmpty()) {
+            return insight;
+        }
+    }
+
     // Blob / non-scalar regions: meaning does not depend on the Value column text
     if (fieldName == QStringLiteral("DOS_STUB")) {
         return QStringLiteral("MS-DOS 16-bit stub program (8086 real-mode machine code)");
@@ -1821,19 +2136,26 @@ QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &va
         }
     }
     
+    if (isFileInsightJsonKey(fieldName)) {
+        return QString();
+    }
+
     // Fallback: use first line of field explanation (plain text) so Meaning column is populated
-    QString full = getFieldExplanation(fieldName);
-    if (!full.isEmpty()) {
-        full = full.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
-        full = full.replace(QStringLiteral("&nbsp;"), QStringLiteral(" "))
-                   .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
-                   .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
-                   .replace(QStringLiteral("&gt;"), QStringLiteral(">"));
-        full = full.simplified();
-        if (full.length() > 120)
-            full = full.left(117) + QStringLiteral("...");
-        if (!full.isEmpty())
-            return full;
+    const QString full = getFieldExplanation(fieldName);
+    if (!full.isEmpty() && !isFieldExplanationPlaceholder(fieldName, full)) {
+        QString plain = full;
+        plain.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
+        plain.replace(QStringLiteral("&nbsp;"), QStringLiteral(" "))
+            .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
+            .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
+            .replace(QStringLiteral("&gt;"), QStringLiteral(">"));
+        plain = plain.simplified();
+        if (plain.length() > 120) {
+            plain = plain.left(117) + QStringLiteral("...");
+        }
+        if (!plain.isEmpty()) {
+            return plain;
+        }
     }
     return QString();
 }

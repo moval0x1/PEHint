@@ -39,6 +39,9 @@ PEDataModel::PEDataModel()
     m_delayImportDetails.clear();
     m_comRuntimeInfo.clear();
     m_comRuntimeDetails.clear();
+    m_overlayInfo = PEOverlayInfo{};
+    m_entropySummary = PEEntropySummary{};
+    m_pdbInfo = PEPdbInfo{};
 }
 
 PEDataModel::~PEDataModel()
@@ -413,6 +416,46 @@ QMap<QString, QString> PEDataModel::getCOMRuntimeDetails() const
     return m_comRuntimeDetails;
 }
 
+void PEDataModel::setOverlayInfo(const PEOverlayInfo &info)
+{
+    m_overlayInfo = info;
+}
+
+PEOverlayInfo PEDataModel::getOverlayInfo() const
+{
+    return m_overlayInfo;
+}
+
+void PEDataModel::setEntropySummary(const PEEntropySummary &summary)
+{
+    m_entropySummary = summary;
+}
+
+PEEntropySummary PEDataModel::getEntropySummary() const
+{
+    return m_entropySummary;
+}
+
+void PEDataModel::setPdbInfo(const PEPdbInfo &info)
+{
+    m_pdbInfo = info;
+}
+
+PEPdbInfo PEDataModel::getPdbInfo() const
+{
+    return m_pdbInfo;
+}
+
+double PEDataModel::sectionEntropy(const QString &sectionName) const
+{
+    for (const PESectionEntropy &se : m_entropySummary.sections) {
+        if (se.sectionName.compare(sectionName, Qt::CaseInsensitive) == 0 && se.computed) {
+            return se.entropy;
+        }
+    }
+    return -1.0;
+}
+
 // Validation
 bool PEDataModel::isValid() const
 {
@@ -465,4 +508,7 @@ void PEDataModel::clear()
     m_delayImportDetails.clear();
     m_comRuntimeInfo.clear();
     m_comRuntimeDetails.clear();
+    m_overlayInfo = PEOverlayInfo{};
+    m_entropySummary = PEEntropySummary{};
+    m_pdbInfo = PEPdbInfo{};
 }
