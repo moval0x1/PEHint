@@ -1966,11 +1966,24 @@ void MainWindow::populateFindingsTab()
         }
     };
 
+    const QVector<PEFindingRule> &rules = PEFindingsEngine::rules();
     for (const PEFindingInstance &finding : findings) {
+        QString title = finding.title;
+        QString detail = finding.detail;
+        for (const PEFindingRule &rule : rules) {
+            if (rule.id == finding.ruleId) {
+                title = LANG(rule.titleKey);
+                if (detail.startsWith(QStringLiteral("findings/"))) {
+                    detail = LANG(rule.detailKey);
+                }
+                break;
+            }
+        }
+
         QTreeWidgetItem *row = new QTreeWidgetItem();
         row->setText(0, PEFindingsEngine::severityDisplayName(finding.severity));
-        row->setText(1, finding.title);
-        row->setText(2, finding.detail);
+        row->setText(1, title);
+        row->setText(2, detail);
         if (!finding.treeField.isEmpty()) {
             row->setData(0, PEParserNew::kTreeFieldKeyRole, finding.treeField);
         }

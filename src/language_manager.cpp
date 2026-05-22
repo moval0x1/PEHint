@@ -23,7 +23,7 @@ LanguageManager::LanguageManager()
 {
     // Initialize language names mapping
     m_languageNames["en"] = "English";
-    m_languageNames["pt"] = "Português";
+    m_languageNames["pt"] = "Português (Brasil)";
     m_languageNames["es"] = "Español";
     m_languageNames["fr"] = "Français";
     m_languageNames["de"] = "Deutsch";
@@ -437,23 +437,46 @@ bool LanguageManager::loadLanguageConfiguration()
     // Load other sections
     QStringList sections = {"General", "Progress", "Error", "Info", "Button", "Menu", "Context", "Tree", "Placeholder", "Size", "Field", "Machine", "Subsystem", "Section", "File", "Resource", "Import", "Export", "Hex", "findings"};
     
-    for (const QString &section : sections) {
+    auto loadIniSection = [this](const QString &section) {
         m_settings->beginGroup(section);
-        QStringList keys = m_settings->allKeys();
+        const QStringList keys = m_settings->allKeys();
         if (!keys.isEmpty()) {
             qDebug() << "Found" << keys.size() << "keys in section:" << section;
         }
         for (const QString &key : keys) {
-            QString value = m_settings->value(key).toString();
-            if (!value.isEmpty()) {
-                QString fullKey = QString("%1/%2").arg(section, key);
+            const QString value = m_settings->value(key).toString();
+            if (value.isEmpty()) {
+                continue;
+            }
+            if (section == QLatin1String("UI")) {
+                m_strings[key] = value;
+                m_strings[QStringLiteral("UI/") + key] = value;
+            } else {
+                const QString fullKey = QStringLiteral("%1/%2").arg(section, key);
                 m_strings[fullKey] = value;
                 qDebug() << "  Loaded string:" << fullKey << "=" << value;
             }
         }
         m_settings->endGroup();
+    };
+
+    for (const QString &section : sections) {
+        loadIniSection(section);
     }
-    
+
+    // Load any extra INI groups (e.g. [findings]) not listed above
+    for (const QString &group : m_settings->childGroups()) {
+        if (sections.contains(group, Qt::CaseInsensitive)) {
+            continue;
+        }
+        loadIniSection(group);
+    }
+
+    if (!m_strings.contains(QStringLiteral("findings/summary_none"))) {
+        qWarning() << "Language config missing [findings] section or stale config at" << m_configPath
+                   << "- Findings tab will show untranslated keys until config is updated.";
+    }
+
     qDebug() << "Total loaded strings:" << m_strings.size();
     
     // Debug: Print some loaded strings
