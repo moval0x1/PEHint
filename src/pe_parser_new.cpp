@@ -48,10 +48,9 @@ QString peTreeSizeBytesText(const QString &sizeHexToken)
     return QStringLiteral("%1 bytes").arg(sizeHexToken);
 }
 
-QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb, quint32 recordSize)
+QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb)
 {
-    const QString format = pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
-    return QStringLiteral("%1 · %2").arg(format, peTreeSizeBytesText(PEUtils::formatHexWidth(recordSize, 0)));
+    return pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
 }
 
 QString peTreeEntriesText(const QString &countToken)
@@ -1508,7 +1507,7 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
                             pathSize, pathHighlight, insightMeaningText(QStringLiteral("PDB Path")));
 
         if (rawHighlight) {
-            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatCodeViewRawTreeValue(pdb, cvSize),
+            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatCodeViewRawTreeValue(pdb),
                                 QStringLiteral("PDB Raw"), cvBase, cvSize, true,
                                 insightMeaningText(QStringLiteral("PDB Raw")));
         }
