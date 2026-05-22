@@ -8,6 +8,7 @@
 #include "pe_string_extractor_test.h"
 
 bool runPeAnalysisSelfTests();
+bool runPeFindingsSelfTests();
 
 int main(int argc, char *argv[])
 {
@@ -30,6 +31,11 @@ int main(int argc, char *argv[])
 
     if (!runPeAnalysisSelfTests()) {
         std::cerr << "PE analysis self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeFindingsSelfTests()) {
+        std::cerr << "PE findings self-tests failed\n";
         ++failures;
     }
 

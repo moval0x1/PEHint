@@ -33,6 +33,7 @@
 #include "pe_structures.h"
 #include "pe_dependency_analyzer.h"
 #include "pe_string_extractor.h"
+#include "pe_findings.h"
 #include "sdk_api_markdown_reader.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -861,8 +862,8 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
         QWidget *under = QApplication::widgetAt(event->globalPos());
         if (under) {
             QTabWidget *tw = m_uiManager->m_analysisTabWidget;
-            // Tab order: 0=Structure, 1=Imports, 2=Exports, 3=Dependencies, 4=Strings
-            for (int tabIndex : {1, 2, 4}) {
+            // Tab order: 0=Structure, 1=Imports, 2=Exports, 3=Dependencies, 4=Strings, 5=Findings
+            for (int tabIndex : {1, 2, 4, 5}) {
                 QWidget *tab = tw->widget(tabIndex);
                 if (tab && tab->isAncestorOf(under)) {
                     event->accept();
@@ -1736,7 +1737,13 @@ void MainWindow::clearDisplay()
         }
         if (m_uiManager->m_stringsCancelButton) m_uiManager->m_stringsCancelButton->setEnabled(false);
         if (m_uiManager->m_stringsExportButton) m_uiManager->m_stringsExportButton->setEnabled(false);
-        
+        if (m_uiManager->m_findingsTree) {
+            m_uiManager->m_findingsTree->clear();
+        }
+        if (m_uiManager->m_findingsSummaryLabel) {
+            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
+        }
+
         // Also clear hex viewer highlights
         if (m_uiManager->m_hexViewer) {
             m_uiManager->m_hexViewer->clearHighlights();
@@ -1915,6 +1922,123 @@ void MainWindow::analysisDisplayPhaseTree()
     if (m_uiManager->m_collapseAllButton) {
         m_uiManager->m_collapseAllButton->setEnabled(hasItems);
     }
+
+    populateFindingsTab();
+}
+
+void MainWindow::populateFindingsTab()
+{
+    if (!m_uiManager || !m_uiManager->m_findingsTree || !m_peParser || !m_peParser->isValid()) {
+        return;
+    }
+
+    PEFindingsEngine::loadRules();
+
+    m_uiManager->m_findingsTree->clear();
+
+    const auto rvaToFo = [this](quint32 rva) -> quint32 {
+        return m_peParser ? m_peParser->rvaToFileOffset(rva) : 0u;
+    };
+    const QVector<PEFindingInstance> findings =
+        PEFindingsEngine::evaluate(m_peParser->getDataModel(), rvaToFo);
+
+    if (m_uiManager->m_findingsSummaryLabel) {
+        if (findings.isEmpty()) {
+            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
+        } else {
+            QMap<QString, QString> params;
+            params[QStringLiteral("count")] = QString::number(findings.size());
+            m_uiManager->m_findingsSummaryLabel->setText(
+                LANG_PARAMS(QStringLiteral("findings/summary_count"), params));
+        }
+    }
+
+    auto severityColor = [](PEFindingSeverity sev) -> QColor {
+        switch (sev) {
+        case PEFindingSeverity::High:
+            return QColor(255, 230, 230);
+        case PEFindingSeverity::Medium:
+            return QColor(255, 248, 220);
+        case PEFindingSeverity::Low:
+            return QColor(240, 248, 255);
+        default:
+            return QColor(245, 245, 245);
+        }
+    };
+
+    for (const PEFindingInstance &finding : findings) {
+        QTreeWidgetItem *row = new QTreeWidgetItem();
+        row->setText(0, PEFindingsEngine::severityDisplayName(finding.severity));
+        row->setText(1, finding.title);
+        row->setText(2, finding.detail);
+        if (!finding.treeField.isEmpty()) {
+            row->setData(0, PEParserNew::kTreeFieldKeyRole, finding.treeField);
+        }
+        if (finding.hasHexNav && finding.hexSize > 0) {
+            row->setData(0, kFieldOffsetRole, finding.hexOffset);
+            row->setData(0, kFieldSizeRole, finding.hexSize);
+        }
+        const QColor bg = severityColor(finding.severity);
+        for (int col = 0; col < 3; ++col) {
+            row->setBackground(col, bg);
+        }
+        m_uiManager->m_findingsTree->addTopLevelItem(row);
+    }
+}
+
+QTreeWidgetItem *MainWindow::findPeTreeItemByFieldKey(const QString &fieldKey) const
+{
+    if (fieldKey.isEmpty() || !m_uiManager || !m_uiManager->m_peTree) {
+        return nullptr;
+    }
+    QTreeWidgetItemIterator it(m_uiManager->m_peTree);
+    while (*it) {
+        const QString key = (*it)->data(0, PEParserNew::kTreeFieldKeyRole).toString();
+        if (key == fieldKey) {
+            return *it;
+        }
+        ++it;
+    }
+    return nullptr;
+}
+
+void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
+{
+    Q_UNUSED(column);
+    if (!item || !m_uiManager || !m_peParser || !m_peParser->isValid()) {
+        return;
+    }
+
+    if (m_uiManager->m_analysisTabWidget) {
+        m_uiManager->m_analysisTabWidget->setCurrentIndex(0);
+    }
+
+    const QString treeField = item->data(0, PEParserNew::kTreeFieldKeyRole).toString();
+    QTreeWidgetItem *peItem = findPeTreeItemByFieldKey(treeField);
+    if (peItem) {
+        QTreeWidgetItem *parent = peItem->parent();
+        while (parent) {
+            parent->setExpanded(true);
+            parent = parent->parent();
+        }
+        m_uiManager->m_peTree->setCurrentItem(peItem);
+        m_uiManager->m_peTree->scrollToItem(peItem);
+        onTreeItemClicked(peItem, 0);
+        return;
+    }
+
+    const QVariant offVar = item->data(0, kFieldOffsetRole);
+    const QVariant sizeVar = item->data(0, kFieldSizeRole);
+    if (offVar.isValid() && sizeVar.isValid() && m_uiManager->m_hexViewer) {
+        bool offsetOk = false;
+        bool sizeOk = false;
+        const quint32 offset = offVar.toUInt(&offsetOk);
+        const quint32 size = sizeVar.toUInt(&sizeOk);
+        if (offsetOk && sizeOk && size > 0) {
+            m_uiManager->m_hexViewer->highlightRange(offset, size, QColor(255, 200, 100));
+            m_uiManager->m_hexViewer->goToOffset(static_cast<qint64>(offset));
+        }
+    }
 }
 
 void MainWindow::analysisDisplayPhaseWelcomeOnly()
@@ -2027,7 +2151,7 @@ void MainWindow::onAnalysisTabChanged(int index)
     if (!m_fileLoaded || !m_uiManager || !m_peParser || !m_peParser->isValid()) return;
 
     // Tab order in UIManager:
-    // 0 = Structure, 1 = Imports, 2 = Exports, 3 = Dependencies, 4 = Strings
+    // 0 = Structure, 1 = Imports, 2 = Exports, 3 = Dependencies, 4 = Strings, 5 = Findings
     switch (index) {
         case 1:
             populateImportsTab();
@@ -2955,6 +3079,25 @@ void MainWindow::updateUILanguage()
         }
         if (tw->count() > 4) {
             tw->setTabText(4, LANG("UI/tab_strings"));
+        }
+        if (tw->count() > 5) {
+            tw->setTabText(5, LANG("UI/tab_findings"));
+        }
+        if (m_fileLoaded && m_peParser && m_peParser->isValid()) {
+            populateFindingsTab();
+        }
+    }
+
+    if (m_uiManager && m_uiManager->m_findingsTree) {
+        m_uiManager->m_findingsTree->setHeaderLabels({
+            LANG(QStringLiteral("findings/header_severity")),
+            LANG(QStringLiteral("findings/header_title")),
+            LANG(QStringLiteral("findings/header_detail"))
+        });
+    }
+    if (m_uiManager && m_uiManager->m_findingsSummaryLabel && m_uiManager->m_findingsTree) {
+        if (m_uiManager->m_findingsTree->topLevelItemCount() == 0) {
+            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
         }
     }
 

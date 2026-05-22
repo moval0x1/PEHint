@@ -222,6 +222,11 @@ public:
      * @return Pair containing (offset, size) in bytes from parsed PE layout
      */
     QPair<quint32, quint32> getFieldOffset(const QString &fieldName);
+
+    /**
+     * @brief Converts RVA to on-disk file offset using section headers.
+     */
+    quint32 rvaToFileOffset(quint32 rva);
     
     /**
      * @brief Sets the language for field explanations (coordinates with LanguageManager / JSON assets)
@@ -380,16 +385,6 @@ private:
      * they form a valid, consistent PE structure.
      */
     bool validateHeaders();
-    
-    /**
-     * @brief Converts RVA (Relative Virtual Address) to file offset
-     * @param rva Relative Virtual Address to convert
-     * @return File offset in bytes, or 0 if conversion fails
-     * 
-     * This method implements the RVA-to-file-offset conversion algorithm
-     * as specified in the Microsoft PE Format documentation.
-     */
-    quint32 rvaToFileOffset(quint32 rva);
     
     /**
      * @brief Finds a configuration file in multiple possible locations

@@ -435,7 +435,7 @@ bool LanguageManager::loadLanguageConfiguration()
     m_settings->endGroup();
     
     // Load other sections
-    QStringList sections = {"General", "Progress", "Error", "Info", "Button", "Menu", "Context", "Tree", "Placeholder", "Size", "Field", "Machine", "Subsystem", "Section", "File", "Resource", "Import", "Export", "Hex"};
+    QStringList sections = {"General", "Progress", "Error", "Info", "Button", "Menu", "Context", "Tree", "Placeholder", "Size", "Field", "Machine", "Subsystem", "Section", "File", "Resource", "Import", "Export", "Hex", "findings"};
     
     for (const QString &section : sections) {
         m_settings->beginGroup(section);

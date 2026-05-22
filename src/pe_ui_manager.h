@@ -101,6 +101,8 @@ public:
     QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
     QPushButton *m_dependenciesCollapseAllButton;   ///< Collapse all rows in the dependencies tree
     QTreeWidget *m_stringsTree;       ///< Displays extracted strings (offset, type, value)
+    QTreeWidget *m_findingsTree;      ///< Heuristic findings checklist (Phase 2)
+    QLabel *m_findingsSummaryLabel;   ///< Count / empty state above findings tree
     QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring
     QComboBox *m_stringsTypeCombo;    ///< Filter by type: All / ASCII / Unicode
     QSpinBox *m_stringsMinLengthSpin; ///< Minimum extracted string length

@@ -85,6 +85,7 @@ public slots:
     void onExportStrings();
     void onStringsTreeItemDoubleClicked(QTreeWidgetItem *item, int column);
     void onAnalysisTabChanged(int index);
+    void onFindingsItemClicked(QTreeWidgetItem *item, int column);
 
     // Language management
     void setupLanguageMenu();
@@ -148,6 +149,8 @@ private:
 
     /// Split heavy post-parse UI into event-loop slices to avoid Windows "(Not Responding)".
     void analysisDisplayPhaseTree();
+    void populateFindingsTab();
+    QTreeWidgetItem *findPeTreeItemByFieldKey(const QString &fieldKey) const;
     void analysisDisplayPhaseWelcomeOnly();
     void analysisDisplayPhaseHexSetData();
     void analysisDisplayPhaseStringsTab();

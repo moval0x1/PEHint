@@ -31,6 +31,9 @@ add_executable(PEHintTests
     ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_findings.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_findings.h
+    unit/pe_findings_self_test.cpp
 )
 
 set_target_properties(PEHintTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFINES ON)

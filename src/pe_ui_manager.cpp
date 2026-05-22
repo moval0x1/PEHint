@@ -57,6 +57,8 @@ UIManager::UIManager(MainWindow *parent)
     , m_dependenciesExpandAllButton(nullptr)
     , m_dependenciesCollapseAllButton(nullptr)
     , m_stringsTree(nullptr)
+    , m_findingsTree(nullptr)
+    , m_findingsSummaryLabel(nullptr)
     , m_stringsFilterEdit(nullptr)
     , m_stringsTypeCombo(nullptr)
     , m_stringsMinLengthSpin(nullptr)
@@ -596,6 +598,36 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(stringsTab, LANG("UI/tab_strings"));
 
     // --------------------------------------------------------------------
+    // Findings tab (heuristic checklist)
+    // --------------------------------------------------------------------
+    QWidget *findingsTab = new QWidget();
+    QVBoxLayout *findingsLayout = new QVBoxLayout(findingsTab);
+    findingsLayout->setContentsMargins(0, 0, 0, 0);
+    findingsLayout->setSpacing(4);
+
+    m_findingsSummaryLabel = new QLabel(LANG("findings/summary_none"));
+    m_findingsSummaryLabel->setWordWrap(true);
+    m_findingsSummaryLabel->setStyleSheet(
+        QStringLiteral("QLabel { color: #444; font-size: 11px; padding: 4px 2px; }"));
+    findingsLayout->addWidget(m_findingsSummaryLabel);
+
+    m_findingsTree = new QTreeWidget();
+    m_findingsTree->setAlternatingRowColors(true);
+    m_findingsTree->setRootIsDecorated(false);
+    m_findingsTree->setHeaderLabels({
+        LANG("findings/header_severity"),
+        LANG("findings/header_title"),
+        LANG("findings/header_detail")
+    });
+    m_findingsTree->setColumnWidth(0, 88);
+    m_findingsTree->setColumnWidth(1, 220);
+    m_findingsTree->setColumnWidth(2, 480);
+    m_findingsTree->setCursor(Qt::PointingHandCursor);
+    findingsLayout->addWidget(m_findingsTree, 1);
+
+    m_analysisTabWidget->addTab(findingsTab, LANG("UI/tab_findings"));
+
+    // --------------------------------------------------------------------
 
     mainLayout->addWidget(m_analysisTabWidget, 1);
 }
@@ -722,6 +754,10 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
 
     // Lazily populate heavy tabs in MainWindow.
+    if (m_findingsTree) {
+        connect(m_findingsTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onFindingsItemClicked);
+    }
+
     if (m_analysisTabWidget) {
         connect(m_analysisTabWidget, &QTabWidget::currentChanged, mainWindow, &MainWindow::onAnalysisTabChanged);
     }
