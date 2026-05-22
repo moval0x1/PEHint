@@ -36,6 +36,8 @@ struct PEPdbInfo {
     quint32 age = 0;
     quint32 codeViewFileOffset = 0; ///< PointerToRawData of CodeView debug data
     quint32 codeViewSize = 0;
+    quint32 pathFileOffset = 0;     ///< File offset of embedded PDB path string
+    quint32 pathByteSize = 0;       ///< Length of path in file (includes null terminator)
 };
 
 /**

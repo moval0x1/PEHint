@@ -48,6 +48,19 @@ QString peTreeSizeBytesText(const QString &sizeHexToken)
     return QStringLiteral("%1 bytes").arg(sizeHexToken);
 }
 
+QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb, const QByteArray &cvBytes)
+{
+    QString summary = pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
+    summary += QStringLiteral(" · ");
+    summary += peTreeSizeBytesText(PEUtils::formatHexWidth(static_cast<quint64>(cvBytes.size()), 0));
+    const QString hex = formatHexPreview(cvBytes);
+    if (!hex.isEmpty()) {
+        summary += QStringLiteral(" · ");
+        summary += hex;
+    }
+    return summary;
+}
+
 QString peTreeEntriesText(const QString &countToken)
 {
     return QStringLiteral("%1 entries").arg(countToken);
@@ -680,9 +693,14 @@ void PEParserNew::ensureFieldOffsetLookup()
 
     const PEPdbInfo pdb = m_dataModel.getPdbInfo();
     if (pdb.present && pdb.codeViewFileOffset > 0 && pdb.codeViewSize > 0) {
-        fieldOffsets[QStringLiteral("PDB Path")] =
+        fieldOffsets[QStringLiteral("PDB Raw")] =
             QPair<quint32, quint32>(pdb.codeViewFileOffset, pdb.codeViewSize);
-        fieldOffsets[QStringLiteral("PDB Raw")] = fieldOffsets[QStringLiteral("PDB Path")];
+        if (pdb.pathByteSize > 0
+            && static_cast<quint64>(pdb.pathFileOffset) + pdb.pathByteSize
+                   <= static_cast<quint64>(m_fileData.size())) {
+            fieldOffsets[QStringLiteral("PDB Path")] =
+                QPair<quint32, quint32>(pdb.pathFileOffset, pdb.pathByteSize);
+        }
         const bool isRsds = pdb.format.compare(QStringLiteral("RSDS"), Qt::CaseInsensitive) == 0;
         if (!pdb.guid.isEmpty() && isRsds) {
             fieldOffsets[QStringLiteral("PDB GUID")] = QPair<quint32, quint32>(pdb.codeViewFileOffset + 4, 16);
@@ -1483,21 +1501,28 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
     if (pdb.present) {
         const quint32 cvBase = pdb.codeViewFileOffset;
         const quint32 cvSize = pdb.codeViewSize;
-        const bool canHighlight = cvBase > 0 && cvSize > 0;
+        const quint32 pathOff = pdb.pathFileOffset;
+        const quint32 pathSize = pdb.pathByteSize;
+        const bool rawHighlight = cvSize > 0
+                                  && static_cast<quint64>(cvBase) + cvSize
+                                         <= static_cast<quint64>(m_fileData.size());
+        const bool pathHighlight = pathSize > 0
+                                   && static_cast<quint64>(pathOff) + pathSize
+                                          <= static_cast<quint64>(m_fileData.size());
         const bool isRsds = pdb.format.compare(QStringLiteral("RSDS"), Qt::CaseInsensitive) == 0;
 
-        addInsightTreeField(insights, LANG("UI/field_pdb_path"), pdb.path, QStringLiteral("PDB Path"), cvBase, cvSize,
-                            canHighlight, insightMeaningText(QStringLiteral("PDB Path")));
+        addInsightTreeField(insights, LANG("UI/field_pdb_path"), pdb.path, QStringLiteral("PDB Path"), pathOff,
+                            pathSize, pathHighlight, insightMeaningText(QStringLiteral("PDB Path")));
 
-        if (canHighlight && cvSize > 0 && cvBase + cvSize <= static_cast<quint32>(m_fileData.size())) {
+        if (rawHighlight) {
             const QByteArray cvBytes = m_fileData.mid(static_cast<int>(cvBase), static_cast<int>(cvSize));
-            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatHexPreview(cvBytes),
+            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatCodeViewRawTreeValue(pdb, cvBytes),
                                 QStringLiteral("PDB Raw"), cvBase, cvSize, true,
                                 insightMeaningText(QStringLiteral("PDB Raw")));
         }
 
         if (!pdb.guid.isEmpty() && isRsds) {
-            const bool guidOk = canHighlight && cvBase + 20 <= cvBase + cvSize;
+            const bool guidOk = rawHighlight && cvBase + 20 <= cvBase + cvSize;
             addInsightTreeField(insights, LANG("UI/field_pdb_guid"), pdb.guid, QStringLiteral("PDB GUID"),
                                 guidOk ? cvBase + 4 : 0, guidOk ? 16u : 0u, guidOk,
                                 insightMeaningText(QStringLiteral("PDB GUID")));
@@ -1505,7 +1530,7 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
 
         const quint32 ageOff = isRsds ? cvBase + 20 : cvBase + 8;
         const QString ageVal = QStringLiteral("%1 (%2)").arg(QString::number(pdb.age), pdb.format);
-        const bool ageOk = canHighlight && ageOff + 4 <= cvBase + cvSize;
+        const bool ageOk = rawHighlight && ageOff + 4 <= cvBase + cvSize;
         addInsightTreeField(insights, LANG("UI/field_pdb_age"), ageVal, QStringLiteral("PDB Age"),
                             ageOk ? ageOff : 0, ageOk ? 4u : 0u, ageOk,
                             insightMeaningText(QStringLiteral("PDB Age")));

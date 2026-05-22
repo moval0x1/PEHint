@@ -3,8 +3,8 @@
 # Find Qt6 Test component
 find_package(Qt6 6.10.2 REQUIRED COMPONENTS Test)
 
-# Test executable
-# Use CMAKE_CURRENT_SOURCE_DIR since this CMakeLists.txt is in tests/ subdirectory
+# Test executable — list every Q_OBJECT header in add_executable so AUTOMOC generates moc_*.cpp
+# (pe_parser_new.cpp added only via target_sources was missing moc for PEParserNew signals).
 add_executable(PEHintTests
     unit/pe_parser_test.cpp
     unit/pe_parser_test.h
@@ -18,9 +18,22 @@ add_executable(PEHintTests
     unit/pe_string_extractor_test.h
     unit/test_main.cpp
     unit/pe_analysis_self_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.h
+    ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_import_export_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/language_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/language_manager.h
+    ${CMAKE_SOURCE_DIR}/src/pe_error_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
 )
 
-set_target_properties(PEHintTests PROPERTIES AUTOMOC ON)
+set_target_properties(PEHintTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFINES ON)
 
 # Link Qt6 Test library
 target_link_libraries(PEHintTests PRIVATE
@@ -34,21 +47,6 @@ target_link_libraries(PEHintTests PRIVATE
 target_include_directories(PEHintTests PRIVATE 
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}
-)
-
-# Link against PEHint source files (for testing internal functions)
-target_sources(PEHintTests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_import_export_parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/language_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_error_handler.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
 )
 
 # One POST_BUILD block: multiple TARGET POST_BUILD commands can overwrite each other on some generators.

@@ -112,6 +112,14 @@ constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
 constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
 
+/** File Insights rows that attach explicit offset/size roles for hex sync. */
+bool fileInsightUsesHexRoles(const QString &fieldName)
+{
+    return fieldName == QLatin1String("Overlay") || fieldName == QLatin1String("PDB Path")
+           || fieldName == QLatin1String("PDB Raw") || fieldName == QLatin1String("PDB GUID")
+           || fieldName == QLatin1String("PDB Age");
+}
+
 /** Parse "(0xNNNN bytes)" from File Insights value text when tree size role is zero. */
 bool parseInsightByteSizeFromValue(const QString &valueText, quint32 &outSize)
 {
@@ -1275,48 +1283,56 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
                 const QVariant roleOffset = item->data(0, kFieldOffsetRole);
                 const QVariant roleSize = item->data(0, kFieldSizeRole);
                 const bool hasRoleSize = roleSize.isValid();
-                if (roleOffset.isValid()) {
+                const bool insightHexRoles = fileInsightUsesHexRoles(fieldName) && roleOffset.isValid()
+                                             && hasRoleSize;
+
+                if (insightHexRoles) {
                     offsetValue = roleOffset.toUInt(&offsetOk);
-                }
-                if (hasRoleSize) {
                     sizeValue = roleSize.toUInt(&sizeOk);
-                }
-
-                if (!offsetOk) {
-                    const QString offsetText = item->text(2).trimmed();
-                    if (offsetText.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
-                        offsetValue = offsetText.mid(2).toUInt(&offsetOk, 16);
+                } else {
+                    if (roleOffset.isValid()) {
+                        offsetValue = roleOffset.toUInt(&offsetOk);
                     }
-                }
-
-                // Size column is usually like "0x2 bytes" - extract the first hex literal.
-                if (!hasRoleSize) {
-                    const QString sizeText = item->text(3);
-                    const QRegularExpression sizeHexRe(QStringLiteral("0x([0-9A-Fa-f]+)"));
-                    const QRegularExpressionMatch sizeMatch = sizeHexRe.match(sizeText);
-                    if (sizeMatch.hasMatch()) {
-                        sizeValue = sizeMatch.captured(1).toUInt(&sizeOk, 16);
+                    if (hasRoleSize) {
+                        sizeValue = roleSize.toUInt(&sizeOk);
                     }
-                }
 
-                if (offsetOk && sizeValue == 0) {
-                    quint32 parsedSize = 0;
-                    if (parseInsightByteSizeFromValue(item->text(1), parsedSize)) {
-                        sizeValue = parsedSize;
-                        sizeOk = true;
-                    }
-                }
-
-                // Fallback only when offset is missing, or size was never set on the row (not explicit zero).
-                if (!offsetOk || (!hasRoleSize && !sizeOk)) {
-                    const QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
                     if (!offsetOk) {
-                        offsetValue = fieldOffset.first;
-                        offsetOk = true;
+                        const QString offsetText = item->text(2).trimmed();
+                        if (offsetText.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
+                            offsetValue = offsetText.mid(2).toUInt(&offsetOk, 16);
+                        }
                     }
-                    if (!hasRoleSize && sizeValue == 0 && fieldOffset.second > 0) {
-                        sizeValue = fieldOffset.second;
-                        sizeOk = true;
+
+                    // Size column is usually like "0x2 bytes" - extract the first hex literal.
+                    if (!hasRoleSize) {
+                        const QString sizeText = item->text(3);
+                        const QRegularExpression sizeHexRe(QStringLiteral("0x([0-9A-Fa-f]+)"));
+                        const QRegularExpressionMatch sizeMatch = sizeHexRe.match(sizeText);
+                        if (sizeMatch.hasMatch()) {
+                            sizeValue = sizeMatch.captured(1).toUInt(&sizeOk, 16);
+                        }
+                    }
+
+                    if (offsetOk && sizeValue == 0) {
+                        quint32 parsedSize = 0;
+                        if (parseInsightByteSizeFromValue(item->text(1), parsedSize)) {
+                            sizeValue = parsedSize;
+                            sizeOk = true;
+                        }
+                    }
+
+                    // Fallback only when offset is missing, or size was never set on the row (not explicit zero).
+                    if (!offsetOk || (!hasRoleSize && !sizeOk)) {
+                        const QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
+                        if (!offsetOk) {
+                            offsetValue = fieldOffset.first;
+                            offsetOk = true;
+                        }
+                        if (!hasRoleSize && sizeValue == 0 && fieldOffset.second > 0) {
+                            sizeValue = fieldOffset.second;
+                            sizeOk = true;
+                        }
                     }
                 }
 

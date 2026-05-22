@@ -9,6 +9,8 @@ namespace {
 
 constexpr quint32 kCvSignatureRsds = 0x53445352u; // 'RSDS'
 constexpr quint32 kCvSignatureNb10 = 0x3031424Eu; // 'NB10'
+constexpr quint32 kRsdsFixedSize = 24;  // CvSignature + Signature[16] + Age
+constexpr quint32 kNb10FixedSize = 12;  // signature + offset + age
 constexpr quint64 kMinOverlayBytes = 1;
 constexpr int kImageDirectoryEntrySecurity = 4;
 
@@ -140,7 +142,6 @@ quint32 PEAnalysis::codeViewRecordByteSize(const QByteArray &fileData, quint32 f
     std::memcpy(&sig, base, sizeof(sig));
 
     if (sig == kCvSignatureRsds) {
-        constexpr quint32 kRsdsFixedSize = 24;
         if (maxSize < kRsdsFixedSize) {
             return maxSize;
         }
@@ -154,7 +155,6 @@ quint32 PEAnalysis::codeViewRecordByteSize(const QByteArray &fileData, quint32 f
     }
 
     if (sig == kCvSignatureNb10) {
-        constexpr quint32 kNb10FixedSize = 12;
         if (maxSize < kNb10FixedSize) {
             return maxSize;
         }
@@ -183,7 +183,6 @@ PEPdbInfo PEAnalysis::parseCodeViewDebugData(const QByteArray &fileData, quint32
     std::memcpy(&sig, base, sizeof(sig));
 
     if (sig == kCvSignatureRsds) {
-        constexpr quint32 kRsdsFixedSize = 24; // CvSignature + Signature[16] + Age
         if (sizeOfData < kRsdsFixedSize + 1) {
             return pdb;
         }
@@ -199,6 +198,8 @@ PEPdbInfo PEAnalysis::parseCodeViewDebugData(const QByteArray &fileData, quint32
             ++nameLen;
         }
         pdb.path = QString::fromLocal8Bit(nameStart, nameLen).trimmed();
+        pdb.pathFileOffset = pointerToRawData + kRsdsFixedSize;
+        pdb.pathByteSize = nameLen > 0 ? static_cast<quint32>(nameLen) + 1u : 0u;
         return pdb;
     }
 
@@ -218,6 +219,8 @@ PEPdbInfo PEAnalysis::parseCodeViewDebugData(const QByteArray &fileData, quint32
             ++nameLen;
         }
         pdb.path = QString::fromLocal8Bit(nameStart, nameLen).trimmed();
+        pdb.pathFileOffset = pointerToRawData + kNb10FixedSize;
+        pdb.pathByteSize = nameLen > 0 ? static_cast<quint32>(nameLen) + 1u : 0u;
         return pdb;
     }
 

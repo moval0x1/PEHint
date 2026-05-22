@@ -57,6 +57,8 @@ bool runPeAnalysisSelfTests()
     check(rsdsInfo.present, "rsds present");
     check(rsdsInfo.path == QStringLiteral("app.pdb"), "rsds path");
     check(rsdsInfo.age == 42u, "rsds age");
+    check(rsdsInfo.pathFileOffset == 24u, "rsds path offset");
+    check(rsdsInfo.pathByteSize == 8u, "rsds path size");
 
     QByteArray nb10(24, '\0');
     nb10[0] = 'N';
@@ -69,6 +71,8 @@ bool runPeAnalysisSelfTests()
     const PEPdbInfo nbInfo = PEAnalysis::parseCodeViewDebugData(nb10, 0, static_cast<quint32>(nb10.size()));
     check(nbInfo.present, "nb10 present");
     check(nbInfo.path == QStringLiteral("legacy.pdb"), "nb10 path");
+    check(nbInfo.pathFileOffset == 12u, "nb10 path offset");
+    check(nbInfo.pathByteSize == 11u, "nb10 path size");
 
     const quint32 rsdsRecSize = PEAnalysis::codeViewRecordByteSize(rsds, 0, static_cast<quint32>(rsds.size()));
     check(rsdsRecSize == static_cast<quint32>(rsds.size()), "rsds record size");
