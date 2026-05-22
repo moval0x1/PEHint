@@ -48,17 +48,10 @@ QString peTreeSizeBytesText(const QString &sizeHexToken)
     return QStringLiteral("%1 bytes").arg(sizeHexToken);
 }
 
-QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb, const QByteArray &cvBytes)
+QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb, quint32 recordSize)
 {
-    QString summary = pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
-    summary += QStringLiteral(" · ");
-    summary += peTreeSizeBytesText(PEUtils::formatHexWidth(static_cast<quint64>(cvBytes.size()), 0));
-    const QString hex = formatHexPreview(cvBytes);
-    if (!hex.isEmpty()) {
-        summary += QStringLiteral(" · ");
-        summary += hex;
-    }
-    return summary;
+    const QString format = pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
+    return QStringLiteral("%1 · %2").arg(format, peTreeSizeBytesText(PEUtils::formatHexWidth(recordSize, 0)));
 }
 
 QString peTreeEntriesText(const QString &countToken)
@@ -159,7 +152,7 @@ QString insightMeaningText(const QString &jsonFieldKey)
         { "PDB Path", "UI/pdb_path_meaning",
           "Program database path from the CodeView debug directory (RSDS or NB10)." },
         { "PDB Raw", "UI/pdb_raw_meaning",
-          "Raw RSDS/NB10 bytes at the CodeView offset (preview truncated in the tree)." },
+          "Raw RSDS/NB10 record at the CodeView offset; use the hex view for byte-level detail." },
         { "PDB GUID", "UI/pdb_guid_meaning",
           "Unique PDB identifier used with age to locate symbols on a symbol server." },
         { "PDB Age", "UI/pdb_age_meaning",
@@ -1461,7 +1454,7 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
     insights->setText(1, QString());
     insights->setText(2, QString());
     insights->setText(3, QString());
-    insights->setText(4, LANG("UI/tree_file_insights_hint"));
+    insights->setText(4, insightMeaningText(QStringLiteral("File Insights")));
 
     if (overlay.present && overlay.fileOffset > 0) {
         quint64 overlayBytes = overlay.size;
@@ -1515,8 +1508,7 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
                             pathSize, pathHighlight, insightMeaningText(QStringLiteral("PDB Path")));
 
         if (rawHighlight) {
-            const QByteArray cvBytes = m_fileData.mid(static_cast<int>(cvBase), static_cast<int>(cvSize));
-            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatCodeViewRawTreeValue(pdb, cvBytes),
+            addInsightTreeField(insights, LANG("UI/field_pdb_raw"), formatCodeViewRawTreeValue(pdb, cvSize),
                                 QStringLiteral("PDB Raw"), cvBase, cvSize, true,
                                 insightMeaningText(QStringLiteral("PDB Raw")));
         }
