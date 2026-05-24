@@ -1,4 +1,5 @@
 #include "pe_parser_new.h"
+#include "pe_ep_disasm.h"
 #include "pe_utils.h"
 #include "pe_analysis.h"
 #include "language_manager.h"
@@ -22,6 +23,15 @@
 namespace {
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
+
+QString uiStringWithFallback(const QString &key, const QString &fallback)
+{
+    const QString fromIni = LanguageManager::getInstance().getIniString(key);
+    if (!fromIni.isEmpty()) {
+        return fromIni;
+    }
+    return LanguageManager::getInstance().getString(key, fallback);
+}
 
 QString formatHexPreview(const QByteArray &data, int maxBytes = 72)
 {
@@ -509,6 +519,38 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
                         "<div style='margin:0 0 12px 0;font-family:Consolas,monospace;font-size:10px;"
                         "color:#374151;'>%1</div>")
                         .arg(LANG_PARAMS(QStringLiteral("UI/entry_point_bytes_line"), byteParams).toHtmlEscaped());
+            QByteArray epBytes;
+            for (const QString &part : metrics.entryPointBytesHex.split(QLatin1Char(' '), Qt::SkipEmptyParts)) {
+                bool ok = false;
+                const uint byte = part.toUInt(&ok, 16);
+                if (ok) {
+                    epBytes.append(static_cast<char>(byte));
+                }
+            }
+            bool is64 = false;
+            if (const IMAGE_OPTIONAL_HEADER *opt = m_dataModel.getOptionalHeader()) {
+                is64 = opt->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+            }
+            const QStringList asmLines = PEEpDisasm::disassembleEntryPoint(is64, epBytes, 4);
+            if (!asmLines.isEmpty()) {
+                QStringList escapedAsm;
+                escapedAsm.reserve(asmLines.size());
+                for (const QString &line : asmLines) {
+                    escapedAsm.append(line.toHtmlEscaped());
+                }
+                html += QStringLiteral(
+                            "<div style='margin:0 0 12px 0;font-family:Consolas,monospace;font-size:10px;"
+                            "color:#1e40af;'>%1<br/>%2</div>"
+                            "<div style='font-size:10px;color:#64748b;margin-top:4px;'>%3</div>")
+                            .arg(uiStringWithFallback(QStringLiteral("UI/entry_point_disasm_title"),
+                                                      QStringLiteral("Likely disassembly (best effort, not a full decoder):"))
+                                    .toHtmlEscaped(),
+                                 escapedAsm.join(QStringLiteral("<br/>")),
+                                 uiStringWithFallback(QStringLiteral("UI/entry_point_disasm_note"),
+                                                      QStringLiteral("These are hints for the first bytes only — use a "
+                                                                     "disassembler for complete code."))
+                                     .toHtmlEscaped());
+            }
         } else {
             html += QStringLiteral("<div style='margin:0 0 12px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
                         .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
@@ -1907,7 +1949,7 @@ QTreeWidgetItem *PEParserNew::buildFileInsightsItem()
 
         if (metrics.entryPointRva != 0) {
             const QString epVal = formatEntryPointSummary(metrics);
-            const quint32 epSize = metrics.entryPointBytesHex.isEmpty() ? 1u : 8u;
+            const quint32 epSize = metrics.entryPointBytesHex.isEmpty() ? 1u : 16u;
             addInsightTreeField(insights, LANG("UI/field_entry_point"), epVal, QStringLiteral("Entry Point"),
                                 metrics.entryPointFileOffset, epSize, metrics.entryPointFileOffset > 0,
                                 insightMeaningText(QStringLiteral("Entry Point")));

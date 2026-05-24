@@ -17,6 +17,7 @@
 #include "mainwindow.h"
 #include "hexviewer.h"
 #include "language_manager.h"
+#include "section_layout_widget.h"
 #include <QApplication>
 #include <QIcon>
 #include <QHeaderView>
@@ -57,6 +58,7 @@ UIManager::UIManager(MainWindow *parent)
     , m_delayImportModulesTree(nullptr)
     , m_delayImportFunctionsTree(nullptr)
     , m_exportsTree(nullptr)
+    , m_resourcesTree(nullptr)
     , m_dependenciesTree(nullptr)
     , m_dependenciesExpandAllButton(nullptr)
     , m_dependenciesCollapseAllButton(nullptr)
@@ -68,6 +70,7 @@ UIManager::UIManager(MainWindow *parent)
     , m_findingsInsightText(nullptr)
     , m_findingsSeverityCombo(nullptr)
     , m_findingsShowPassesCheck(nullptr)
+    , m_sectionLayoutWidget(nullptr)
     , m_stringsFilterEdit(nullptr)
     , m_stringsTypeCombo(nullptr)
     , m_stringsMinLengthSpin(nullptr)
@@ -553,6 +556,34 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(exportsTab, LANG("UI/tab_exports"));
 
     // --------------------------------------------------------------------
+    // Resources tab
+    // --------------------------------------------------------------------
+    QWidget *resourcesTab = new QWidget();
+    QVBoxLayout *resourcesLayout = new QVBoxLayout(resourcesTab);
+    resourcesLayout->setContentsMargins(0, 0, 0, 0);
+    resourcesLayout->setSpacing(4);
+
+    m_resourcesTree = new QTreeWidget();
+    m_resourcesTree->setAlternatingRowColors(true);
+    m_resourcesTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_resourcesTree->setRootIsDecorated(false);
+    m_resourcesTree->setHeaderLabels({
+        LANG("UI/resources_header_type"),
+        LANG("UI/resources_header_name"),
+        LANG("UI/resources_header_language"),
+        LANG("UI/resources_header_size"),
+        LANG("UI/resources_header_offset")
+    });
+    m_resourcesTree->setColumnWidth(0, 180);
+    m_resourcesTree->setColumnWidth(1, 160);
+    m_resourcesTree->setColumnWidth(2, 90);
+    m_resourcesTree->setColumnWidth(3, 90);
+    m_resourcesTree->setColumnWidth(4, 110);
+
+    resourcesLayout->addWidget(m_resourcesTree);
+    m_analysisTabWidget->addTab(resourcesTab, LANG("UI/tab_resources"));
+
+    // --------------------------------------------------------------------
     // Dependencies tab
     // --------------------------------------------------------------------
     QWidget *dependenciesTab = new QWidget();
@@ -709,17 +740,23 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_findingsInsightText = new QTextBrowser();
     m_findingsInsightText->setReadOnly(true);
     m_findingsInsightText->setOpenExternalLinks(true);
-    m_findingsInsightText->setMinimumHeight(88);
-    m_findingsInsightText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_findingsInsightText->setMinimumHeight(72);
+    m_findingsInsightText->setMaximumHeight(132);
+    m_findingsInsightText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_findingsInsightText->setStyleSheet(
         QStringLiteral("QTextBrowser { font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; "
                        "background: #fafafa; border: 1px solid #e8e8e8; border-radius: 4px; }"));
     m_findingsInsightText->setPlaceholderText(LANG("findings/insight_placeholder"));
-    overviewRightLayout->addWidget(m_findingsInsightText, 1);
+    overviewRightLayout->addWidget(m_findingsInsightText);
 
+    overviewRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     overviewRowLayout->addWidget(overviewLeft, 0);
     overviewRowLayout->addWidget(overviewRight, 1);
-    findingsLayout->addWidget(overviewRow);
+    findingsLayout->addWidget(overviewRow, 0);
+
+    m_sectionLayoutWidget = new SectionLayoutWidget();
+    m_sectionLayoutWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    findingsLayout->addWidget(m_sectionLayoutWidget, 0);
 
     QHBoxLayout *findingsFilterLayout = new QHBoxLayout();
     findingsFilterLayout->setContentsMargins(0, 4, 0, 4);
@@ -904,6 +941,9 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
     if (m_findingsShowPassesCheck) {
         connect(m_findingsShowPassesCheck, &QCheckBox::toggled, mainWindow, &MainWindow::onFindingsFilterChanged);
+    }
+    if (m_resourcesTree) {
+        connect(m_resourcesTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onResourcesItemClicked);
     }
 
     if (m_analysisTabWidget) {

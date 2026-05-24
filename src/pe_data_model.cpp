@@ -15,6 +15,7 @@ PEDataModel::PEDataModel()
     m_exportFunctions.clear();
     m_resourceTypes.clear();
     m_resources.clear();
+    m_resourceEntries.clear();
     m_debugInfo.clear();
     m_debugDetails.clear();
     m_tlsInfo.clear();
@@ -158,6 +159,11 @@ void PEDataModel::setResources(const QMap<QString, QMap<QString, QString>> &reso
     m_resources = resources;
 }
 
+void PEDataModel::setResourceEntries(const QVector<PEResourceItem> &entries)
+{
+    m_resourceEntries = entries;
+}
+
 QStringList PEDataModel::getResourceTypes() const
 {
     return m_resourceTypes;
@@ -166,6 +172,11 @@ QStringList PEDataModel::getResourceTypes() const
 QMap<QString, QMap<QString, QString>> PEDataModel::getResources() const
 {
     return m_resources;
+}
+
+const QVector<PEResourceItem> &PEDataModel::getResourceEntries() const
+{
+    return m_resourceEntries;
 }
 
 // Debug info
@@ -553,6 +564,7 @@ void PEDataModel::clear()
     m_exportFunctions.clear();
     m_resourceTypes.clear();
     m_resources.clear();
+    m_resourceEntries.clear();
     m_debugInfo.clear();
     m_debugDetails.clear();
     

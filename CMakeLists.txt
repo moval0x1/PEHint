@@ -152,6 +152,10 @@ set(PROJECT_SOURCES
     src/pe_findings.h
     src/pe_cli_scan.cpp
     src/pe_cli_scan.h
+    src/section_layout_widget.cpp
+    src/section_layout_widget.h
+    src/pe_ep_disasm.cpp
+    src/pe_ep_disasm.h
     src/pe_data_model.cpp
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp

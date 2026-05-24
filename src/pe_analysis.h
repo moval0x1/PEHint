@@ -86,6 +86,17 @@ struct PEContentScan {
     QVector<PEHardcodedMatch> suspiciousCommands;
 };
 
+struct PEResourceItem {
+    QString typeName;
+    quint32 typeId = 0;
+    QString resourceName;
+    quint32 nameId = 0;
+    quint32 languageId = 0;
+    quint32 rva = 0;
+    quint32 size = 0;
+    quint32 fileOffset = 0;
+};
+
 struct PEVersionInfo {
     bool present = false;
     QString fileVersion;
@@ -136,6 +147,10 @@ public:
 
     /** Parses VS_VERSION_INFO strings from the PE resource directory (RT_VERSION). */
     static PEVersionInfo parseVersionResource(const QByteArray &fileData, const PEDataModel &dataModel);
+
+    /** Recursively walks the PE resource tree and returns one row per data leaf. */
+    static QVector<PEResourceItem> enumerateResourceEntries(const QByteArray &fileData,
+                                                            const PEDataModel &dataModel);
 };
 
 #endif // PE_ANALYSIS_H

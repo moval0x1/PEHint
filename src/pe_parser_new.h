@@ -272,6 +272,7 @@ public:
         return m_dataModel.getDelayImportFunctions();
     }
     const QList<PEDataModel::ExportFunctionEntry>& getExportFunctions() const { return m_dataModel.getExportFunctions(); }
+    const QVector<PEResourceItem> &getResourceEntries() const { return m_dataModel.getResourceEntries(); }
     
     // Async parsing support - For handling large files without blocking UI
     

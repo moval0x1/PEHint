@@ -89,6 +89,7 @@ public slots:
     void onAnalysisTabChanged(int index);
     void onFindingsItemClicked(QTreeWidgetItem *item, int column);
     void onOverviewItemClicked(QTreeWidgetItem *item, int column);
+    void onResourcesItemClicked(QTreeWidgetItem *item, int column);
     void onFindingsFilterChanged();
 
     // Language management
@@ -127,6 +128,7 @@ private:
     bool m_importsPopulated;
     bool m_delayImportsPopulated;
     bool m_exportsPopulated;
+    bool m_resourcesPopulated;
     bool m_dependenciesPopulated;
     bool m_stringsPopulated;
     QString m_lastExplainedFieldName; ///< Avoid redundant explanation/hex work on repeated selection
@@ -200,6 +202,7 @@ private:
     void populateImportsTab();
     void populateDelayImportsTab();
     void populateExportsTab();
+    void populateResourcesTab();
     void populateDependenciesTab();
     void populateStringsTab();
 

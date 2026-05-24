@@ -16,6 +16,10 @@ add_executable(PEHintTests
     unit/pe_dependency_analyzer_test.h
     unit/pe_string_extractor_test.cpp
     unit/pe_string_extractor_test.h
+    unit/pe_golden_test.cpp
+    unit/pe_golden_test.h
+    helpers/minimal_pe_builder.cpp
+    helpers/minimal_pe_builder.h
     unit/test_main.cpp
     unit/pe_analysis_self_test.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
@@ -33,6 +37,8 @@ add_executable(PEHintTests
     ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.h
+    ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.h
     unit/pe_findings_self_test.cpp
 )
 
@@ -50,6 +56,7 @@ target_link_libraries(PEHintTests PRIVATE
 target_include_directories(PEHintTests PRIVATE 
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/tests
 )
 
 # One POST_BUILD block: multiple TARGET POST_BUILD commands can overwrite each other on some generators.

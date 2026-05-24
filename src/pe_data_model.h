@@ -59,8 +59,10 @@ public:
     // Resources
     void setResourceTypes(const QStringList &types);
     void setResources(const QMap<QString, QMap<QString, QString>> &resources);
+    void setResourceEntries(const QVector<PEResourceItem> &entries);
     QStringList getResourceTypes() const;
     QMap<QString, QMap<QString, QString>> getResources() const;
+    const QVector<PEResourceItem> &getResourceEntries() const;
     
     // Debug info
     void setDebugInfo(const QStringList &info);
@@ -189,6 +191,7 @@ private:
     // Resources
     QStringList m_resourceTypes;
     QMap<QString, QMap<QString, QString>> m_resources;
+    QVector<PEResourceItem> m_resourceEntries;
     
     // Debug info
     QStringList m_debugInfo;

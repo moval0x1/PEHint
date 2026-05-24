@@ -34,6 +34,7 @@
 #include "pe_dependency_analyzer.h"
 #include "pe_string_extractor.h"
 #include "pe_findings.h"
+#include "section_layout_widget.h"
 #include "sdk_api_markdown_reader.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -1578,6 +1579,7 @@ void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch
     m_importsPopulated = false;
     m_delayImportsPopulated = false;
     m_exportsPopulated = false;
+    m_resourcesPopulated = false;
     m_dependenciesPopulated = false;
     m_stringsPopulated = false;
 
@@ -1606,6 +1608,9 @@ void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch
     }
     if (m_uiManager->m_exportsTree) {
         m_uiManager->m_exportsTree->clear();
+    }
+    if (m_uiManager->m_resourcesTree) {
+        m_uiManager->m_resourcesTree->clear();
     }
     if (m_uiManager->m_dependenciesTree) {
         m_uiManager->m_dependenciesTree->clear();
@@ -1872,6 +1877,7 @@ void MainWindow::clearDisplay()
         m_importsPopulated = false;
         m_delayImportsPopulated = false;
         m_exportsPopulated = false;
+        m_resourcesPopulated = false;
         m_dependenciesPopulated = false;
         m_stringsPopulated = false;
         updateDependenciesExpandCollapseButtonState();
@@ -2119,20 +2125,36 @@ void MainWindow::populateFindingsOverview()
         rowHeight = 22;
     }
     constexpr int kOverviewHeaderHeight = 26;
-    constexpr int kMaxVisibleRows = 20;
-    const int contentHeight = kOverviewHeaderHeight + rows * rowHeight + 6;
+    constexpr int kMaxVisibleRows = 6;
+    const int visibleRows = qMin(rows, kMaxVisibleRows);
+    const int contentHeight = kOverviewHeaderHeight + visibleRows * rowHeight + 6;
     tree->setFixedHeight(contentHeight);
 
     tree->resizeColumnToContents(0);
     tree->resizeColumnToContents(1);
     constexpr int kOverviewChrome = 28;
     constexpr int kMaxOverviewWidth = 560;
+    constexpr int kMaxFieldColumnWidth = 118;
+    if (tree->columnWidth(0) > kMaxFieldColumnWidth) {
+        tree->setColumnWidth(0, kMaxFieldColumnWidth);
+    }
     const int tableWidth = tree->columnWidth(0) + tree->columnWidth(1) + kOverviewChrome;
     tree->setFixedWidth(qMin(tableWidth, kMaxOverviewWidth));
 
     if (m_uiManager->m_findingsInsightText) {
-        m_uiManager->m_findingsInsightText->setMinimumHeight(qMax(88, contentHeight));
+        const int insightHeight = qBound(72, contentHeight, 132);
+        m_uiManager->m_findingsInsightText->setFixedHeight(insightHeight);
     }
+
+    if (m_uiManager->m_sectionLayoutWidget && m_peParser) {
+        const PEDataModel &model = m_peParser->getDataModel();
+        quint32 imageSize = 0;
+        if (const IMAGE_OPTIONAL_HEADER *opt = model.getOptionalHeader()) {
+            imageSize = opt->SizeOfImage;
+        }
+        m_uiManager->m_sectionLayoutWidget->setSections(model.getSections(), imageSize);
+    }
+
     if (rows > kMaxVisibleRows) {
         tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     } else {
@@ -2412,13 +2434,21 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
 
     const QString title = item->text(1);
     const QString detail = item->text(2);
-    const QString html = QStringLiteral(
+    const QString helpKey = QStringLiteral("findings/") + baseRuleId + QStringLiteral("_help");
+    const QString helpText = LANG(helpKey);
+    QString html = QStringLiteral(
                              "<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;"
                              "color:#222;line-height:1.55;'>"
                              "<div style='font-weight:600;font-size:12px;margin-bottom:8px;'>%1</div>"
-                             "<div style='color:#333;'>%2</div>"
-                             "</div>")
+                             "<div style='color:#333;'>%2</div>")
                              .arg(title.toHtmlEscaped(), detail.toHtmlEscaped());
+    if (!helpText.isEmpty() && helpText != helpKey) {
+        html += QStringLiteral(
+                    "<div style='margin-top:10px;padding:8px 10px;background:#f0f9ff;border-left:3px solid "
+                    "#38bdf8;border-radius:4px;color:#0c4a6e;'>%1</div>")
+                    .arg(helpText.toHtmlEscaped());
+    }
+    html += QStringLiteral("</div>");
     showFindingsInsightHtml(html);
 }
 
@@ -2514,7 +2544,7 @@ void MainWindow::analysisDisplayPhaseStringsTab()
 void MainWindow::onStringsFilterChanged()
 {
     if (!m_fileLoaded || !m_uiManager) return;
-    const bool stringsTabActive = m_uiManager->m_analysisTabWidget && m_uiManager->m_analysisTabWidget->currentIndex() == 5;
+    const bool stringsTabActive = m_uiManager->m_analysisTabWidget && m_uiManager->m_analysisTabWidget->currentIndex() == 6;
     const bool senderTriggersExtraction =
         sender() == m_uiManager->m_stringsMinLengthSpin ||
         sender() == m_uiManager->m_stringsSectionCombo;
@@ -2532,7 +2562,8 @@ void MainWindow::onAnalysisTabChanged(int index)
     if (!m_fileLoaded || !m_uiManager || !m_peParser || !m_peParser->isValid()) return;
 
     // Tab order in UIManager:
-    // 0 = Structure, 1 = Imports, 2 = Delay Imports, 3 = Exports, 4 = Dependencies, 5 = Strings, 6 = Findings
+    // 0 = Structure, 1 = Imports, 2 = Delay Imports, 3 = Exports, 4 = Resources,
+    // 5 = Dependencies, 6 = Strings, 7 = Findings
     switch (index) {
         case 1:
             populateImportsTab();
@@ -2544,9 +2575,12 @@ void MainWindow::onAnalysisTabChanged(int index)
             populateExportsTab();
             break;
         case 4:
-            populateDependenciesTab();
+            populateResourcesTab();
             break;
         case 5:
+            populateDependenciesTab();
+            break;
+        case 6:
             populateStringsTab();
             break;
         default:
@@ -2680,6 +2714,78 @@ void MainWindow::populateExportsTab()
     }
 
     m_exportsPopulated = true;
+}
+
+void MainWindow::populateResourcesTab()
+{
+    if (m_resourcesPopulated) {
+        return;
+    }
+    if (!m_uiManager || !m_uiManager->m_resourcesTree || !m_peParser) {
+        return;
+    }
+
+    m_uiManager->m_resourcesTree->clear();
+    const QVector<PEResourceItem> &resources = m_peParser->getResourceEntries();
+    if (resources.isEmpty()) {
+        QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_resourcesTree);
+        placeholder->setText(0, LANG("UI/resources_none"));
+        placeholder->setFirstColumnSpanned(true);
+        placeholder->setFlags(Qt::NoItemFlags);
+    } else {
+        constexpr int kResourceOffsetRole = Qt::UserRole;
+        constexpr int kResourceSizeRole = Qt::UserRole + 1;
+        m_uiManager->m_resourcesTree->setUpdatesEnabled(false);
+        for (const PEResourceItem &entry : resources) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_resourcesTree);
+            item->setText(0, entry.typeName);
+            item->setText(1, entry.resourceName);
+            item->setText(2, entry.languageId != 0 ? QString::number(entry.languageId) : QString());
+            item->setText(3, QString::number(entry.size));
+            item->setText(4, entry.fileOffset != 0 ? PEUtils::formatHexWidth(entry.fileOffset, 8) : QString());
+            if (entry.fileOffset != 0) {
+                item->setData(0, kResourceOffsetRole, QVariant::fromValue(entry.fileOffset));
+                item->setData(0, kResourceSizeRole, QVariant::fromValue(entry.size));
+            }
+            if (entry.rva != 0) {
+                const QString tip = QStringLiteral("RVA %1, %2 bytes")
+                                        .arg(PEUtils::formatHexWidth(entry.rva, 8))
+                                        .arg(entry.size);
+                item->setToolTip(0, tip);
+                item->setToolTip(1, tip);
+                item->setToolTip(2, tip);
+                item->setToolTip(3, tip);
+                item->setToolTip(4, tip);
+            }
+        }
+        m_uiManager->m_resourcesTree->setUpdatesEnabled(true);
+    }
+
+    m_resourcesPopulated = true;
+}
+
+void MainWindow::onResourcesItemClicked(QTreeWidgetItem *item, int /*column*/)
+{
+    if (!item || !m_uiManager || !m_uiManager->m_hexViewer) {
+        return;
+    }
+    constexpr int kResourceOffsetRole = Qt::UserRole;
+    constexpr int kResourceSizeRole = Qt::UserRole + 1;
+    const QVariant offsetVar = item->data(0, kResourceOffsetRole);
+    if (!offsetVar.isValid()) {
+        return;
+    }
+    const quint32 offset = offsetVar.toUInt();
+    const quint32 size = item->data(0, kResourceSizeRole).toUInt();
+    HexViewer *hex = m_uiManager->m_hexViewer;
+    if (size > 0) {
+        hex->highlightRange(offset, size, QColor(200, 230, 255));
+        m_lastHexHighlightOffset = static_cast<qint64>(offset);
+        m_lastHexHighlightSize = size;
+        m_lastHexHighlightRgba = QColor(200, 230, 255).rgba();
+    } else {
+        hex->goToOffset(static_cast<qint64>(offset));
+    }
 }
 
 void MainWindow::populateDependenciesTab()

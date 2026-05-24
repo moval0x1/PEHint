@@ -6,6 +6,7 @@
 #include "pe_utils_test.h"
 #include "pe_dependency_analyzer_test.h"
 #include "pe_string_extractor_test.h"
+#include "pe_golden_test.h"
 
 bool runPeAnalysisSelfTests();
 bool runPeFindingsSelfTests();
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     runSuite("PEUtilsTest", new PEUtilsTest);
     runSuite("PEDependencyAnalyzerTest", new PEDependencyAnalyzerTest);
     runSuite("PEStringExtractorTest", new PEStringExtractorTest);
+    runSuite("PEGoldenTest", new PEGoldenTest);
 
     if (!runPeAnalysisSelfTests()) {
         std::cerr << "PE analysis self-tests failed\n";

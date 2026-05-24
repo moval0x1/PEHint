@@ -49,6 +49,8 @@
 #include <QCheckBox>
 #include "hexviewer.h"
 
+class SectionLayoutWidget;
+
 class MainWindow;
 
 /**
@@ -100,6 +102,7 @@ public:
     QTreeWidget *m_delayImportModulesTree; ///< Delay-import module list
     QTreeWidget *m_delayImportFunctionsTree; ///< Functions for selected delay-import module
     QTreeWidget *m_exportsTree;       ///< Displays export functions list
+    QTreeWidget *m_resourcesTree;     ///< Enumerated PE resources (type, name, language, size)
     QTreeWidget *m_dependenciesTree;  ///< Displays DLL dependencies and resolve status
     QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
     QPushButton *m_dependenciesCollapseAllButton;   ///< Collapse all rows in the dependencies tree
@@ -111,6 +114,7 @@ public:
     QTextBrowser *m_findingsInsightText;   ///< File summary / finding detail (stays on Findings tab)
     QComboBox *m_findingsSeverityCombo;  ///< Filter findings by severity
     QCheckBox *m_findingsShowPassesCheck; ///< Show hardening pass rows
+    SectionLayoutWidget *m_sectionLayoutWidget; ///< Compact RVA section map (Findings tab)
     QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring
     QComboBox *m_stringsTypeCombo;    ///< Filter by type: All / ASCII / Unicode
     QSpinBox *m_stringsMinLengthSpin; ///< Minimum extracted string length
