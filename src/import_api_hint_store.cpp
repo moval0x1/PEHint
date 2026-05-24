@@ -67,6 +67,16 @@ void ImportApiHintStore::loadFromConfig() const
         hint.returns = obj.value(QStringLiteral("returns")).toString();
         hint.remarks = obj.value(QStringLiteral("remarks")).toString();
         hint.learnUrl = obj.value(QStringLiteral("learnUrl")).toString();
+        hint.malapiUrl = obj.value(QStringLiteral("malapiUrl")).toString();
+        const QString categories = obj.value(QStringLiteral("malapiCategories")).toString();
+        if (!categories.isEmpty()) {
+            const QString catLine = QStringLiteral("MalAPI categories: %1").arg(categories);
+            if (hint.remarks.isEmpty()) {
+                hint.remarks = catLine;
+            } else if (!hint.remarks.contains(QStringLiteral("MalAPI categories"))) {
+                hint.remarks += QStringLiteral("<br/>") + catLine;
+            }
+        }
         const QString dll = obj.value(QStringLiteral("dll")).toString();
         const QString function = obj.value(QStringLiteral("function")).toString();
         if (!hint.hasContent() || function.isEmpty()) {

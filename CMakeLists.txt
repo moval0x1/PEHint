@@ -139,6 +139,8 @@ set(PROJECT_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h
+    src/mainwindow_chrome.cpp
+    src/mainwindow_chrome.h
     src/hexviewer.cpp
     src/hexviewer.h
     src/virtual_hex_widget.cpp
@@ -158,6 +160,21 @@ set(PROJECT_SOURCES
     src/pe_findings.h
     src/findings_controller.cpp
     src/findings_controller.h
+    src/resources_controller.cpp
+    src/resources_controller.h
+    src/dependencies_controller.cpp
+    src/dependencies_controller.h
+    src/imports_controller.cpp
+    src/imports_controller.h
+    src/strings_controller.cpp
+    src/strings_controller.h
+    src/exports_controller.cpp
+    src/exports_controller.h
+    src/structure_tree_controller.cpp
+    src/structure_tree_controller.h
+    src/pe_report_builder.cpp
+    src/pe_report_builder.h
+    src/pe_field_hex.h
     src/pe_cli_scan.cpp
     src/pe_cli_scan.h
     src/section_layout_widget.cpp

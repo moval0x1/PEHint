@@ -16,11 +16,12 @@ struct ImportApiHint {
     QString returns;
     QString remarks;
     QString learnUrl;
+    QString malapiUrl;
 
     bool hasContent() const
     {
         return !summary.isEmpty() || !signature.isEmpty() || !parameters.isEmpty() || !returns.isEmpty()
-            || !remarks.isEmpty() || !learnUrl.isEmpty();
+            || !remarks.isEmpty() || !learnUrl.isEmpty() || !malapiUrl.isEmpty();
     }
 };
 

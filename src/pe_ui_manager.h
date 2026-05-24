@@ -130,7 +130,6 @@ public:
     QTreeWidget *m_peTree;         ///< Displays PE structure hierarchy
     QLabel *m_fieldExplanationTitleLabel; ///< "Field explanations" heading above the detail text
     QTextEdit *m_fieldExplanationText; ///< Shows field explanations
-    QMenu *m_contextMenu;           ///< Right-click context menu
     HexViewer *m_hexViewer;        ///< Hex viewer for binary data display
     
     // Setup methods - These replace the UI setup logic that was in MainWindow
@@ -161,54 +160,6 @@ public:
      * component individually. Now it just calls this method once.
      */
     void setupConnections(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up application menus (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for menu setup
-     * 
-     * REFACTORING NOTE: Currently, menus are still handled by MainWindow
-     * because they're application-level concerns. This method is a placeholder
-     * for future menu management if needed.
-     */
-    void setupMenus(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up toolbar (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for toolbar setup
-     * 
-     * REFACTORING NOTE: Toolbar setup is minimal and could be moved here
-     * if we implement more sophisticated toolbar management.
-     */
-    void setupToolbar(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up status bar (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for status bar setup
-     * 
-     * REFACTORING NOTE: Status bar setup is simple enough that it doesn't
-     * need abstraction. This method is a placeholder for future use.
-     */
-    void setupStatusBar(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up context menu for the main window
-     * @param mainWindow Pointer to MainWindow for context menu setup
-     * 
-     * This method creates a basic context menu with common actions.
-     * It could be enhanced in the future to support dynamic menu content
-     * based on the current state or selected items.
-     */
-    void setupContextMenu(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up hex viewer component (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for hex viewer setup
-     * 
-     * REFACTORING NOTE: Hex viewer setup is currently handled in setupMainUI()
-     * because it's part of the main UI layout. This method is a placeholder
-     * for future hex viewer configuration if needed.
-     */
-    void setupHexViewer(MainWindow *mainWindow);
     
 private:
     MainWindow *m_mainWindow; ///< Reference to the parent MainWindow

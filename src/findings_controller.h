@@ -1,6 +1,7 @@
 #ifndef FINDINGS_CONTROLLER_H
 #define FINDINGS_CONTROLLER_H
 
+#include "pe_field_hex.h"
 #include "pe_findings.h"
 
 #include <QObject>
@@ -10,13 +11,6 @@
 class PEParserNew;
 class QTreeWidgetItem;
 class UIManager;
-
-struct PeFieldHexRange {
-    quint32 offset = 0;
-    quint32 size = 0;
-    bool canHighlight = false;
-    bool canGoTo = false;
-};
 
 class FindingsController : public QObject
 {

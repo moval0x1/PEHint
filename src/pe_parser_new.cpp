@@ -128,7 +128,9 @@ bool isFieldExplanationPlaceholder(const QString &fieldName, const QString &html
         return true;
     }
     if (plain.contains(QStringLiteral("Field explanation for"), Qt::CaseInsensitive)
-        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)) {
+        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("No detailed explanation"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("Nenhuma explicação detalhada"), Qt::CaseInsensitive)) {
         return true;
     }
     return plain.contains(QStringLiteral("Coming soon"), Qt::CaseInsensitive)
@@ -1643,7 +1645,16 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
     }
 
     // Do not cache misses — a later config deploy or language switch should recover without reload.
-    return LANG_PARAM("UI/field_explanation_placeholder", "fieldname", fieldName);
+    QString explanation =
+        QStringLiteral("<div style='margin-bottom: 8px; line-height: 1.6; color: #4b5563;'>%1</div>")
+            .arg(LANG_PARAM(QStringLiteral("UI/field_explanation_unavailable"),
+                            QStringLiteral("fieldname"), fieldName));
+    const QString staticMeaning = getFieldMeaning(fieldName, QStringLiteral("-"));
+    if (!staticMeaning.isEmpty()) {
+        explanation += QStringLiteral("<div style='margin-bottom: 8px;'><b>%1:</b> %2</div>")
+                           .arg(LANG(QStringLiteral("UI/field_explanation_value_hint")), staticMeaning);
+    }
+    return explanation;
 }
 
 void PEParserNew::clearFieldExplanationCaches()

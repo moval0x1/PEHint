@@ -1,6 +1,9 @@
 #include "pe_authenticode.h"
 
+#include "language_manager.h"
+
 #include <QChar>
+#include <QMap>
 #include <QFileInfo>
 
 #ifdef Q_OS_WIN
@@ -283,7 +286,7 @@ AuthenticodeTrustStatus verifyAuthenticodeTrust(const QString &sourceFilePath, Q
 {
     if (sourceFilePath.isEmpty() || !QFileInfo::exists(sourceFilePath)) {
         if (detailOut) {
-            *detailOut = QStringLiteral("Trust verification requires a file path on disk.");
+            *detailOut = LANG("UI/authenticode_trust_need_path");
         }
         return AuthenticodeTrustStatus::UnknownError;
     }
@@ -309,37 +312,38 @@ AuthenticodeTrustStatus verifyAuthenticodeTrust(const QString &sourceFilePath, Q
 
     if (status == ERROR_SUCCESS) {
         if (detailOut) {
-            *detailOut = QStringLiteral("Signature verified (WinVerifyTrust).");
+            *detailOut = LANG("UI/authenticode_signature_verified");
         }
         return AuthenticodeTrustStatus::Valid;
     }
     if (status == TRUST_E_NOSIGNATURE || status == TRUST_E_SUBJECT_FORM_UNKNOWN) {
         if (detailOut) {
-            *detailOut = QStringLiteral("No Authenticode signature.");
+            *detailOut = LANG("UI/authenticode_no_signature");
         }
         return AuthenticodeTrustStatus::NotSigned;
     }
     if (status == CERT_E_EXPIRED) {
         if (detailOut) {
-            *detailOut = QStringLiteral("Signing certificate has expired.");
+            *detailOut = LANG("UI/authenticode_cert_expired");
         }
         return AuthenticodeTrustStatus::Expired;
     }
     if (status == CERT_E_UNTRUSTEDROOT || status == CERT_E_CHAINING) {
         if (detailOut) {
-            *detailOut = QStringLiteral("Certificate chain is not trusted.");
+            *detailOut = LANG("UI/authenticode_chain_untrusted");
         }
         return AuthenticodeTrustStatus::UntrustedRoot;
     }
     if (status == TRUST_E_BAD_DIGEST || status == TRUST_E_CERT_SIGNATURE) {
         if (detailOut) {
-            *detailOut = QStringLiteral("Signature digest mismatch or invalid certificate signature.");
+            *detailOut = LANG("UI/authenticode_bad_digest");
         }
         return AuthenticodeTrustStatus::InvalidSignature;
     }
     if (detailOut) {
-        *detailOut = QStringLiteral("WinVerifyTrust returned 0x%1.")
-                           .arg(QString::number(static_cast<quint32>(status), 16));
+        QMap<QString, QString> params;
+        params[QStringLiteral("code")] = QString::number(static_cast<quint32>(status), 16);
+        *detailOut = LANG_PARAMS("UI/authenticode_winverify_failed", params);
     }
     return AuthenticodeTrustStatus::UnknownError;
 }
@@ -361,7 +365,7 @@ PEAuthenticodeInfo analyzeAuthenticode(const QByteArray &fileData,
     PEAuthenticodeInfo info;
     if (certTableOffset == 0 || certTableSize < 8) {
         info.trustStatus = AuthenticodeTrustStatus::NotSigned;
-        info.statusMessage = QStringLiteral("No certificate table.");
+        info.statusMessage = LANG("UI/authenticode_no_cert_table");
         return info;
     }
 
@@ -375,7 +379,7 @@ PEAuthenticodeInfo analyzeAuthenticode(const QByteArray &fileData,
 #else
     Q_UNUSED(sourceFilePath);
     info.trustStatus = AuthenticodeTrustStatus::VerificationUnavailable;
-    info.statusMessage = QStringLiteral("Signature trust verification is only available on Windows.");
+    info.statusMessage = LANG("UI/authenticode_verify_windows_only");
 #endif
 
     return info;
@@ -385,20 +389,20 @@ QString authenticodeTrustStatusLabel(AuthenticodeTrustStatus status)
 {
     switch (status) {
     case AuthenticodeTrustStatus::NotSigned:
-        return QStringLiteral("Not signed");
+        return LANG("UI/authenticode_trust_not_signed");
     case AuthenticodeTrustStatus::Valid:
-        return QStringLiteral("Valid signature");
+        return LANG("UI/authenticode_trust_valid");
     case AuthenticodeTrustStatus::InvalidSignature:
-        return QStringLiteral("Invalid signature");
+        return LANG("UI/authenticode_trust_invalid");
     case AuthenticodeTrustStatus::UntrustedRoot:
-        return QStringLiteral("Untrusted certificate chain");
+        return LANG("UI/authenticode_trust_untrusted_root");
     case AuthenticodeTrustStatus::Expired:
-        return QStringLiteral("Expired certificate");
+        return LANG("UI/authenticode_trust_expired");
     case AuthenticodeTrustStatus::Revoked:
-        return QStringLiteral("Revoked certificate");
+        return LANG("UI/authenticode_trust_revoked");
     case AuthenticodeTrustStatus::VerificationUnavailable:
-        return QStringLiteral("Verification unavailable");
+        return LANG("UI/authenticode_trust_unavailable");
     default:
-        return QStringLiteral("Unknown trust status");
+        return LANG("UI/authenticode_trust_unknown");
     }
 }

@@ -206,14 +206,12 @@ public:
      */
     const QByteArray& getFileData() const;
     
-    // Field explanation and offset methods (for UI compatibility)
-    // REFACTORING: These methods provide backward compatibility with the old UI
-    // They will be enhanced in future iterations to use the new data model
+    // Field explanation and offset methods (JSON-driven explanations + i18n)
     
     /**
      * @brief Gets explanation text for a specific PE field
      * @param fieldName Name of the field to get explanation for
-     * @return HTML-formatted explanation text (JSON-driven + i18n; falls back to generic placeholder)
+     * @return HTML-formatted explanation text (JSON-driven + i18n; generic fallback when no entry exists)
      */
     QString getFieldExplanation(const QString &fieldName);
 
@@ -250,15 +248,9 @@ public:
      */
     QString getFieldMeaning(const QString &fieldName, const QString &value);
     
-    // Tree building method (for UI compatibility)
-    
     /**
-     * @brief Builds a tree structure for UI display
+     * @brief Builds the Structure tab tree via PEUIPresenter
      * @return List of tree items representing the PE structure
-     * 
-     * REFACTORING NOTE: This method currently returns an empty list.
-     * Future implementation will build the tree from the new PEDataModel,
-     * providing a comprehensive view of the PE structure.
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
     /** Triage summary (overlay, entropy, PDB, version) — not part of the PE layout tree. */

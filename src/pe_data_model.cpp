@@ -13,33 +13,11 @@ PEDataModel::PEDataModel()
     m_imports.clear();
     m_importFunctionDetails.clear();
     m_exportFunctions.clear();
-    m_resourceTypes.clear();
-    m_resources.clear();
     m_resourceEntries.clear();
-    m_debugInfo.clear();
-    m_debugDetails.clear();
-    m_tlsInfo.clear();
-    m_tlsDetails.clear();
-    m_loadConfigInfo.clear();
-    m_loadConfigDetails.clear();
-    m_exceptionInfo.clear();
-    m_exceptionDetails.clear();
-    m_certificateInfo.clear();
-    m_certificateDetails.clear();
-    m_relocationInfo.clear();
-    m_relocationDetails.clear();
-    m_architectureInfo.clear();
-    m_architectureDetails.clear();
-    m_globalPointerInfo.clear();
-    m_globalPointerDetails.clear();
-    m_boundImportInfo.clear();
-    m_boundImportDetails.clear();
-    m_iatInfo.clear();
-    m_iatDetails.clear();
-    m_delayImportInfo.clear();
-    m_delayImportDetails.clear();
-    m_comRuntimeInfo.clear();
-    m_comRuntimeDetails.clear();
+    for (int i = 0; i < 16; ++i) {
+        m_parsedDirectoryFields[i].clear();
+    }
+    m_dataDirectoryRecords.clear();
     m_overlayInfo = PEOverlayInfo{};
     m_entropySummary = PEEntropySummary{};
     m_pdbInfo = PEPdbInfo{};
@@ -149,29 +127,9 @@ const QList<PEDataModel::ExportFunctionEntry>& PEDataModel::getExportFunctions()
 }
 
 // Resources
-void PEDataModel::setResourceTypes(const QStringList &types)
-{
-    m_resourceTypes = types;
-}
-
-void PEDataModel::setResources(const QMap<QString, QMap<QString, QString>> &resources)
-{
-    m_resources = resources;
-}
-
 void PEDataModel::setResourceEntries(const QVector<PEResourceItem> &entries)
 {
     m_resourceEntries = entries;
-}
-
-QStringList PEDataModel::getResourceTypes() const
-{
-    return m_resourceTypes;
-}
-
-QMap<QString, QMap<QString, QString>> PEDataModel::getResources() const
-{
-    return m_resources;
 }
 
 const QVector<PEResourceItem> &PEDataModel::getResourceEntries() const
@@ -179,256 +137,50 @@ const QVector<PEResourceItem> &PEDataModel::getResourceEntries() const
     return m_resourceEntries;
 }
 
-// Debug info
-void PEDataModel::setDebugInfo(const QStringList &info)
+void PEDataModel::setParsedDirectoryFields(int directoryIndex, const QVector<PEDataDirectoryField> &fields)
 {
-    m_debugInfo = info;
+    if (directoryIndex >= 0 && directoryIndex < 16) {
+        m_parsedDirectoryFields[directoryIndex] = fields;
+    }
 }
 
-void PEDataModel::setDebugDetails(const QMap<QString, QString> &details)
+const QVector<PEDataDirectoryField> &PEDataModel::parsedDirectoryFields(int directoryIndex) const
 {
-    m_debugDetails = details;
+    static const QVector<PEDataDirectoryField> kEmpty;
+    if (directoryIndex >= 0 && directoryIndex < 16) {
+        return m_parsedDirectoryFields[directoryIndex];
+    }
+    return kEmpty;
 }
 
-QStringList PEDataModel::getDebugInfo() const
+void PEDataModel::setDebugDirectoryEntries(const QVector<PEDebugDirectoryEntry> &entries)
 {
-    return m_debugInfo;
+    m_debugDirectoryEntries = entries;
 }
 
-QMap<QString, QString> PEDataModel::getDebugDetails() const
+const QVector<PEDebugDirectoryEntry> &PEDataModel::debugDirectoryEntries() const
 {
-    return m_debugDetails;
+    return m_debugDirectoryEntries;
 }
 
-// TLS info
-void PEDataModel::setTLSInfo(const QStringList &info)
+void PEDataModel::setTlsDirectoryInfo(const PETlsDirectoryInfo &info)
 {
-    m_tlsInfo = info;
+    m_tlsDirectoryInfo = info;
 }
 
-void PEDataModel::setTLSDetails(const QMap<QString, QString> &details)
+const PETlsDirectoryInfo &PEDataModel::tlsDirectoryInfo() const
 {
-    m_tlsDetails = details;
+    return m_tlsDirectoryInfo;
 }
 
-QStringList PEDataModel::getTLSInfo() const
+void PEDataModel::setLoadConfigDirectoryInfo(const PELoadConfigDirectoryInfo &info)
 {
-    return m_tlsInfo;
+    m_loadConfigDirectoryInfo = info;
 }
 
-QMap<QString, QString> PEDataModel::getTLSDetails() const
+const PELoadConfigDirectoryInfo &PEDataModel::loadConfigDirectoryInfo() const
 {
-    return m_tlsDetails;
-}
-
-// Load Configuration info
-void PEDataModel::setLoadConfigInfo(const QStringList &info)
-{
-    m_loadConfigInfo = info;
-}
-
-void PEDataModel::setLoadConfigDetails(const QMap<QString, QString> &details)
-{
-    m_loadConfigDetails = details;
-}
-
-QStringList PEDataModel::getLoadConfigInfo() const
-{
-    return m_loadConfigInfo;
-}
-
-QMap<QString, QString> PEDataModel::getLoadConfigDetails() const
-{
-    return m_loadConfigDetails;
-}
-
-// Exception info
-void PEDataModel::setExceptionInfo(const QStringList &info)
-{
-    m_exceptionInfo = info;
-}
-
-void PEDataModel::setExceptionDetails(const QMap<QString, QString> &details)
-{
-    m_exceptionDetails = details;
-}
-
-QStringList PEDataModel::getExceptionInfo() const
-{
-    return m_exceptionInfo;
-}
-
-QMap<QString, QString> PEDataModel::getExceptionDetails() const
-{
-    return m_exceptionDetails;
-}
-
-// Certificate info
-void PEDataModel::setCertificateInfo(const QStringList &info)
-{
-    m_certificateInfo = info;
-}
-
-void PEDataModel::setCertificateDetails(const QMap<QString, QString> &details)
-{
-    m_certificateDetails = details;
-}
-
-QStringList PEDataModel::getCertificateInfo() const
-{
-    return m_certificateInfo;
-}
-
-QMap<QString, QString> PEDataModel::getCertificateDetails() const
-{
-    return m_certificateDetails;
-}
-
-// Relocation info
-void PEDataModel::setRelocationInfo(const QStringList &info)
-{
-    m_relocationInfo = info;
-}
-
-void PEDataModel::setRelocationDetails(const QMap<QString, QString> &details)
-{
-    m_relocationDetails = details;
-}
-
-QStringList PEDataModel::getRelocationInfo() const
-{
-    return m_relocationInfo;
-}
-
-QMap<QString, QString> PEDataModel::getRelocationDetails() const
-{
-    return m_relocationDetails;
-}
-
-// Architecture info
-void PEDataModel::setArchitectureInfo(const QStringList &info)
-{
-    m_architectureInfo = info;
-}
-
-void PEDataModel::setArchitectureDetails(const QMap<QString, QString> &details)
-{
-    m_architectureDetails = details;
-}
-
-QStringList PEDataModel::getArchitectureInfo() const
-{
-    return m_architectureInfo;
-}
-
-QMap<QString, QString> PEDataModel::getArchitectureDetails() const
-{
-    return m_architectureDetails;
-}
-
-// Global Pointer info
-void PEDataModel::setGlobalPointerInfo(const QStringList &info)
-{
-    m_globalPointerInfo = info;
-}
-
-void PEDataModel::setGlobalPointerDetails(const QMap<QString, QString> &details)
-{
-    m_globalPointerDetails = details;
-}
-
-QStringList PEDataModel::getGlobalPointerInfo() const
-{
-    return m_globalPointerInfo;
-}
-
-QMap<QString, QString> PEDataModel::getGlobalPointerDetails() const
-{
-    return m_globalPointerDetails;
-}
-
-// Bound Import info
-void PEDataModel::setBoundImportInfo(const QStringList &info)
-{
-    m_boundImportInfo = info;
-}
-
-void PEDataModel::setBoundImportDetails(const QMap<QString, QString> &details)
-{
-    m_boundImportDetails = details;
-}
-
-QStringList PEDataModel::getBoundImportInfo() const
-{
-    return m_boundImportInfo;
-}
-
-QMap<QString, QString> PEDataModel::getBoundImportDetails() const
-{
-    return m_boundImportDetails;
-}
-
-// IAT info
-void PEDataModel::setIATInfo(const QStringList &info)
-{
-    m_iatInfo = info;
-}
-
-void PEDataModel::setIATDetails(const QMap<QString, QString> &details)
-{
-    m_iatDetails = details;
-}
-
-QStringList PEDataModel::getIATInfo() const
-{
-    return m_iatInfo;
-}
-
-QMap<QString, QString> PEDataModel::getIATDetails() const
-{
-    return m_iatDetails;
-}
-
-// Delay Import info
-void PEDataModel::setDelayImportInfo(const QStringList &info)
-{
-    m_delayImportInfo = info;
-}
-
-void PEDataModel::setDelayImportDetails(const QMap<QString, QString> &details)
-{
-    m_delayImportDetails = details;
-}
-
-QStringList PEDataModel::getDelayImportInfo() const
-{
-    return m_delayImportInfo;
-}
-
-QMap<QString, QString> PEDataModel::getDelayImportDetails() const
-{
-    return m_delayImportDetails;
-}
-
-// COM+ Runtime info
-void PEDataModel::setCOMRuntimeInfo(const QStringList &info)
-{
-    m_comRuntimeInfo = info;
-}
-
-void PEDataModel::setCOMRuntimeDetails(const QMap<QString, QString> &details)
-{
-    m_comRuntimeDetails = details;
-}
-
-QStringList PEDataModel::getCOMRuntimeInfo() const
-{
-    return m_comRuntimeInfo;
-}
-
-QMap<QString, QString> PEDataModel::getCOMRuntimeDetails() const
-{
-    return m_comRuntimeDetails;
+    return m_loadConfigDirectoryInfo;
 }
 
 void PEDataModel::setOverlayInfo(const PEOverlayInfo &info)
@@ -536,6 +288,16 @@ double PEDataModel::sectionEntropy(const QString &sectionName) const
     return -1.0;
 }
 
+void PEDataModel::setDataDirectoryRecords(const QVector<PEDataDirectoryRecord> &records)
+{
+    m_dataDirectoryRecords = records;
+}
+
+const QVector<PEDataDirectoryRecord> &PEDataModel::getDataDirectoryRecords() const
+{
+    return m_dataDirectoryRecords;
+}
+
 // Validation
 bool PEDataModel::isValid() const
 {
@@ -562,35 +324,14 @@ void PEDataModel::clear()
     m_delayImports.clear();
     m_delayImportFunctionDetails.clear();
     m_exportFunctions.clear();
-    m_resourceTypes.clear();
-    m_resources.clear();
     m_resourceEntries.clear();
-    m_debugInfo.clear();
-    m_debugDetails.clear();
-    
-    // Clear new data fields
-    m_tlsInfo.clear();
-    m_tlsDetails.clear();
-    m_loadConfigInfo.clear();
-    m_loadConfigDetails.clear();
-    m_exceptionInfo.clear();
-    m_exceptionDetails.clear();
-    m_certificateInfo.clear();
-    m_certificateDetails.clear();
-    m_relocationInfo.clear();
-    m_relocationDetails.clear();
-    m_architectureInfo.clear();
-    m_architectureDetails.clear();
-    m_globalPointerInfo.clear();
-    m_globalPointerDetails.clear();
-    m_boundImportInfo.clear();
-    m_boundImportDetails.clear();
-    m_iatInfo.clear();
-    m_iatDetails.clear();
-    m_delayImportInfo.clear();
-    m_delayImportDetails.clear();
-    m_comRuntimeInfo.clear();
-    m_comRuntimeDetails.clear();
+    for (int i = 0; i < 16; ++i) {
+        m_parsedDirectoryFields[i].clear();
+    }
+    m_debugDirectoryEntries.clear();
+    m_tlsDirectoryInfo = PETlsDirectoryInfo{};
+    m_loadConfigDirectoryInfo = PELoadConfigDirectoryInfo{};
+    m_dataDirectoryRecords.clear();
     m_overlayInfo = PEOverlayInfo{};
     m_entropySummary = PEEntropySummary{};
     m_pdbInfo = PEPdbInfo{};

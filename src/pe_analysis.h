@@ -109,6 +109,9 @@ struct PEVersionInfo {
     QString fileDescription;
     QString originalFilename;
     QString legalCopyright;
+    QString internalName;
+    QString comments;
+    QString legalTrademarks;
     bool manifestPresent = false;
     QString manifestExecutionLevel;
     quint32 versionResourceOffset = 0;
@@ -154,6 +157,9 @@ public:
 
     /** Parses VS_VERSION_INFO strings from the PE resource directory (RT_VERSION). */
     static PEVersionInfo parseVersionResource(const QByteArray &fileData, const PEDataModel &dataModel);
+
+    /** Parses VS_VERSION_INFO from a single RT_VERSION resource payload. */
+    static PEVersionInfo parseVersionResourceBlob(const QByteArray &blob);
 
     /** Recursively walks the PE resource tree and returns one row per data leaf. */
     static QVector<PEResourceItem> enumerateResourceEntries(const QByteArray &fileData,

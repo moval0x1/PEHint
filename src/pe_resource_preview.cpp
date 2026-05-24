@@ -1,8 +1,12 @@
 #include "pe_resource_preview.h"
 
+#include "language_manager.h"
+#include "pe_analysis.h"
 #include "pe_structures.h"
 
+#include <QBuffer>
 #include <QImage>
+#include <QMap>
 #include <QtGlobal>
 #include <cstring>
 
@@ -15,6 +19,35 @@ quint32 readLe32(const QByteArray &data, int offset)
     }
     const auto *p = reinterpret_cast<const unsigned char *>(data.constData() + offset);
     return quint32(p[0]) | (quint32(p[1]) << 8) | (quint32(p[2]) << 16) | (quint32(p[3]) << 24);
+}
+
+quint16 readLe16(const QByteArray &data, int offset)
+{
+    if (offset + 2 > data.size()) {
+        return 0;
+    }
+    const auto *p = reinterpret_cast<const unsigned char *>(data.constData() + offset);
+    return quint16(p[0]) | (quint16(p[1]) << 8);
+}
+
+void writeLe16At(QByteArray &data, int offset, quint16 value)
+{
+    if (offset + 2 > data.size()) {
+        return;
+    }
+    data[offset] = char(value & 0xff);
+    data[offset + 1] = char((value >> 8) & 0xff);
+}
+
+void writeLe32At(QByteArray &data, int offset, quint32 value)
+{
+    if (offset + 4 > data.size()) {
+        return;
+    }
+    data[offset] = char(value & 0xff);
+    data[offset + 1] = char((value >> 8) & 0xff);
+    data[offset + 2] = char((value >> 16) & 0xff);
+    data[offset + 3] = char((value >> 24) & 0xff);
 }
 
 QString decodeResourceText(const QByteArray &data)
@@ -46,15 +79,6 @@ QString formatHexPreview(const QByteArray &data, int maxBytes = 512)
         s += QStringLiteral(" …");
     }
     return s;
-}
-
-quint16 readLe16(const QByteArray &data, int offset)
-{
-    if (offset + 2 > data.size()) {
-        return 0;
-    }
-    const auto *p = reinterpret_cast<const unsigned char *>(data.constData() + offset);
-    return quint16(p[0]) | (quint16(p[1]) << 8);
 }
 
 quint32 dibColorTableBytes(const QByteArray &data, quint32 headerSize)
@@ -112,6 +136,23 @@ QImage decodeBitmapResource(const QByteArray &data)
     return QImage();
 }
 
+QImage decodePeIconOrCursorPayload(const QByteArray &data)
+{
+    if (data.size() >= 8 && static_cast<quint8>(data.at(0)) == 0x89 && data.mid(1, 3) == "PNG") {
+        QImage img;
+        if (img.loadFromData(data, "PNG")) {
+            return img;
+        }
+    }
+    if (data.size() >= 6 && readLe16(data, 0) == 0 && readLe16(data, 2) == 1) {
+        QImage img;
+        if (img.loadFromData(data, "ICO")) {
+            return img;
+        }
+    }
+    return decodeBitmapResource(data);
+}
+
 QImage decodeImagePayload(const QByteArray &data, const QString &formatHint)
 {
     QImage img;
@@ -119,7 +160,7 @@ QImage decodeImagePayload(const QByteArray &data, const QString &formatHint)
         return img;
     }
     if (formatHint == QStringLiteral("ICO")) {
-        return decodeBitmapResource(data);
+        return decodePeIconOrCursorPayload(data);
     }
     return QImage();
 }
@@ -138,9 +179,259 @@ bool isMostlyPrintableText(const QString &text)
     return printable * 100 / text.size() >= 85;
 }
 
+QString escHtml(const QString &s)
+{
+    return s.toHtmlEscaped();
+}
+
+QString formatVersionFieldRow(const QString &label, const QString &value)
+{
+    if (value.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("<tr><td style='padding:4px 8px;font-weight:600;white-space:nowrap;'>%1</td>"
+                          "<td style='padding:4px 8px;'>%2</td></tr>")
+        .arg(escHtml(label), escHtml(value));
+}
+
+QString formatVersionInfoHtml(const PEVersionInfo &info)
+{
+    QString html = QStringLiteral(
+        "<table style='border-collapse:collapse;font-family:Segoe UI,sans-serif;font-size:11px;'>");
+    html += formatVersionFieldRow(LANG("UI/resource_ver_file_version"), info.fileVersion);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_product_version"), info.productVersion);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_company_name"), info.companyName);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_product_name"), info.productName);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_file_description"), info.fileDescription);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_original_filename"), info.originalFilename);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_internal_name"), info.internalName);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_legal_copyright"), info.legalCopyright);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_legal_trademarks"), info.legalTrademarks);
+    html += formatVersionFieldRow(LANG("UI/resource_ver_comments"), info.comments);
+    html += QStringLiteral("</table>");
+    if (!html.contains(QStringLiteral("<tr>"))) {
+        return QString();
+    }
+    return html;
+}
+
+struct GrpIconEntry {
+    quint8 width = 0;
+    quint8 height = 0;
+    quint16 bitCount = 0;
+    quint32 bytesInRes = 0;
+    quint16 resourceId = 0;
+};
+
+bool parseGroupIconDirectory(const QByteArray &data, QVector<GrpIconEntry> &entries)
+{
+    entries.clear();
+    if (data.size() < 6) {
+        return false;
+    }
+    const quint16 reserved = readLe16(data, 0);
+    const quint16 type = readLe16(data, 2);
+    const quint16 count = readLe16(data, 4);
+    if (reserved != 0 || (type != 1 && type != 2) || count == 0) {
+        return false;
+    }
+    const int needed = 6 + static_cast<int>(count) * 14;
+    if (data.size() < needed) {
+        return false;
+    }
+    entries.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        const int off = 6 + i * 14;
+        GrpIconEntry entry;
+        entry.width = static_cast<quint8>(data.at(off));
+        entry.height = static_cast<quint8>(data.at(off + 1));
+        entry.bitCount = readLe16(data, off + 6);
+        entry.bytesInRes = readLe32(data, off + 8);
+        entry.resourceId = readLe16(data, off + 12);
+        entries.append(entry);
+    }
+    return !entries.isEmpty();
+}
+
+QString iconSizeLabel(const GrpIconEntry &entry)
+{
+    const int w = entry.width == 0 ? 256 : entry.width;
+    const int h = entry.height == 0 ? 256 : entry.height;
+    QMap<QString, QString> sizeParams;
+    sizeParams[QStringLiteral("width")] = QString::number(w);
+    sizeParams[QStringLiteral("height")] = QString::number(h);
+    sizeParams[QStringLiteral("bpp")] = QString::number(entry.bitCount);
+    return LANG_PARAMS("UI/resource_size_bpp", sizeParams);
+}
+
+const PEResourceItem *findLinkedIconResource(const QVector<PEResourceItem> &allItems,
+                                             quint32 iconTypeId,
+                                             quint16 resourceId,
+                                             quint32 languageId)
+{
+    const PEResourceItem *fallback = nullptr;
+    for (const PEResourceItem &candidate : allItems) {
+        if (candidate.typeId != iconTypeId || candidate.nameId != resourceId) {
+            continue;
+        }
+        if (languageId != 0 && candidate.languageId == languageId) {
+            return &candidate;
+        }
+        if (!fallback) {
+            fallback = &candidate;
+        }
+    }
+    return fallback;
+}
+
+QByteArray buildIcoFileFromImages(const QVector<QPair<QByteArray, GrpIconEntry>> &images)
+{
+    if (images.isEmpty()) {
+        return QByteArray();
+    }
+    quint32 offset = 6 + static_cast<quint32>(images.size()) * 16u;
+    QByteArray ico;
+    ico.resize(static_cast<int>(offset));
+    writeLe16At(ico, 0, 0);
+    writeLe16At(ico, 2, 1);
+    writeLe16At(ico, 4, static_cast<quint16>(images.size()));
+
+    int dirOff = 6;
+    for (int i = 0; i < images.size(); ++i) {
+        const GrpIconEntry &entry = images.at(i).second;
+        const QByteArray &payload = images.at(i).first;
+        ico[dirOff] = entry.width;
+        ico[dirOff + 1] = entry.height;
+        ico[dirOff + 2] = 0;
+        ico[dirOff + 3] = 0;
+        writeLe16At(ico, dirOff + 4, 1);
+        writeLe16At(ico, dirOff + 6, entry.bitCount != 0 ? entry.bitCount : 32);
+        writeLe32At(ico, dirOff + 8, static_cast<quint32>(payload.size()));
+        writeLe32At(ico, dirOff + 12, offset);
+        offset += static_cast<quint32>(payload.size());
+        dirOff += 16;
+    }
+    for (const auto &pair : images) {
+        ico.append(pair.first);
+    }
+    return ico;
+}
+
+QString imageGalleryHtml(const QVector<ResourcePreviewImageEntry> &images)
+{
+    QString html = QStringLiteral(
+        "<div style='display:flex;flex-wrap:wrap;gap:12px;font-family:Segoe UI,sans-serif;font-size:10px;'>");
+    for (const ResourcePreviewImageEntry &entry : images) {
+        if (entry.image.isNull()) {
+            continue;
+        }
+        QByteArray bytes;
+        QBuffer buffer(&bytes);
+        buffer.open(QIODevice::WriteOnly);
+        entry.image.save(&buffer, "PNG");
+        html += QStringLiteral("<div style='text-align:center;'>"
+                               "<img src='data:image/png;base64,%1' style='max-width:96px;max-height:96px;"
+                               "border:1px solid #e5e7eb;background:#fafafa;padding:4px;'/>"
+                               "<div style='margin-top:4px;color:#555;'>%2</div></div>")
+                    .arg(QString::fromLatin1(bytes.toBase64()), escHtml(entry.label));
+    }
+    html += QStringLiteral("</div>");
+    return html;
+}
+
+ResourcePreview buildGroupIconPreview(const QByteArray &fileData,
+                                      const PEResourceItem &item,
+                                      const QVector<PEResourceItem> &allItems,
+                                      quint32 iconTypeId,
+                                      const QString &kindLabel)
+{
+    ResourcePreview preview;
+    preview.title = item.typeName;
+    if (!item.resourceName.isEmpty()) {
+        preview.title += QStringLiteral(" / ") + item.resourceName;
+    }
+
+    QVector<GrpIconEntry> entries;
+    const QByteArray payload = fileData.mid(static_cast<int>(item.fileOffset), static_cast<int>(item.size));
+    if (!parseGroupIconDirectory(payload, entries)) {
+        preview.kind = ResourcePreview::Kind::Hex;
+        preview.hexPreview = formatHexPreview(payload, 256);
+        QMap<QString, QString> dirParams;
+        dirParams[QStringLiteral("kind")] = kindLabel;
+        dirParams[QStringLiteral("size")] = QString::number(item.size);
+        preview.textContent = LANG_PARAMS("UI/resource_directory_bytes", dirParams);
+        return preview;
+    }
+
+    QVector<QPair<QByteArray, GrpIconEntry>> resolvedImages;
+    for (const GrpIconEntry &entry : entries) {
+        const PEResourceItem *linked =
+            findLinkedIconResource(allItems, iconTypeId, entry.resourceId, item.languageId);
+        if (!linked || linked->fileOffset == 0 || linked->size == 0) {
+            continue;
+        }
+        const QByteArray iconPayload =
+            fileData.mid(static_cast<int>(linked->fileOffset), static_cast<int>(linked->size));
+        if (!iconPayload.isEmpty()) {
+            resolvedImages.append({iconPayload, entry});
+        }
+    }
+
+    for (const auto &pair : resolvedImages) {
+        QImage img = decodePeIconOrCursorPayload(pair.first);
+        if (img.isNull()) {
+            continue;
+        }
+        ResourcePreviewImageEntry entry;
+        entry.image = img;
+        QMap<QString, QString> idParams;
+        idParams[QStringLiteral("size")] = iconSizeLabel(pair.second);
+        idParams[QStringLiteral("id")] = QString::number(pair.second.resourceId);
+        entry.label = LANG_PARAMS("UI/resource_icon_size_id", idParams);
+        preview.images.append(entry);
+    }
+
+    if (!preview.images.isEmpty()) {
+        preview.kind = ResourcePreview::Kind::ImageGallery;
+        preview.htmlContent = imageGalleryHtml(preview.images);
+        preview.image = preview.images.first().image;
+        return preview;
+    }
+
+    const QByteArray icoFile = buildIcoFileFromImages(resolvedImages);
+    if (!icoFile.isEmpty()) {
+        QImage img;
+        if (img.loadFromData(icoFile, "ICO")) {
+            preview.kind = ResourcePreview::Kind::Image;
+            preview.image = img;
+            QMap<QString, QString> groupParams;
+            groupParams[QStringLiteral("kind")] = kindLabel;
+            groupParams[QStringLiteral("count")] = QString::number(resolvedImages.size());
+            preview.textContent = LANG_PARAMS("UI/resource_group_embedded", groupParams);
+            return preview;
+        }
+    }
+
+    preview.kind = ResourcePreview::Kind::Text;
+    QMap<QString, QString> listHeaderParams;
+    listHeaderParams[QStringLiteral("kind")] = kindLabel;
+    listHeaderParams[QStringLiteral("count")] = QString::number(entries.size());
+    preview.textContent = LANG_PARAMS("UI/resource_group_list_header", listHeaderParams);
+    for (const GrpIconEntry &entry : entries) {
+        QMap<QString, QString> entryParams;
+        entryParams[QStringLiteral("id")] = QString::number(entry.resourceId);
+        entryParams[QStringLiteral("label")] = iconSizeLabel(entry);
+        entryParams[QStringLiteral("size")] = QString::number(entry.bytesInRes);
+        preview.textContent += LANG_PARAMS("UI/resource_group_entry", entryParams);
+    }
+    return preview;
+}
+
 } // namespace
 
-ResourcePreview buildResourcePreview(const QByteArray &fileData, const PEResourceItem &item)
+ResourcePreview buildResourcePreview(const QByteArray &fileData,
+                                     const PEResourceItem &item,
+                                     const QVector<PEResourceItem> &allItems)
 {
     ResourcePreview preview;
     preview.title = item.typeName;
@@ -167,14 +458,38 @@ ResourcePreview buildResourcePreview(const QByteArray &fileData, const PEResourc
     }
 
     if (typeUpper.contains(QStringLiteral("VERSION")) || item.typeId == 16) {
-        preview.kind = ResourcePreview::Kind::Hex;
-        preview.hexPreview = formatHexPreview(payload, 256);
-        preview.textContent = QStringLiteral("VS_VERSION_INFO block (%1 bytes)").arg(item.size);
+        const PEVersionInfo versionInfo = PEAnalysis::parseVersionResourceBlob(payload);
+        const QString table = formatVersionInfoHtml(versionInfo);
+        preview.kind = ResourcePreview::Kind::Html;
+        if (!table.isEmpty()) {
+            preview.htmlContent = table;
+        } else {
+            preview.htmlContent =
+                QStringLiteral("<p style='font-family:Segoe UI,sans-serif;font-size:11px;'>%1</p>")
+                    .arg(LANG_PARAM("UI/resource_ver_no_stringfileinfo", "size", QString::number(item.size)));
+            preview.hexPreview = formatHexPreview(payload, 256);
+        }
         return preview;
     }
 
-    if (typeUpper.contains(QStringLiteral("ICON")) || item.typeId == 3 || item.typeId == 14) {
+    if (typeUpper.contains(QStringLiteral("GROUP_ICON")) || item.typeId == 14) {
+        return buildGroupIconPreview(fileData, item, allItems, 3, LANG("UI/resource_kind_icon"));
+    }
+
+    if (typeUpper.contains(QStringLiteral("GROUP_CURSOR")) || item.typeId == 12) {
+        return buildGroupIconPreview(fileData, item, allItems, 1, LANG("UI/resource_kind_cursor"));
+    }
+
+    if (typeUpper.contains(QStringLiteral("ICON")) || item.typeId == 3) {
         preview.image = decodeImagePayload(payload, QStringLiteral("ICO"));
+        if (!preview.image.isNull()) {
+            preview.kind = ResourcePreview::Kind::Image;
+            return preview;
+        }
+    }
+
+    if (typeUpper.contains(QStringLiteral("CURSOR")) || item.typeId == 1) {
+        preview.image = decodePeIconOrCursorPayload(payload);
         if (!preview.image.isNull()) {
             preview.kind = ResourcePreview::Kind::Image;
             return preview;

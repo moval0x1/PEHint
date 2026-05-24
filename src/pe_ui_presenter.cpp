@@ -174,7 +174,9 @@ bool isFieldExplanationPlaceholder(const QString &fieldName, const QString &html
         return true;
     }
     if (plain.contains(QStringLiteral("Field explanation for"), Qt::CaseInsensitive)
-        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)) {
+        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("No detailed explanation"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("Nenhuma explicação detalhada"), Qt::CaseInsensitive)) {
         return true;
     }
     return plain.contains(QStringLiteral("Coming soon"), Qt::CaseInsensitive)

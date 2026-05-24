@@ -5,6 +5,12 @@
 
 #include <QImage>
 #include <QString>
+#include <QVector>
+
+struct ResourcePreviewImageEntry {
+    QImage image;
+    QString label;
+};
 
 struct ResourcePreview {
     enum class Kind {
@@ -12,6 +18,7 @@ struct ResourcePreview {
         Text,
         Html,
         Image,
+        ImageGallery,
         Hex
     };
 
@@ -20,9 +27,12 @@ struct ResourcePreview {
     QString textContent;
     QString htmlContent;
     QImage image;
+    QVector<ResourcePreviewImageEntry> images;
     QString hexPreview;
 };
 
-ResourcePreview buildResourcePreview(const QByteArray &fileData, const PEResourceItem &item);
+ResourcePreview buildResourcePreview(const QByteArray &fileData,
+                                     const PEResourceItem &item,
+                                     const QVector<PEResourceItem> &allItems = {});
 
 #endif // PE_RESOURCE_PREVIEW_H

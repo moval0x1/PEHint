@@ -1076,6 +1076,9 @@ PEVersionInfo PEAnalysis::parseVersionResource(const QByteArray &fileData, const
         info.fileDescription = versionStringForKey(versionBlob, QStringLiteral("FileDescription"));
         info.originalFilename = versionStringForKey(versionBlob, QStringLiteral("OriginalFilename"));
         info.legalCopyright = versionStringForKey(versionBlob, QStringLiteral("LegalCopyright"));
+        info.internalName = versionStringForKey(versionBlob, QStringLiteral("InternalName"));
+        info.comments = versionStringForKey(versionBlob, QStringLiteral("Comments"));
+        info.legalTrademarks = versionStringForKey(versionBlob, QStringLiteral("LegalTrademarks"));
 
         if (versionBlob.size() >= 92) {
             const auto *fixed = reinterpret_cast<const quint32 *>(versionBlob.constData() + 36);
@@ -1098,6 +1101,37 @@ PEVersionInfo PEAnalysis::parseVersionResource(const QByteArray &fileData, const
         info.manifestExecutionLevel = manifestExecutionLevel(xml);
     }
 
+    return info;
+}
+
+PEVersionInfo PEAnalysis::parseVersionResourceBlob(const QByteArray &blob)
+{
+    PEVersionInfo info;
+    if (blob.size() < 40) {
+        return info;
+    }
+    info.present = true;
+    info.versionResourceSize = static_cast<quint32>(blob.size());
+    info.fileVersion = versionStringForKey(blob, QStringLiteral("FileVersion"));
+    info.productVersion = versionStringForKey(blob, QStringLiteral("ProductVersion"));
+    info.companyName = versionStringForKey(blob, QStringLiteral("CompanyName"));
+    info.productName = versionStringForKey(blob, QStringLiteral("ProductName"));
+    info.fileDescription = versionStringForKey(blob, QStringLiteral("FileDescription"));
+    info.originalFilename = versionStringForKey(blob, QStringLiteral("OriginalFilename"));
+    info.legalCopyright = versionStringForKey(blob, QStringLiteral("LegalCopyright"));
+    info.internalName = versionStringForKey(blob, QStringLiteral("InternalName"));
+    info.comments = versionStringForKey(blob, QStringLiteral("Comments"));
+    info.legalTrademarks = versionStringForKey(blob, QStringLiteral("LegalTrademarks"));
+
+    if (blob.size() >= 92) {
+        const auto *fixed = reinterpret_cast<const quint32 *>(blob.constData() + 36);
+        if (info.fileVersion.isEmpty()) {
+            info.fileVersion = formatFixedVersion(fixed[2], fixed[3]);
+        }
+        if (info.productVersion.isEmpty()) {
+            info.productVersion = formatFixedVersion(fixed[0], fixed[1]);
+        }
+    }
     return info;
 }
 

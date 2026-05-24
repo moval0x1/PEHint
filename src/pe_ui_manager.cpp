@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file pe_ui_manager.cpp
  * @brief Implementation of UIManager class for PEHint
  * 
@@ -49,7 +49,6 @@ UIManager::UIManager(MainWindow *parent)
     , m_peTree(nullptr)
     , m_fieldExplanationTitleLabel(nullptr)
     , m_fieldExplanationText(nullptr)
-    , m_contextMenu(nullptr)
     , m_analysisTabWidget(nullptr)
     , m_importModulesTree(nullptr)
     , m_importFunctionsTree(nullptr)
@@ -474,7 +473,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
                        "font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; }"));
     m_importHintText->setPlainText(LanguageManager::getInstance().getString(
         QStringLiteral("UI/imports_hint_placeholder"),
-        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative only—not live Microsoft data).")));
+        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative onlyâ€”not live Microsoft data).")));
     importHintLayout->addWidget(m_importHintTitleLabel);
     importHintLayout->addWidget(m_importHintText, 1);
 
@@ -987,104 +986,3 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
 }
 
-/**
- * @brief Sets up application menus (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for menu setup
- * 
- * REFACTORING NOTE: Currently, menus are still handled by MainWindow
- * because they're application-level concerns, not just UI components.
- * This method is a placeholder for future menu management if needed.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic menu creation based on application state
- * - Context-sensitive menu items
- * - Menu customization options
- */
-void UIManager::setupMenus(MainWindow *mainWindow)
-{
-    // Menu setup will be handled by MainWindow
-    // This method is a placeholder for future menu management
-}
-
-/**
- * @brief Sets up toolbar (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for toolbar setup
- * 
- * REFACTORING NOTE: Toolbar setup is minimal and could be moved here
- * if we implement more sophisticated toolbar management.
- * 
- * FUTURE ENHANCEMENTS:
- * - Customizable toolbar with user-defined actions
- * - Toolbar state persistence
- * - Context-sensitive toolbar items
- */
-void UIManager::setupToolbar(MainWindow *mainWindow)
-{
-    // Toolbar setup will be handled by MainWindow
-    // This method is a placeholder for future toolbar management
-}
-
-/**
- * @brief Sets up status bar (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for status bar setup
- * 
- * REFACTORING NOTE: Status bar setup is simple enough that it doesn't
- * need abstraction. This method is a placeholder for future use.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic status bar content
- * - Status bar customization options
- * - Progress indicators in status bar
- */
-void UIManager::setupStatusBar(MainWindow *mainWindow)
-{
-    // Status bar setup will be handled by MainWindow
-    // This method is a placeholder for future status bar management
-}
-
-/**
- * @brief Sets up context menu for the main window
- * @param mainWindow Pointer to MainWindow for context menu setup
- * 
- * This method creates a basic context menu with common actions.
- * It could be enhanced in the future to support dynamic menu content
- * based on the current state or selected items.
- * 
- * REFACTORING BENEFIT: Context menu setup is now centralized and
- * easy to modify without affecting other parts of the application.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic menu items based on selected content
- * - Context-sensitive actions
- * - User-customizable context menus
- */
-void UIManager::setupContextMenu(MainWindow *mainWindow)
-{
-    m_contextMenu = new QMenu(mainWindow);
-    QAction *copyAct = m_contextMenu->addAction(LANG("UI/context_copy"), mainWindow, &MainWindow::onCopyToClipboard);
-    copyAct->setIcon(QIcon(QStringLiteral(":/images/imgs/copy.png")));
-    m_contextMenu->addSeparator();
-    QAction *expandAct = m_contextMenu->addAction(LANG("UI/context_expand_all"), mainWindow, &MainWindow::onExpandAll);
-    expandAct->setIcon(QIcon(QStringLiteral(":/images/imgs/expand.png")));
-    QAction *collapseAct = m_contextMenu->addAction(LANG("UI/context_collapse_all"), mainWindow, &MainWindow::onCollapseAll);
-    collapseAct->setIcon(QIcon(QStringLiteral(":/images/imgs/collapse.png")));
-}
-
-/**
- * @brief Sets up hex viewer component (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for hex viewer setup
- * 
- * REFACTORING NOTE: Hex viewer setup is currently handled in setupMainUI()
- * because it's part of the main UI layout. This method is a placeholder
- * for future hex viewer configuration if needed.
- * 
- * FUTURE ENHANCEMENTS:
- * - Hex viewer configuration options
- * - Custom hex viewer themes
- * - Advanced hex viewer features
- */
-void UIManager::setupHexViewer(MainWindow *mainWindow)
-{
-    // Hex viewer setup will be handled by MainWindow
-    // This method is a placeholder for future hex viewer configuration
-}
