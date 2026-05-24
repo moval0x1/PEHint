@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rules": [
     {
       "id": "missing_aslr",
@@ -108,6 +108,176 @@
       "titleKey": "findings/old_timestamp_title",
       "detailKey": "findings/old_timestamp_detail",
       "treeField": "TimeDateStamp",
+      "enabled": true
+    },
+    {
+      "id": "future_timestamp",
+      "check": "future_timestamp",
+      "severity": "low",
+      "titleKey": "findings/future_timestamp_title",
+      "detailKey": "findings/future_timestamp_detail",
+      "treeField": "TimeDateStamp",
+      "enabled": true
+    },
+    {
+      "id": "delay_import_present",
+      "check": "delay_import_present",
+      "severity": "medium",
+      "titleKey": "findings/delay_import_present_title",
+      "detailKey": "findings/delay_import_present_detail",
+      "treeField": "Delay Import Directory",
+      "enabled": true
+    },
+    {
+      "id": "checksum_zero",
+      "check": "checksum_zero",
+      "severity": "low",
+      "titleKey": "findings/checksum_zero_title",
+      "detailKey": "findings/checksum_zero_detail",
+      "treeField": "CheckSum",
+      "enabled": true
+    },
+    {
+      "id": "checksum_mismatch",
+      "check": "checksum_mismatch",
+      "severity": "medium",
+      "titleKey": "findings/checksum_mismatch_title",
+      "detailKey": "findings/checksum_mismatch_detail",
+      "treeField": "CheckSum",
+      "enabled": true
+    },
+    {
+      "id": "dll_no_exports",
+      "check": "dll_no_exports",
+      "severity": "medium",
+      "titleKey": "findings/dll_no_exports_title",
+      "detailKey": "findings/dll_no_exports_detail",
+      "treeField": "Data Directories",
+      "enabled": true
+    },
+    {
+      "id": "no_rich_header",
+      "check": "no_rich_header",
+      "severity": "low",
+      "titleKey": "findings/no_rich_header_title",
+      "detailKey": "findings/no_rich_header_detail",
+      "treeField": "Rich Header",
+      "enabled": true
+    },
+    {
+      "id": "pdb_present",
+      "check": "pdb_present",
+      "severity": "info",
+      "titleKey": "findings/pdb_present_title",
+      "detailKey": "findings/pdb_present_detail",
+      "treeField": "PDB Path",
+      "enabled": true
+    },
+    {
+      "id": "debug_info_stripped",
+      "check": "debug_info_stripped",
+      "severity": "low",
+      "titleKey": "findings/debug_info_stripped_title",
+      "detailKey": "findings/debug_info_stripped_detail",
+      "treeField": "Characteristics",
+      "enabled": true
+    },
+    {
+      "id": "writable_code_section",
+      "check": "writable_code_section",
+      "severity": "high",
+      "titleKey": "findings/writable_code_section_title",
+      "detailKey": "findings/writable_code_section_detail",
+      "enabled": true
+    },
+    {
+      "id": "executable_data_section",
+      "check": "executable_data_section",
+      "severity": "high",
+      "titleKey": "findings/executable_data_section_title",
+      "detailKey": "findings/executable_data_section_detail",
+      "enabled": true
+    },
+    {
+      "id": "section_raw_gt_virtual",
+      "check": "section_raw_gt_virtual",
+      "severity": "medium",
+      "titleKey": "findings/section_raw_gt_virtual_title",
+      "detailKey": "findings/section_raw_gt_virtual_detail",
+      "threshold": 1.25,
+      "enabled": true
+    },
+    {
+      "id": "gui_few_imports",
+      "check": "gui_few_imports",
+      "severity": "low",
+      "titleKey": "findings/gui_few_imports_title",
+      "detailKey": "findings/gui_few_imports_detail",
+      "treeField": "Subsystem",
+      "maxImports": 5,
+      "enabled": true
+    },
+    {
+      "id": "tls_callbacks_present",
+      "check": "tls_callbacks_present",
+      "severity": "medium",
+      "titleKey": "findings/tls_callbacks_present_title",
+      "detailKey": "findings/tls_callbacks_present_detail",
+      "treeField": "TLS Directory",
+      "enabled": true
+    },
+    {
+      "id": "unsigned_executable",
+      "check": "unsigned_executable",
+      "severity": "low",
+      "titleKey": "findings/unsigned_executable_title",
+      "detailKey": "findings/unsigned_executable_detail",
+      "treeField": "Certificate Directory",
+      "enabled": true
+    },
+    {
+      "id": "relocations_stripped_aslr",
+      "check": "relocations_stripped_aslr",
+      "severity": "medium",
+      "titleKey": "findings/relocations_stripped_aslr_title",
+      "detailKey": "findings/relocations_stripped_aslr_detail",
+      "treeField": "Characteristics",
+      "enabled": true
+    },
+    {
+      "id": "version_info_missing",
+      "check": "version_info_missing",
+      "severity": "low",
+      "titleKey": "findings/version_info_missing_title",
+      "detailKey": "findings/version_info_missing_detail",
+      "treeField": "File Version",
+      "enabled": true
+    },
+    {
+      "id": "manifest_require_admin",
+      "check": "manifest_require_admin",
+      "severity": "medium",
+      "titleKey": "findings/manifest_require_admin_title",
+      "detailKey": "findings/manifest_require_admin_detail",
+      "treeField": "Manifest UAC",
+      "enabled": true
+    },
+    {
+      "id": "high_ordinal_imports",
+      "check": "high_ordinal_imports",
+      "severity": "low",
+      "titleKey": "findings/high_ordinal_imports_title",
+      "detailKey": "findings/high_ordinal_imports_detail",
+      "threshold": 0.75,
+      "minCount": 5,
+      "enabled": true
+    },
+    {
+      "id": "packer_section_name",
+      "check": "packer_section_name",
+      "severity": "low",
+      "titleKey": "findings/packer_section_name_title",
+      "detailKey": "findings/packer_section_name_detail",
       "enabled": true
     }
   ]

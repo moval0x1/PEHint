@@ -141,6 +141,20 @@ public:
     PEEntropySummary getEntropySummary() const;
     void setPdbInfo(const PEPdbInfo &info);
     PEPdbInfo getPdbInfo() const;
+    void setVersionInfo(const PEVersionInfo &info);
+    PEVersionInfo getVersionInfo() const;
+
+    void setAnalysisMetadata(const PEAnalysisMetadata &metadata);
+    PEAnalysisMetadata getAnalysisMetadata() const;
+    void setFileMetrics(const PEFileMetrics &metrics);
+    PEFileMetrics getFileMetrics() const;
+    void setTlsCallbacksPresent(bool present);
+
+    void setDelayImports(const QStringList &imports);
+    void setDelayImportFunctions(const QMap<QString, QList<ImportFunctionEntry>> &details);
+    QStringList getDelayImports() const;
+    const QMap<QString, QList<ImportFunctionEntry>> &getDelayImportFunctions() const;
+
     /** Shannon entropy for a section name from the last analysis, or -1 if unknown. */
     double sectionEntropy(const QString &sectionName) const;
     
@@ -225,6 +239,11 @@ private:
     PEOverlayInfo m_overlayInfo;
     PEEntropySummary m_entropySummary;
     PEPdbInfo m_pdbInfo;
+    PEVersionInfo m_versionInfo;
+    PEAnalysisMetadata m_analysisMetadata;
+    PEFileMetrics m_fileMetrics;
+    QStringList m_delayImports;
+    QMap<QString, QList<ImportFunctionEntry>> m_delayImportFunctionDetails;
 };
 
 #endif // PE_DATA_MODEL_H

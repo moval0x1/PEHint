@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QSplitter>
+#include <QTextBrowser>
 
 /**
  * @brief Constructor for UIManager
@@ -52,6 +53,8 @@ UIManager::UIManager(MainWindow *parent)
     , m_importFunctionsTree(nullptr)
     , m_importHintTitleLabel(nullptr)
     , m_importHintText(nullptr)
+    , m_delayImportModulesTree(nullptr)
+    , m_delayImportFunctionsTree(nullptr)
     , m_exportsTree(nullptr)
     , m_dependenciesTree(nullptr)
     , m_dependenciesExpandAllButton(nullptr)
@@ -59,6 +62,11 @@ UIManager::UIManager(MainWindow *parent)
     , m_stringsTree(nullptr)
     , m_findingsTree(nullptr)
     , m_findingsSummaryLabel(nullptr)
+    , m_findingsOverviewTree(nullptr)
+    , m_findingsInsightTitleLabel(nullptr)
+    , m_findingsInsightText(nullptr)
+    , m_findingsSeverityCombo(nullptr)
+    , m_findingsShowPassesCheck(nullptr)
     , m_stringsFilterEdit(nullptr)
     , m_stringsTypeCombo(nullptr)
     , m_stringsMinLengthSpin(nullptr)
@@ -478,6 +486,49 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(importsTab, LANG("UI/tab_imports"));
 
     // --------------------------------------------------------------------
+    // Delay Imports tab
+    // --------------------------------------------------------------------
+    QWidget *delayImportsTab = new QWidget();
+    QVBoxLayout *delayImportsLayout = new QVBoxLayout(delayImportsTab);
+    delayImportsLayout->setContentsMargins(0, 0, 0, 0);
+    delayImportsLayout->setSpacing(4);
+
+    QSplitter *delayImportsOuter = new QSplitter(Qt::Horizontal);
+    delayImportsOuter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    delayImportsOuter->setChildrenCollapsible(false);
+    delayImportsOuter->setHandleWidth(5);
+
+    m_delayImportModulesTree = new QTreeWidget();
+    m_delayImportModulesTree->setAlternatingRowColors(true);
+    m_delayImportModulesTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_delayImportModulesTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_delayImportModulesTree->setHeaderLabels({LANG("UI/imports_header_module"), LANG("UI/imports_header_count")});
+    m_delayImportModulesTree->setColumnWidth(0, 250);
+    m_delayImportModulesTree->setColumnWidth(1, 120);
+
+    m_delayImportFunctionsTree = new QTreeWidget();
+    m_delayImportFunctionsTree->setAlternatingRowColors(true);
+    m_delayImportFunctionsTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_delayImportFunctionsTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_delayImportFunctionsTree->setHeaderLabels({
+        LANG("UI/imports_functions_header_name"),
+        LANG("UI/imports_functions_header_offset"),
+        LANG("UI/imports_functions_header_ordinal")
+    });
+    m_delayImportFunctionsTree->setColumnWidth(0, 260);
+    m_delayImportFunctionsTree->setColumnWidth(1, 140);
+    m_delayImportFunctionsTree->setColumnWidth(2, 100);
+
+    delayImportsOuter->addWidget(m_delayImportModulesTree);
+    delayImportsOuter->addWidget(m_delayImportFunctionsTree);
+    delayImportsOuter->setStretchFactor(0, 1);
+    delayImportsOuter->setStretchFactor(1, 3);
+    delayImportsOuter->setSizes({280, 720});
+
+    delayImportsLayout->addWidget(delayImportsOuter);
+    m_analysisTabWidget->addTab(delayImportsTab, LANG("UI/tab_delay_imports"));
+
+    // --------------------------------------------------------------------
     // Exports tab
     // --------------------------------------------------------------------
     QWidget *exportsTab = new QWidget();
@@ -598,12 +649,83 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(stringsTab, LANG("UI/tab_strings"));
 
     // --------------------------------------------------------------------
-    // Findings tab (heuristic checklist)
+    // Findings tab (triage: file summary + heuristic checklist)
     // --------------------------------------------------------------------
     QWidget *findingsTab = new QWidget();
     QVBoxLayout *findingsLayout = new QVBoxLayout(findingsTab);
     findingsLayout->setContentsMargins(0, 0, 0, 0);
     findingsLayout->setSpacing(4);
+
+    QWidget *overviewRow = new QWidget();
+    QHBoxLayout *overviewRowLayout = new QHBoxLayout(overviewRow);
+    overviewRowLayout->setContentsMargins(0, 0, 0, 0);
+    overviewRowLayout->setSpacing(10);
+
+    QWidget *overviewLeft = new QWidget();
+    QVBoxLayout *overviewLeftLayout = new QVBoxLayout(overviewLeft);
+    overviewLeftLayout->setContentsMargins(0, 0, 0, 0);
+    overviewLeftLayout->setSpacing(2);
+
+    QLabel *overviewTitle = new QLabel(LANG("findings/overview_title"));
+    overviewTitle->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; padding: 2px 0;"));
+    overviewLeftLayout->addWidget(overviewTitle);
+
+    m_findingsOverviewTree = new QTreeWidget();
+    m_findingsOverviewTree->setAlternatingRowColors(true);
+    m_findingsOverviewTree->setRootIsDecorated(false);
+    m_findingsOverviewTree->setHeaderLabels({
+        LANG("UI/tree_header_field"),
+        LANG("UI/tree_header_value")
+    });
+    m_findingsOverviewTree->setColumnWidth(0, 160);
+    m_findingsOverviewTree->setColumnWidth(1, 280);
+    m_findingsOverviewTree->setUniformRowHeights(true);
+    m_findingsOverviewTree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_findingsOverviewTree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_findingsOverviewTree->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_findingsOverviewTree->setStyleSheet(
+        QStringLiteral("QTreeWidget { font-size: 11px; } QHeaderView::section { font-size: 11px; padding: 2px 4px; }"));
+    m_findingsOverviewTree->setCursor(Qt::PointingHandCursor);
+    overviewLeftLayout->addWidget(m_findingsOverviewTree);
+
+    QWidget *overviewRight = new QWidget();
+    QVBoxLayout *overviewRightLayout = new QVBoxLayout(overviewRight);
+    overviewRightLayout->setContentsMargins(0, 0, 0, 0);
+    overviewRightLayout->setSpacing(2);
+
+    m_findingsInsightTitleLabel = new QLabel(LANG("findings/insight_title"));
+    m_findingsInsightTitleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; padding: 2px 0;"));
+    overviewRightLayout->addWidget(m_findingsInsightTitleLabel);
+
+    m_findingsInsightText = new QTextBrowser();
+    m_findingsInsightText->setReadOnly(true);
+    m_findingsInsightText->setOpenExternalLinks(true);
+    m_findingsInsightText->setMinimumHeight(88);
+    m_findingsInsightText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_findingsInsightText->setStyleSheet(
+        QStringLiteral("QTextBrowser { font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; "
+                       "background: #fafafa; border: 1px solid #e8e8e8; border-radius: 4px; }"));
+    m_findingsInsightText->setPlaceholderText(LANG("findings/insight_placeholder"));
+    overviewRightLayout->addWidget(m_findingsInsightText, 1);
+
+    overviewRowLayout->addWidget(overviewLeft, 2);
+    overviewRowLayout->addWidget(overviewRight, 3);
+    findingsLayout->addWidget(overviewRow);
+
+    QHBoxLayout *findingsFilterLayout = new QHBoxLayout();
+    findingsFilterLayout->setContentsMargins(0, 4, 0, 4);
+    m_findingsSeverityCombo = new QComboBox();
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_all"), QStringLiteral("all"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_high"), QStringLiteral("high"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_medium"), QStringLiteral("medium"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_low"), QStringLiteral("low"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_info"), QStringLiteral("info"));
+    m_findingsSeverityCombo->setMaximumWidth(140);
+    m_findingsShowPassesCheck = new QCheckBox(LANG("findings/show_passes"));
+    findingsFilterLayout->addWidget(m_findingsSeverityCombo);
+    findingsFilterLayout->addWidget(m_findingsShowPassesCheck);
+    findingsFilterLayout->addStretch();
+    findingsLayout->addLayout(findingsFilterLayout);
 
     m_findingsSummaryLabel = new QLabel(LANG("findings/summary_none"));
     m_findingsSummaryLabel->setWordWrap(true);
@@ -613,7 +735,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
 
     m_findingsTree = new QTreeWidget();
     m_findingsTree->setAlternatingRowColors(true);
-    m_findingsTree->setRootIsDecorated(false);
+    m_findingsTree->setRootIsDecorated(true);
     m_findingsTree->setHeaderLabels({
         LANG("findings/header_severity"),
         LANG("findings/header_title"),
@@ -622,6 +744,8 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_findingsTree->setColumnWidth(0, 88);
     m_findingsTree->setColumnWidth(1, 220);
     m_findingsTree->setColumnWidth(2, 480);
+    m_findingsTree->setStyleSheet(
+        QStringLiteral("QTreeWidget { font-size: 11px; } QHeaderView::section { font-size: 11px; padding: 2px 4px; }"));
     m_findingsTree->setCursor(Qt::PointingHandCursor);
     findingsLayout->addWidget(m_findingsTree, 1);
 
@@ -717,6 +841,10 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     if (m_importFunctionsTree) {
         connect(m_importFunctionsTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportFunctionSelected);
     }
+    if (m_delayImportModulesTree) {
+        connect(m_delayImportModulesTree, &QTreeWidget::currentItemChanged, mainWindow,
+                &MainWindow::onDelayImportModuleSelected);
+    }
     // Use currentItemChanged to avoid duplicate work with itemClicked.
     // It also covers keyboard navigation and mouse selection.
     connect(m_peTree, &QTreeWidget::currentItemChanged, mainWindow,
@@ -756,6 +884,17 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     // Lazily populate heavy tabs in MainWindow.
     if (m_findingsTree) {
         connect(m_findingsTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onFindingsItemClicked);
+    }
+    if (m_findingsOverviewTree) {
+        connect(m_findingsOverviewTree, &QTreeWidget::itemClicked, mainWindow,
+                &MainWindow::onOverviewItemClicked);
+    }
+    if (m_findingsSeverityCombo) {
+        connect(m_findingsSeverityCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), mainWindow,
+                &MainWindow::onFindingsFilterChanged);
+    }
+    if (m_findingsShowPassesCheck) {
+        connect(m_findingsShowPassesCheck, &QCheckBox::toggled, mainWindow, &MainWindow::onFindingsFilterChanged);
     }
 
     if (m_analysisTabWidget) {

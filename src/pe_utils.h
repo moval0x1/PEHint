@@ -60,6 +60,9 @@ public:
     static quint32 calculateRichHeaderOffset(const IMAGE_DOS_HEADER &dosHeader);
     static quint32 calculateRichHeaderSize(const QByteArray &fileData, quint32 richHeaderOffset);
     static bool findRichHeaderOffset(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader, quint32 &richOffset);
+    static quint32 optionalHeaderChecksumFileOffset(const IMAGE_DOS_HEADER &dosHeader,
+                                                      const IMAGE_FILE_HEADER &fileHeader);
+    static quint32 computePeImageChecksum(const QByteArray &fileData, quint32 checksumFieldOffset);
     
     // ============================================================================
     // STRUCTURE DETECTION UTILITIES
@@ -82,6 +85,8 @@ public:
     static bool parseRichHeader(const QByteArray &fileData, quint32 offset, IMAGE_RICH_HEADER &richHeader);
     static QList<IMAGE_RICH_ENTRY> parseRichEntries(const QByteArray &fileData, quint32 offset, quint32 count);
     static QString getRichHeaderInfo(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader);
+    /** Short toolchain label for triage (e.g. "MSVC 2019 (14.29)"). */
+    static QString summarizeRichToolchain(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader);
     
     // ============================================================================
     // ARCHITECTURE DETECTION

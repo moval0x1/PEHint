@@ -4,6 +4,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QDebug>
+#include <QMap>
 #include <cstddef>
 
 QString PEUtils::formatHexInternal(quint64 value, int width)
@@ -442,6 +443,46 @@ quint32 PEUtils::calculateRichHeaderSize(const QByteArray &fileData, quint32 ric
     return 16 + (count * sizeof(IMAGE_RICH_ENTRY)) + 8;
 }
 
+quint32 PEUtils::optionalHeaderChecksumFileOffset(const IMAGE_DOS_HEADER &dosHeader,
+                                                    const IMAGE_FILE_HEADER &fileHeader)
+{
+    const quint32 peOffset = dosHeader.e_lfanew;
+    const quint32 optionalOffset = peOffset + sizeof(quint32) + sizeof(IMAGE_FILE_HEADER);
+    return optionalOffset + static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER32, CheckSum));
+}
+
+quint32 PEUtils::computePeImageChecksum(const QByteArray &fileData, quint32 checksumFieldOffset)
+{
+    if (fileData.isEmpty()) {
+        return 0;
+    }
+
+    quint32 sum = 0;
+    const int size = fileData.size();
+    const auto *data = reinterpret_cast<const quint8 *>(fileData.constData());
+
+    int i = 0;
+    while (i < size) {
+        if (checksumFieldOffset != 0 && i == static_cast<int>(checksumFieldOffset)) {
+            i += 4;
+            continue;
+        }
+        quint32 word = 0;
+        if (i + 1 < size) {
+            word = static_cast<quint32>(data[i]) | (static_cast<quint32>(data[i + 1]) << 8);
+            i += 2;
+        } else {
+            word = data[i];
+            i += 1;
+        }
+        sum += word;
+        sum = (sum & 0xFFFFu) + (sum >> 16);
+    }
+    sum = (sum & 0xFFFFu) + (sum >> 16);
+    sum += static_cast<quint32>(size);
+    return sum;
+}
+
 bool PEUtils::hasRichHeader(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader)
 {
     quint32 richOffset;
@@ -685,6 +726,95 @@ QString PEUtils::getRichHeaderInfo(const QByteArray &fileData, const IMAGE_DOS_H
     }
     
     return info;
+}
+
+namespace {
+
+QString msvcEraFromRichBuild(quint16 build)
+{
+    if (build >= 30133) {
+        return QStringLiteral("2022");
+    }
+    if (build >= 27412) {
+        return QStringLiteral("2019");
+    }
+    if (build >= 24215) {
+        return QStringLiteral("2017");
+    }
+    if (build >= 23000) {
+        return QStringLiteral("2015");
+    }
+    if (build >= 21000) {
+        return QStringLiteral("2013");
+    }
+    if (build >= 16000) {
+        return QStringLiteral("2010");
+    }
+    if (build >= 14000) {
+        return QStringLiteral("2008");
+    }
+    return QString();
+}
+
+const IMAGE_RICH_ENTRY *pickToolchainEntry(const QList<IMAGE_RICH_ENTRY> &entries)
+{
+    static const quint16 kPreferredIds[] = {
+        0x010C, 0x0109, 0x0106, 0x0103,
+        0x010B, 0x0108, 0x0105, 0x0102,
+        0x010A, 0x0107, 0x0104, 0x0101,
+    };
+
+    for (quint16 id : kPreferredIds) {
+        const IMAGE_RICH_ENTRY *best = nullptr;
+        for (const IMAGE_RICH_ENTRY &entry : entries) {
+            if (entry.ProductId != id) {
+                continue;
+            }
+            if (!best || entry.ProductVersion > best->ProductVersion) {
+                best = &entry;
+            }
+        }
+        if (best) {
+            return best;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+QString PEUtils::summarizeRichToolchain(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader)
+{
+    quint32 richOffset = 0;
+    if (!findRichHeaderOffset(fileData, dosHeader, richOffset)) {
+        return QString();
+    }
+
+    IMAGE_RICH_HEADER richHeader;
+    if (!parseRichHeader(fileData, richOffset, richHeader)) {
+        return QString();
+    }
+
+    const QList<IMAGE_RICH_ENTRY> entries = parseRichEntries(fileData, richOffset, richHeader.RichCount);
+    const IMAGE_RICH_ENTRY *tool = pickToolchainEntry(entries);
+    if (!tool) {
+        return LANG(QStringLiteral("UI/toolchain_rich_unknown"));
+    }
+
+    const quint8 major = static_cast<quint8>(tool->ProductVersion >> 8);
+    const quint8 minor = static_cast<quint8>(tool->ProductVersion & 0xFF);
+    const QString era = msvcEraFromRichBuild(tool->ProductVersion);
+    const QString versionPart = QStringLiteral("%1.%2").arg(major).arg(minor);
+
+    if (!era.isEmpty()) {
+        QMap<QString, QString> params;
+        params.insert(QStringLiteral("year"), era);
+        params.insert(QStringLiteral("version"), versionPart);
+        return LANG_PARAMS(QStringLiteral("UI/toolchain_msvc_summary"), params);
+    }
+    QMap<QString, QString> params;
+    params.insert(QStringLiteral("version"), versionPart);
+    return LANG_PARAMS(QStringLiteral("UI/toolchain_msvc_version_only"), params);
 }
 
 QString PEUtils::getArchitectureString(quint16 machine, quint16 magic)

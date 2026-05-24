@@ -40,6 +40,40 @@ struct PEPdbInfo {
     quint32 pathByteSize = 0;       ///< Length of path in file (includes null terminator)
 };
 
+struct PEAnalysisMetadata {
+    quint32 computedImageChecksum = 0;
+    bool imageChecksumComputed = false;
+    bool richHeaderPresent = false;
+    bool tlsCallbacksPresent = false;
+};
+
+struct PEFileMetrics {
+    QString md5Hex;
+    QString sha256Hex;
+    QString imphashHex;
+    bool hashesValid = false;
+    double fileRatio = 0.0; ///< PE logical size / file size (0–1)
+    quint64 peLogicalSize = 0;
+    bool fileRatioValid = false;
+    QString toolchainSummary;
+    bool toolchainValid = false;
+};
+
+struct PEVersionInfo {
+    bool present = false;
+    QString fileVersion;
+    QString productVersion;
+    QString companyName;
+    QString productName;
+    QString fileDescription;
+    QString originalFilename;
+    QString legalCopyright;
+    bool manifestPresent = false;
+    QString manifestExecutionLevel;
+    quint32 versionResourceOffset = 0;
+    quint32 versionResourceSize = 0;
+};
+
 /**
  * @brief Static PE file analysis helpers (overlay, entropy, PDB) used after parsing.
  */
@@ -61,8 +95,15 @@ public:
     static PEEntropySummary computeEntropy(const QByteArray &fileData,
                                            const QList<const IMAGE_SECTION_HEADER *> &sections);
 
-    /** Fills overlay, entropy, and PDB (from debug dir) on @p dataModel. */
+    /** Fills overlay, entropy, version resource, manifest, hashes, ratio, and toolchain on @p dataModel. */
     static void analyzeIntoModel(const QByteArray &fileData, PEDataModel &dataModel);
+
+    static QString computeImphash(const PEDataModel &dataModel);
+    static quint64 computePeLogicalSize(const PEDataModel &dataModel, qint64 fileSize);
+    static PEFileMetrics computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel);
+
+    /** Parses VS_VERSION_INFO strings from the PE resource directory (RT_VERSION). */
+    static PEVersionInfo parseVersionResource(const QByteArray &fileData, const PEDataModel &dataModel);
 };
 
 #endif // PE_ANALYSIS_H

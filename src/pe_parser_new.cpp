@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <QSet>
+#include <QMap>
 #include <QtGlobal>
 #include <QRegularExpression>
 #include <functional>
@@ -128,10 +129,20 @@ bool isFileInsightJsonKey(const QString &jsonFieldKey)
         QStringLiteral("File Insights"),
         QStringLiteral("Overlay"),
         QStringLiteral("File Entropy"),
+        QStringLiteral("MD5"),
+        QStringLiteral("SHA256"),
+        QStringLiteral("ImpHash"),
+        QStringLiteral("File Ratio"),
+        QStringLiteral("Toolchain"),
         QStringLiteral("PDB Path"),
         QStringLiteral("PDB Raw"),
         QStringLiteral("PDB GUID"),
         QStringLiteral("PDB Age"),
+        QStringLiteral("File Version"),
+        QStringLiteral("Product Version"),
+        QStringLiteral("Company Name"),
+        QStringLiteral("Product Name"),
+        QStringLiteral("Manifest UAC"),
     };
     return kKeys.contains(jsonFieldKey);
 }
@@ -148,6 +159,16 @@ QString insightMeaningText(const QString &jsonFieldKey)
           "Data appended after the last section on disk; common in installers, self-extractors, and some packers." },
         { "File Entropy", "UI/entropy_meaning_normal",
           "Shannon entropy of the whole file (0-8 bits per byte); high values often indicate packing or encryption." },
+        { "MD5", "UI/md5_meaning",
+          "MD5 digest of the entire file on disk (useful for quick identification and IOC sharing)." },
+        { "SHA256", "UI/sha256_meaning",
+          "SHA-256 digest of the entire file on disk (common for malware feeds and Authenticode-adjacent workflows)." },
+        { "ImpHash", "UI/imphash_meaning",
+          "Mandiant import hash — MD5 of ordered import DLL/function pairs; stable across packers that preserve the IAT." },
+        { "File Ratio", "UI/file_ratio_meaning",
+          "Ratio of PE logical size (headers + section raw data) to total file size; lower values suggest overlay or appended data." },
+        { "Toolchain", "UI/toolchain_meaning",
+          "Compiler/linker fingerprint inferred from the Rich Header (when present)." },
         { "PDB Path", "UI/pdb_path_meaning",
           "Program database path from the CodeView debug directory (RSDS or NB10)." },
         { "PDB Raw", "UI/pdb_raw_meaning",
@@ -156,6 +177,16 @@ QString insightMeaningText(const QString &jsonFieldKey)
           "Unique PDB identifier used with age to locate symbols on a symbol server." },
         { "PDB Age", "UI/pdb_age_meaning",
           "Incremental build counter paired with the GUID to match the correct PDB file." },
+        { "File Version", "UI/version_file_meaning",
+          "FileVersion string from the VS_VERSION_INFO resource block." },
+        { "Product Version", "UI/version_product_meaning",
+          "ProductVersion string from the VS_VERSION_INFO resource block." },
+        { "Company Name", "UI/version_company_meaning",
+          "CompanyName string from the VS_VERSION_INFO resource block." },
+        { "Product Name", "UI/version_product_name_meaning",
+          "ProductName string from the VS_VERSION_INFO resource block." },
+        { "Manifest UAC", "UI/version_manifest_uac_meaning",
+          "requestedExecutionLevel from the embedded application manifest (RT_MANIFEST)." },
         { "File Insights", "UI/tree_file_insights_hint",
           "Quick triage: appended overlay, Shannon entropy, and PDB path from CodeView." },
     };
@@ -181,6 +212,274 @@ QString insightExplanationHtml(const QString &jsonFieldKey)
     return QStringLiteral("<div style='margin-bottom: 8px; line-height: 1.6; color: #1f2937;'>%1</div>")
         .arg(text.toHtmlEscaped());
 }
+
+QString fileInsightFieldLabel(const QString &fieldKey)
+{
+    static const QHash<QString, const char *> kLabels = {
+        { QStringLiteral("Overlay"), "UI/field_overlay" },
+        { QStringLiteral("File Entropy"), "UI/field_file_entropy" },
+        { QStringLiteral("MD5"), "UI/field_md5" },
+        { QStringLiteral("SHA256"), "UI/field_sha256" },
+        { QStringLiteral("ImpHash"), "UI/field_imphash" },
+        { QStringLiteral("File Ratio"), "UI/field_file_ratio" },
+        { QStringLiteral("Toolchain"), "UI/field_toolchain" },
+        { QStringLiteral("PDB Path"), "UI/field_pdb_path" },
+        { QStringLiteral("PDB Raw"), "UI/field_pdb_raw" },
+        { QStringLiteral("PDB GUID"), "UI/field_pdb_guid" },
+        { QStringLiteral("PDB Age"), "UI/field_pdb_age" },
+        { QStringLiteral("File Version"), "UI/field_file_version" },
+        { QStringLiteral("Product Version"), "UI/field_product_version" },
+        { QStringLiteral("Company Name"), "UI/field_company_name" },
+        { QStringLiteral("Product Name"), "UI/field_product_name" },
+        { QStringLiteral("Manifest UAC"), "UI/field_manifest_uac" },
+    };
+    const char *iniKey = kLabels.value(fieldKey);
+    return iniKey ? LANG(iniKey) : fieldKey;
+}
+
+} // namespace
+
+QString PEParserNew::relatedStructureFieldForInsight(const QString &fieldKey)
+{
+    if (fieldKey == QLatin1String("File Version") || fieldKey == QLatin1String("Product Version")
+        || fieldKey == QLatin1String("Company Name") || fieldKey == QLatin1String("Product Name")
+        || fieldKey == QLatin1String("Manifest UAC")) {
+        return QStringLiteral("Resource Directory");
+    }
+    if (fieldKey == QLatin1String("PDB Path") || fieldKey == QLatin1String("PDB Raw")
+        || fieldKey == QLatin1String("PDB GUID") || fieldKey == QLatin1String("PDB Age")) {
+        return QStringLiteral("Debug Directory");
+    }
+    if (fieldKey == QLatin1String("Toolchain")) {
+        return QStringLiteral("Rich Header");
+    }
+    return QString();
+}
+
+bool PEParserNew::fileInsightHasHexTarget(const QString &fieldKey) const
+{
+    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
+    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
+    const PEVersionInfo version = m_dataModel.getVersionInfo();
+
+    if (fieldKey == QLatin1String("Overlay")) {
+        return overlay.present && overlay.fileOffset > 0;
+    }
+    if (fieldKey == QLatin1String("File Entropy")) {
+        return false;
+    }
+    if (fieldKey == QLatin1String("PDB Path")) {
+        return pdb.present && pdb.pathByteSize > 0;
+    }
+    if (fieldKey == QLatin1String("PDB Raw")) {
+        return pdb.present && pdb.codeViewSize > 0;
+    }
+    if (fieldKey == QLatin1String("PDB GUID")) {
+        return pdb.present && !pdb.guid.isEmpty();
+    }
+    if (fieldKey == QLatin1String("PDB Age")) {
+        return pdb.present && pdb.age > 0;
+    }
+    if (fieldKey == QLatin1String("File Version") || fieldKey == QLatin1String("Product Version")
+        || fieldKey == QLatin1String("Company Name") || fieldKey == QLatin1String("Product Name")) {
+        return version.present && version.versionResourceSize > 0;
+    }
+    if (fieldKey == QLatin1String("Manifest UAC")) {
+        return version.manifestPresent;
+    }
+    return false;
+}
+
+QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
+{
+    if (!isFileInsightJsonKey(fieldKey) || fieldKey == QLatin1String("File Insights")) {
+        return QString();
+    }
+
+    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
+    const PEEntropySummary entropy = m_dataModel.getEntropySummary();
+    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
+    const PEVersionInfo version = m_dataModel.getVersionInfo();
+    const PEFileMetrics metrics = m_dataModel.getFileMetrics();
+
+    QString currentValue;
+    bool absent = false;
+    QString tipKey;
+
+    if (fieldKey == QLatin1String("Overlay")) {
+        tipKey = QStringLiteral("UI/insight_tip_overlay");
+        if (overlay.present && overlay.fileOffset > 0) {
+            quint64 overlayBytes = overlay.size;
+            if (overlayBytes == 0) {
+                const qint64 tail = qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_file.size()))
+                                    - static_cast<qint64>(overlay.fileOffset);
+                if (tail > 0) {
+                    overlayBytes = static_cast<quint64>(tail);
+                }
+            }
+            const quint32 overlaySize =
+                static_cast<quint32>(qMin(overlayBytes, static_cast<quint64>(UINT32_MAX)));
+            currentValue = QStringLiteral("%1 (%2)")
+                               .arg(PEUtils::formatHexWidth(overlay.fileOffset, 8),
+                                    PEUtils::formatHexWidth(overlaySize, 0));
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/overlay_none"));
+        }
+    } else if (fieldKey == QLatin1String("File Entropy")) {
+        tipKey = QStringLiteral("UI/insight_tip_entropy");
+        if (entropy.fileEntropyValid) {
+            currentValue =
+                QStringLiteral("%1 %2").arg(QString::number(entropy.fileEntropy, 'f', 2), LANG(QStringLiteral("UI/entropy_unit")));
+        }
+    } else if (fieldKey == QLatin1String("MD5")) {
+        if (metrics.hashesValid) {
+            currentValue = metrics.md5Hex;
+        }
+    } else if (fieldKey == QLatin1String("SHA256")) {
+        if (metrics.hashesValid) {
+            currentValue = metrics.sha256Hex;
+        }
+    } else if (fieldKey == QLatin1String("ImpHash")) {
+        if (metrics.hashesValid && !metrics.imphashHex.isEmpty()) {
+            currentValue = metrics.imphashHex;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/imphash_none"));
+        }
+    } else if (fieldKey == QLatin1String("File Ratio")) {
+        if (metrics.fileRatioValid) {
+            QMap<QString, QString> ratioParams;
+            ratioParams.insert(QStringLiteral("ratio"), QString::number(metrics.fileRatio * 100.0, 'f', 1));
+            ratioParams.insert(QStringLiteral("pe_size"),
+                               PEUtils::formatFileSize(static_cast<quint64>(metrics.peLogicalSize)));
+            ratioParams.insert(QStringLiteral("file_size"),
+                               PEUtils::formatFileSize(static_cast<quint64>(
+                                   qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_fileData.size())))));
+            currentValue = LANG_PARAMS(QStringLiteral("UI/file_ratio_value"), ratioParams);
+        }
+    } else if (fieldKey == QLatin1String("Toolchain")) {
+        tipKey = QStringLiteral("UI/insight_tip_toolchain");
+        if (metrics.toolchainValid) {
+            currentValue = metrics.toolchainSummary;
+        } else if (m_dataModel.getAnalysisMetadata().richHeaderPresent) {
+            currentValue = LANG(QStringLiteral("UI/toolchain_rich_unknown"));
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/toolchain_none"));
+        }
+    } else if (fieldKey == QLatin1String("PDB Path")) {
+        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
+        if (pdb.present && !pdb.path.isEmpty()) {
+            currentValue = pdb.path;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/pdb_none"));
+        }
+    } else if (fieldKey == QLatin1String("PDB Raw")) {
+        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
+        if (pdb.present && pdb.codeViewSize > 0) {
+            currentValue = formatCodeViewRawTreeValue(pdb);
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/pdb_none"));
+        }
+    } else if (fieldKey == QLatin1String("PDB GUID")) {
+        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
+        if (pdb.present && !pdb.guid.isEmpty()) {
+            currentValue = pdb.guid;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/pdb_none"));
+        }
+    } else if (fieldKey == QLatin1String("PDB Age")) {
+        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
+        if (pdb.present && pdb.age > 0) {
+            currentValue = QString::number(pdb.age);
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/pdb_none"));
+        }
+    } else if (fieldKey == QLatin1String("File Version")) {
+        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
+        if (version.present && !version.fileVersion.isEmpty()) {
+            currentValue = version.fileVersion;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/version_none"));
+        }
+    } else if (fieldKey == QLatin1String("Product Version")) {
+        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
+        if (version.present && !version.productVersion.isEmpty()) {
+            currentValue = version.productVersion;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/version_none"));
+        }
+    } else if (fieldKey == QLatin1String("Company Name")) {
+        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
+        if (version.present && !version.companyName.isEmpty()) {
+            currentValue = version.companyName;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/version_none"));
+        }
+    } else if (fieldKey == QLatin1String("Product Name")) {
+        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
+        if (version.present && !version.productName.isEmpty()) {
+            currentValue = version.productName;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/version_none"));
+        }
+    } else if (fieldKey == QLatin1String("Manifest UAC")) {
+        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
+        if (version.manifestPresent) {
+            currentValue = version.manifestExecutionLevel.isEmpty()
+                               ? LANG(QStringLiteral("UI/version_manifest_present"))
+                               : version.manifestExecutionLevel;
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/version_none"));
+        }
+    }
+
+    QString html;
+    html += QStringLiteral("<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;color:#222;line-height:1.55;'>");
+    html += QStringLiteral("<div style='font-weight:600;font-size:12px;margin-bottom:10px;color:#111;'>%1</div>")
+                .arg(fileInsightFieldLabel(fieldKey).toHtmlEscaped());
+
+    if (absent) {
+        html += QStringLiteral(
+                    "<div style='margin:0 0 12px 0;padding:8px 10px;background:#fff8e6;border-left:3px solid "
+                    "#f59e0b;border-radius:4px;color:#92400e;'>%1<br/><span style='color:#78716c;'>%2</span></div>")
+                    .arg(currentValue.toHtmlEscaped(), LANG(QStringLiteral("UI/insight_absent_note")).toHtmlEscaped());
+    } else if (!currentValue.isEmpty()) {
+        html += QStringLiteral("<div style='margin:0 0 12px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
+                    .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
+                         currentValue.toHtmlEscaped());
+    }
+
+    const QString body = insightMeaningText(fieldKey);
+    if (!body.isEmpty()) {
+        html += QStringLiteral("<div style='margin-bottom:12px;color:#333;'>%1</div>").arg(body.toHtmlEscaped());
+    }
+
+    if (!tipKey.isEmpty()) {
+        const QString tip = LANG(tipKey);
+        if (!tip.isEmpty()) {
+            html += QStringLiteral(
+                        "<div style='margin-top:8px;padding-top:8px;border-top:1px solid #eee;color:#555;"
+                        "font-size:10px;'>%1</div>")
+                        .arg(tip);
+        }
+    }
+
+    html += QStringLiteral("</div>");
+    return html;
+}
+
+namespace {
 
 /** Last-resort English when INI has no entry (must match config/language_config.ini). */
 QString defaultEnglishSectionTypeInfo(const QString &sectionTypeKey)
@@ -699,6 +998,17 @@ void PEParserNew::ensureFieldOffsetLookup()
         }
         const quint32 ageOff = isRsds ? pdb.codeViewFileOffset + 20 : pdb.codeViewFileOffset + 8;
         fieldOffsets[QStringLiteral("PDB Age")] = QPair<quint32, quint32>(ageOff, 4);
+    }
+
+    const PEVersionInfo version = m_dataModel.getVersionInfo();
+    if (version.present && version.versionResourceSize > 0
+        && static_cast<quint64>(version.versionResourceOffset) + version.versionResourceSize
+               <= static_cast<quint64>(m_fileData.size())) {
+        const QPair<quint32, quint32> versionRange(version.versionResourceOffset, version.versionResourceSize);
+        fieldOffsets[QStringLiteral("File Version")] = versionRange;
+        fieldOffsets[QStringLiteral("Product Version")] = versionRange;
+        fieldOffsets[QStringLiteral("Company Name")] = versionRange;
+        fieldOffsets[QStringLiteral("Product Name")] = versionRange;
     }
 
     const QStringList &dirKeys = dataDirectoryFieldKeys();
@@ -1380,8 +1690,6 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
     
     treeItems.append(ntHeadersItem);
 
-    addFileInsightsTree(treeItems);
-    
     return treeItems;
 }
 
@@ -1428,11 +1736,13 @@ void PEParserNew::addInsightTreeField(QTreeWidgetItem *parent, const QString &di
     fieldItem->setText(4, meaning);
 }
 
-void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
+QTreeWidgetItem *PEParserNew::buildFileInsightsItem()
 {
     const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
     const PEEntropySummary entropy = m_dataModel.getEntropySummary();
     const PEPdbInfo pdb = m_dataModel.getPdbInfo();
+    const PEVersionInfo version = m_dataModel.getVersionInfo();
+    const PEFileMetrics metrics = m_dataModel.getFileMetrics();
 
     auto entropyMeaning = [](double bits) -> QString {
         if (bits < 0.0) {
@@ -1490,6 +1800,46 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
         }
     }
 
+    if (metrics.hashesValid) {
+        addInsightTreeField(insights, LANG("UI/field_md5"), metrics.md5Hex, QStringLiteral("MD5"), 0, 0, false,
+                            insightMeaningText(QStringLiteral("MD5")));
+        addInsightTreeField(insights, LANG("UI/field_sha256"), metrics.sha256Hex, QStringLiteral("SHA256"), 0, 0,
+                            false, insightMeaningText(QStringLiteral("SHA256")));
+        if (!metrics.imphashHex.isEmpty()) {
+            addInsightTreeField(insights, LANG("UI/field_imphash"), metrics.imphashHex, QStringLiteral("ImpHash"), 0,
+                                0, false, insightMeaningText(QStringLiteral("ImpHash")));
+        } else {
+            addInsightTreeField(insights, LANG("UI/field_imphash"), LANG("UI/imphash_none"),
+                                QStringLiteral("ImpHash"), 0, 0, false, insightMeaningText(QStringLiteral("ImpHash")));
+        }
+    }
+
+    if (metrics.fileRatioValid) {
+        QMap<QString, QString> ratioParams;
+        ratioParams.insert(QStringLiteral("ratio"), QString::number(metrics.fileRatio * 100.0, 'f', 1));
+        ratioParams.insert(QStringLiteral("pe_size"),
+                           PEUtils::formatFileSize(static_cast<quint64>(metrics.peLogicalSize)));
+        ratioParams.insert(QStringLiteral("file_size"),
+                           PEUtils::formatFileSize(static_cast<quint64>(qMax(m_dataModel.getFileSize(),
+                                                                             static_cast<qint64>(m_fileData.size())))));
+        const QString ratioVal = LANG_PARAMS(QStringLiteral("UI/file_ratio_value"), ratioParams);
+        addInsightTreeField(insights, LANG("UI/field_file_ratio"), ratioVal, QStringLiteral("File Ratio"), 0, 0,
+                            false, insightMeaningText(QStringLiteral("File Ratio")));
+    }
+
+    if (metrics.toolchainValid) {
+        addInsightTreeField(insights, LANG("UI/field_toolchain"), metrics.toolchainSummary,
+                            QStringLiteral("Toolchain"), 0, 0, false,
+                            insightMeaningText(QStringLiteral("Toolchain")));
+    } else if (m_dataModel.getAnalysisMetadata().richHeaderPresent) {
+        addInsightTreeField(insights, LANG("UI/field_toolchain"), LANG("UI/toolchain_rich_unknown"),
+                            QStringLiteral("Toolchain"), 0, 0, false,
+                            insightMeaningText(QStringLiteral("Toolchain")));
+    } else {
+        addInsightTreeField(insights, LANG("UI/field_toolchain"), LANG("UI/toolchain_none"), QStringLiteral("Toolchain"),
+                            0, 0, false, insightMeaningText(QStringLiteral("Toolchain")));
+    }
+
     if (pdb.present) {
         const quint32 cvBase = pdb.codeViewFileOffset;
         const quint32 cvSize = pdb.codeViewSize;
@@ -1530,7 +1880,45 @@ void PEParserNew::addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems)
                             false);
     }
 
-    treeItems.prepend(insights);
+    const auto addVersionField = [&](const QString &labelKey, const QString &value, const QString &treeKey,
+                                   bool highlight = false) {
+        if (value.isEmpty()) {
+            return;
+        }
+        const bool canHighlight = highlight && version.versionResourceSize > 0
+                                  && static_cast<quint64>(version.versionResourceOffset)
+                                         + version.versionResourceSize
+                                         <= static_cast<quint64>(m_fileData.size());
+        addInsightTreeField(insights, LANG(labelKey), value, treeKey,
+                            canHighlight ? version.versionResourceOffset : 0u,
+                            canHighlight ? version.versionResourceSize : 0u, canHighlight,
+                            insightMeaningText(treeKey));
+    };
+
+    if (version.present) {
+        addVersionField(QStringLiteral("UI/field_file_version"), version.fileVersion,
+                        QStringLiteral("File Version"), true);
+        addVersionField(QStringLiteral("UI/field_product_version"), version.productVersion,
+                        QStringLiteral("Product Version"));
+        addVersionField(QStringLiteral("UI/field_company_name"), version.companyName,
+                        QStringLiteral("Company Name"));
+        addVersionField(QStringLiteral("UI/field_product_name"), version.productName,
+                        QStringLiteral("Product Name"));
+    } else {
+        addInsightTreeField(insights, LANG("UI/field_file_version"), LANG("UI/version_none"),
+                            QStringLiteral("File Version"), 0, 0, false,
+                            insightMeaningText(QStringLiteral("File Version")));
+    }
+
+    if (version.manifestPresent) {
+        const QString uac = version.manifestExecutionLevel.isEmpty()
+                                ? LANG("UI/version_manifest_present")
+                                : version.manifestExecutionLevel;
+        addInsightTreeField(insights, LANG("UI/field_manifest_uac"), uac, QStringLiteral("Manifest UAC"), 0, 0,
+                            false, insightMeaningText(QStringLiteral("Manifest UAC")));
+    }
+
+    return insights;
 }
 
 void PEParserNew::addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader)

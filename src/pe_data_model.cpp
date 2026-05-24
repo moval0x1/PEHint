@@ -42,6 +42,9 @@ PEDataModel::PEDataModel()
     m_overlayInfo = PEOverlayInfo{};
     m_entropySummary = PEEntropySummary{};
     m_pdbInfo = PEPdbInfo{};
+    m_versionInfo = PEVersionInfo{};
+    m_analysisMetadata = PEAnalysisMetadata{};
+    m_fileMetrics = PEFileMetrics{};
 }
 
 PEDataModel::~PEDataModel()
@@ -446,6 +449,61 @@ PEPdbInfo PEDataModel::getPdbInfo() const
     return m_pdbInfo;
 }
 
+void PEDataModel::setVersionInfo(const PEVersionInfo &info)
+{
+    m_versionInfo = info;
+}
+
+PEVersionInfo PEDataModel::getVersionInfo() const
+{
+    return m_versionInfo;
+}
+
+void PEDataModel::setAnalysisMetadata(const PEAnalysisMetadata &metadata)
+{
+    m_analysisMetadata = metadata;
+}
+
+PEAnalysisMetadata PEDataModel::getAnalysisMetadata() const
+{
+    return m_analysisMetadata;
+}
+
+void PEDataModel::setFileMetrics(const PEFileMetrics &metrics)
+{
+    m_fileMetrics = metrics;
+}
+
+PEFileMetrics PEDataModel::getFileMetrics() const
+{
+    return m_fileMetrics;
+}
+
+void PEDataModel::setTlsCallbacksPresent(bool present)
+{
+    m_analysisMetadata.tlsCallbacksPresent = present;
+}
+
+void PEDataModel::setDelayImports(const QStringList &imports)
+{
+    m_delayImports = imports;
+}
+
+void PEDataModel::setDelayImportFunctions(const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &details)
+{
+    m_delayImportFunctionDetails = details;
+}
+
+QStringList PEDataModel::getDelayImports() const
+{
+    return m_delayImports;
+}
+
+const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &PEDataModel::getDelayImportFunctions() const
+{
+    return m_delayImportFunctionDetails;
+}
+
 double PEDataModel::sectionEntropy(const QString &sectionName) const
 {
     for (const PESectionEntropy &se : m_entropySummary.sections) {
@@ -479,6 +537,8 @@ void PEDataModel::clear()
     m_sections.clear();
     m_imports.clear();
     m_importFunctionDetails.clear();
+    m_delayImports.clear();
+    m_delayImportFunctionDetails.clear();
     m_exportFunctions.clear();
     m_resourceTypes.clear();
     m_resources.clear();
@@ -511,4 +571,7 @@ void PEDataModel::clear()
     m_overlayInfo = PEOverlayInfo{};
     m_entropySummary = PEEntropySummary{};
     m_pdbInfo = PEPdbInfo{};
+    m_versionInfo = PEVersionInfo{};
+    m_analysisMetadata = PEAnalysisMetadata{};
+    m_fileMetrics = PEFileMetrics{};
 }

@@ -46,6 +46,7 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QCheckBox>
 #include "hexviewer.h"
 
 class MainWindow;
@@ -96,6 +97,8 @@ public:
     QTreeWidget *m_importFunctionsTree; ///< Displays functions for selected import module
     QLabel *m_importHintTitleLabel;     ///< Heading above import API summary text
     QTextBrowser *m_importHintText;   ///< Microsoft Learn–style HTML summary for selected import
+    QTreeWidget *m_delayImportModulesTree; ///< Delay-import module list
+    QTreeWidget *m_delayImportFunctionsTree; ///< Functions for selected delay-import module
     QTreeWidget *m_exportsTree;       ///< Displays export functions list
     QTreeWidget *m_dependenciesTree;  ///< Displays DLL dependencies and resolve status
     QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
@@ -103,6 +106,11 @@ public:
     QTreeWidget *m_stringsTree;       ///< Displays extracted strings (offset, type, value)
     QTreeWidget *m_findingsTree;      ///< Heuristic findings checklist (Phase 2)
     QLabel *m_findingsSummaryLabel;   ///< Count / empty state above findings tree
+    QTreeWidget *m_findingsOverviewTree; ///< File summary (overlay, entropy, PDB, version)
+    QLabel *m_findingsInsightTitleLabel; ///< Heading above Findings detail panel
+    QTextBrowser *m_findingsInsightText;   ///< File summary / finding detail (stays on Findings tab)
+    QComboBox *m_findingsSeverityCombo;  ///< Filter findings by severity
+    QCheckBox *m_findingsShowPassesCheck; ///< Show hardening pass rows
     QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring
     QComboBox *m_stringsTypeCombo;    ///< Filter by type: All / ASCII / Unicode
     QSpinBox *m_stringsMinLengthSpin; ///< Minimum extracted string length

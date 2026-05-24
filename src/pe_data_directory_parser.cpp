@@ -426,6 +426,9 @@ bool PEDataDirectoryParser::parseTLSDirectory(quint32 rva, quint32 size, PEDataM
         tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(static_cast<quint64>(tls->AddressOfCallBacks));
         tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
         tlsParams[QStringLiteral("start")] = PEUtils::formatHex(static_cast<quint64>(tls->StartAddressOfRawData));
+        if (tls->AddressOfCallBacks != 0) {
+            dataModel.setTlsCallbacksPresent(true);
+        }
     } else {
         if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY32) > static_cast<quint32>(m_fileData.size())) {
             return false;
@@ -434,6 +437,9 @@ bool PEDataDirectoryParser::parseTLSDirectory(quint32 rva, quint32 size, PEDataM
         tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(tls->AddressOfCallBacks);
         tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
         tlsParams[QStringLiteral("start")] = PEUtils::formatHex(tls->StartAddressOfRawData);
+        if (tls->AddressOfCallBacks != 0) {
+            dataModel.setTlsCallbacksPresent(true);
+        }
     }
 
     QString tlsData = LANG_PARAMS("UI/tls_details_format", tlsParams);
@@ -751,25 +757,102 @@ bool PEDataDirectoryParser::parseImportAddressTableDirectory(quint32 rva, quint3
 
 bool PEDataDirectoryParser::parseDelayImportDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
-    if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
-    
+    if (rva == 0 || size == 0) {
+        return true;
+    }
+
+    const quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
+    if (fileOffset == 0) {
+        return false;
+    }
+
+    QStringList delayImports;
+    QMap<QString, QList<PEDataModel::ImportFunctionEntry>> delayImportDetails;
+
+    const IMAGE_OPTIONAL_HEADER *optionalHeader = dataModel.getOptionalHeader();
+    const bool isPE64 = optionalHeader && optionalHeader->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+
+    const auto *delayDesc = reinterpret_cast<const IMAGE_DELAYLOAD_DESCRIPTOR *>(m_fileData.constData() + fileOffset);
+
+    int descriptorCount = 0;
+    while (delayDesc->DllNameRVA != 0 && descriptorCount < 1000) {
+        const QString dllName = readStringFromRVA(delayDesc->DllNameRVA, dataModel.getSections());
+        if (!dllName.isEmpty()) {
+            delayImports.append(dllName);
+
+            QList<PEDataModel::ImportFunctionEntry> functions;
+            const quint32 nameTableRVA = delayDesc->ImportNameTableRVA;
+            const quint32 thunkTableRVA = delayDesc->ImportAddressTableRVA;
+            const quint32 nameTableOffset =
+                nameTableRVA != 0 ? rvaToFileOffset(nameTableRVA, dataModel.getSections()) : 0;
+
+            if (nameTableOffset != 0 && nameTableOffset < static_cast<quint32>(m_fileData.size())) {
+                const char *tablePtr = m_fileData.constData() + nameTableOffset;
+                const int entrySize =
+                    isPE64 ? static_cast<int>(sizeof(quint64)) : static_cast<int>(sizeof(quint32));
+
+                for (int index = 0;; ++index) {
+                    const qsizetype nameEntryOffset = index * entrySize;
+                    const qsizetype remaining = m_fileData.size() - static_cast<qsizetype>(nameTableOffset);
+                    if (nameEntryOffset + entrySize > remaining) {
+                        break;
+                    }
+
+                    quint64 rawValue = 0;
+                    std::memcpy(&rawValue, tablePtr + nameEntryOffset, entrySize);
+                    if (rawValue == 0) {
+                        break;
+                    }
+
+                    const quint32 thunkEntryRVA = thunkTableRVA + static_cast<quint32>(index * entrySize);
+                    const quint32 thunkEntryOffset = rvaToFileOffset(thunkEntryRVA, dataModel.getSections());
+
+                    PEDataModel::ImportFunctionEntry entry;
+                    entry.thunkRVA = thunkEntryRVA;
+                    entry.thunkOffset = thunkEntryOffset;
+
+                    const bool importByOrdinal =
+                        (isPE64 && (rawValue & IMAGE_ORDINAL_FLAG64))
+                        || (!isPE64 && (rawValue & IMAGE_ORDINAL_FLAG32));
+                    if (importByOrdinal) {
+                        const quint16 ordinal = static_cast<quint16>(rawValue & 0xFFFF);
+                        entry.importedByOrdinal = true;
+                        entry.ordinal = ordinal;
+                        const QString resolved = resolveImportOrdinalToName(dllName, ordinal, isPE64);
+                        entry.name = resolved.isEmpty() ? QStringLiteral("[ - ]") : resolved;
+                    } else {
+                        const quint32 importByNameRVA = static_cast<quint32>(rawValue & 0xFFFFFFFF);
+                        QString functionName = readStringFromRVA(importByNameRVA + 2, dataModel.getSections());
+                        if (functionName.isEmpty()) {
+                            functionName =
+                                QStringLiteral("0x%1").arg(importByNameRVA, 0, 16).toUpper();
+                        }
+                        entry.name = functionName;
+                    }
+
+                    functions.append(entry);
+                }
+            }
+
+            delayImportDetails[dllName] = functions;
+        }
+
+        ++delayDesc;
+        ++descriptorCount;
+    }
+
+    dataModel.setDelayImports(delayImports);
+    dataModel.setDelayImportFunctions(delayImportDetails);
+
     QStringList delayImportInfo;
-    QMap<QString, QString> delayImportDetails;
-    
-    // Parse delay import directory
-    QString delayData = QString("RVA: 0x%1, Size: %2 bytes")
-                       .arg(PEUtils::formatHex(rva))
-                       .arg(size);
-    
+    QMap<QString, QString> delayImportMeta;
     delayImportInfo.append(LANG("UI/data_dir_delay_import"));
-    delayImportDetails[LANG("UI/data_dir_delay_import")] = delayData;
-    
+    delayImportMeta[LANG("UI/data_dir_delay_import")] =
+        QStringLiteral("RVA: 0x%1, Size: %2 bytes, Modules: %3")
+            .arg(PEUtils::formatHex(rva), QString::number(size), QString::number(delayImports.size()));
     dataModel.setDelayImportInfo(delayImportInfo);
-    dataModel.setDelayImportDetails(delayImportDetails);
-    
+    dataModel.setDelayImportDetails(delayImportMeta);
+
     return true;
 }
 

@@ -112,6 +112,7 @@ QString dependencyTooltipText(const DependencyNode &node)
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
 constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
+constexpr int kFindingCategoryHeaderRole = Qt::UserRole + 41;
 
 /** File Insights rows that attach explicit offset/size roles for hex sync. */
 bool fileInsightUsesHexRoles(const QString &fieldName)
@@ -862,8 +863,8 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
         QWidget *under = QApplication::widgetAt(event->globalPos());
         if (under) {
             QTabWidget *tw = m_uiManager->m_analysisTabWidget;
-            // Tab order: 0=Structure, 1=Imports, 2=Exports, 3=Dependencies, 4=Strings, 5=Findings
-            for (int tabIndex : {1, 2, 4, 5}) {
+            // Tab order: 0=Structure, 1=Imports, 2=Delay Imports, 3=Exports, 4=Dependencies, 5=Strings, 6=Findings
+            for (int tabIndex : {1, 2, 3, 5, 6}) {
                 QWidget *tab = tw->widget(tabIndex);
                 if (tab && tab->isAncestorOf(under)) {
                     event->accept();
@@ -1255,6 +1256,121 @@ void MainWindow::onErrorOccurred(const QString &error)
 }
 
 // UI interaction slots
+MainWindow::FieldHexRange MainWindow::resolveFieldHexRange(QTreeWidgetItem *item,
+                                                           const QString &fieldName) const
+{
+    FieldHexRange out;
+    if (!item || !m_peParser || !m_peParser->isValid()) {
+        return out;
+    }
+
+    quint32 offsetValue = 0;
+    quint32 sizeValue = 0;
+    bool offsetOk = false;
+    bool sizeOk = false;
+
+    const QVariant roleOffset = item->data(0, kFieldOffsetRole);
+    const QVariant roleSize = item->data(0, kFieldSizeRole);
+    const bool hasRoleSize = roleSize.isValid();
+    const bool insightHexRoles =
+        fileInsightUsesHexRoles(fieldName) && roleOffset.isValid() && hasRoleSize;
+
+    if (insightHexRoles) {
+        offsetValue = roleOffset.toUInt(&offsetOk);
+        sizeValue = roleSize.toUInt(&sizeOk);
+    } else {
+        if (roleOffset.isValid()) {
+            offsetValue = roleOffset.toUInt(&offsetOk);
+        }
+        if (hasRoleSize) {
+            sizeValue = roleSize.toUInt(&sizeOk);
+        }
+
+        if (!offsetOk) {
+            const QString offsetText = item->text(2).trimmed();
+            if (offsetText.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
+                offsetValue = offsetText.mid(2).toUInt(&offsetOk, 16);
+            }
+        }
+
+        if (!hasRoleSize) {
+            const QString sizeText = item->text(3);
+            const QRegularExpression sizeHexRe(QStringLiteral("0x([0-9A-Fa-f]+)"));
+            const QRegularExpressionMatch sizeMatch = sizeHexRe.match(sizeText);
+            if (sizeMatch.hasMatch()) {
+                sizeValue = sizeMatch.captured(1).toUInt(&sizeOk, 16);
+            }
+        }
+
+        if (offsetOk && sizeValue == 0) {
+            quint32 parsedSize = 0;
+            if (parseInsightByteSizeFromValue(item->text(1), parsedSize)) {
+                sizeValue = parsedSize;
+                sizeOk = true;
+            }
+        }
+
+        if (!offsetOk || (!hasRoleSize && !sizeOk)) {
+            const QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
+            if (!offsetOk && fieldOffset.second > 0) {
+                offsetValue = fieldOffset.first;
+                offsetOk = true;
+            }
+            if (!hasRoleSize && !sizeOk && fieldOffset.second > 0) {
+                sizeValue = fieldOffset.second;
+                sizeOk = true;
+            }
+        }
+    }
+
+    if (offsetOk && sizeOk && sizeValue > 0) {
+        out.offset = offsetValue;
+        out.size = sizeValue;
+        out.canHighlight = true;
+    } else if (offsetOk) {
+        out.offset = offsetValue;
+        out.canGoTo = true;
+    }
+    return out;
+}
+
+void MainWindow::applyFieldHexNavigation(QTreeWidgetItem *item, const FieldHexRange &range)
+{
+    if (!m_uiManager || !m_uiManager->m_hexViewer) {
+        return;
+    }
+    HexViewer *hex = m_uiManager->m_hexViewer;
+    if (range.canHighlight) {
+        const qint64 hexCap = hex->getDataSize();
+        if (hexCap > 0 && static_cast<qint64>(range.offset) >= hexCap) {
+            return;
+        }
+        const QColor highlightColor = colorForTreeSelection(item);
+        const quint32 rgba = highlightColor.rgba();
+        const bool sameHexAsLast = (static_cast<qint64>(range.offset) == m_lastHexHighlightOffset
+                                    && range.size == m_lastHexHighlightSize && rgba == m_lastHexHighlightRgba);
+        if (!sameHexAsLast) {
+            hex->highlightRange(range.offset, range.size, highlightColor);
+            m_lastHexHighlightOffset = static_cast<qint64>(range.offset);
+            m_lastHexHighlightSize = range.size;
+            m_lastHexHighlightRgba = rgba;
+        }
+    } else if (range.canGoTo) {
+        hex->goToOffset(static_cast<qint64>(range.offset));
+    }
+}
+
+void MainWindow::showFindingsInsightHtml(const QString &html)
+{
+    if (m_uiManager && m_uiManager->m_findingsInsightText) {
+        if (html.isEmpty()) {
+            m_uiManager->m_findingsInsightText->clear();
+        } else {
+            m_uiManager->m_findingsInsightText->setHtml(html);
+        }
+    }
+}
+
 void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
 {
     try {
@@ -1274,95 +1390,21 @@ void MainWindow::onTreeItemClicked(QTreeWidgetItem *item, int column)
             // path when the visible 256 KiB window does not move (see HexViewer::highlightRange).
             // Highlight the field in hex viewer
             if (m_peParser && m_peParser->isValid()) {
-                // Prefer offsets already shown in the tree (most accurate and fastest path).
-                quint32 offsetValue = 0;
-                quint32 sizeValue = 0;
-                bool offsetOk = false;
-                bool sizeOk = false;
-
-                // Most reliable source: explicit metadata attached by parser.
-                const QVariant roleOffset = item->data(0, kFieldOffsetRole);
-                const QVariant roleSize = item->data(0, kFieldSizeRole);
-                const bool hasRoleSize = roleSize.isValid();
-                const bool insightHexRoles = fileInsightUsesHexRoles(fieldName) && roleOffset.isValid()
-                                             && hasRoleSize;
-
-                if (insightHexRoles) {
-                    offsetValue = roleOffset.toUInt(&offsetOk);
-                    sizeValue = roleSize.toUInt(&sizeOk);
-                } else {
-                    if (roleOffset.isValid()) {
-                        offsetValue = roleOffset.toUInt(&offsetOk);
-                    }
-                    if (hasRoleSize) {
-                        sizeValue = roleSize.toUInt(&sizeOk);
-                    }
-
-                    if (!offsetOk) {
-                        const QString offsetText = item->text(2).trimmed();
-                        if (offsetText.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)) {
-                            offsetValue = offsetText.mid(2).toUInt(&offsetOk, 16);
-                        }
-                    }
-
-                    // Size column is usually like "0x2 bytes" - extract the first hex literal.
-                    if (!hasRoleSize) {
-                        const QString sizeText = item->text(3);
-                        const QRegularExpression sizeHexRe(QStringLiteral("0x([0-9A-Fa-f]+)"));
-                        const QRegularExpressionMatch sizeMatch = sizeHexRe.match(sizeText);
-                        if (sizeMatch.hasMatch()) {
-                            sizeValue = sizeMatch.captured(1).toUInt(&sizeOk, 16);
-                        }
-                    }
-
-                    if (offsetOk && sizeValue == 0) {
-                        quint32 parsedSize = 0;
-                        if (parseInsightByteSizeFromValue(item->text(1), parsedSize)) {
-                            sizeValue = parsedSize;
-                            sizeOk = true;
-                        }
-                    }
-
-                    // Fallback only when offset is missing, or size was never set on the row (not explicit zero).
-                    if (!offsetOk || (!hasRoleSize && !sizeOk)) {
-                        const QPair<quint32, quint32> fieldOffset = m_peParser->getFieldOffset(fieldName);
-                        if (!offsetOk) {
-                            offsetValue = fieldOffset.first;
-                            offsetOk = true;
-                        }
-                        if (!hasRoleSize && sizeValue == 0 && fieldOffset.second > 0) {
-                            sizeValue = fieldOffset.second;
-                            sizeOk = true;
-                        }
-                    }
-                }
-
-                if (offsetOk && sizeOk && sizeValue > 0) {
+                const FieldHexRange range = resolveFieldHexRange(item, fieldName);
+                if (range.canHighlight) {
                     HexViewer *hex = m_uiManager->m_hexViewer;
                     const qint64 hexCap = hex ? hex->getDataSize() : 0;
-                    if (hex && hexCap > 0 && static_cast<qint64>(offsetValue) >= hexCap) {
+                    if (hex && hexCap > 0 && static_cast<qint64>(range.offset) >= hexCap) {
                         QMap<QString, QString> hp;
-                        hp[QStringLiteral("offset")] = PEUtils::formatHexWidth(offsetValue, 8);
+                        hp[QStringLiteral("offset")] = PEUtils::formatHexWidth(range.offset, 8);
                         hp[QStringLiteral("size")] = QString::number(hexCap);
-                        statusBar()->showMessage(LANG_PARAMS(QStringLiteral("UI/hex_offset_beyond_buffer"), hp), 5000);
-                    } else if (hex) {
-                        const QColor highlightColor = colorForTreeSelection(item);
-                        const quint32 rgba = highlightColor.rgba();
-                        const bool sameHexAsLast = (static_cast<qint64>(offsetValue) == m_lastHexHighlightOffset
-                                                     && sizeValue == m_lastHexHighlightSize
-                                                     && rgba == m_lastHexHighlightRgba);
-                        if (!sameHexAsLast) {
-                            hex->highlightRange(offsetValue, sizeValue, highlightColor);
-                            m_lastHexHighlightOffset = static_cast<qint64>(offsetValue);
-                            m_lastHexHighlightSize = sizeValue;
-                            m_lastHexHighlightRgba = rgba;
-                        }
+                        statusBar()->showMessage(LANG_PARAMS(QStringLiteral("UI/hex_offset_beyond_buffer"), hp),
+                                                 5000);
+                    } else {
+                        applyFieldHexNavigation(item, range);
                     }
-                } else if (offsetOk) {
-                    HexViewer *hex = m_uiManager->m_hexViewer;
-                    if (hex) {
-                        hex->goToOffset(static_cast<qint64>(offsetValue));
-                    }
+                } else if (range.canGoTo) {
+                    applyFieldHexNavigation(item, range);
                 } else {
                     statusBar()->showMessage(LANG_PARAM("UI/field_no_offset", "field_name", displayFieldName), 3000);
                 }
@@ -1476,6 +1518,7 @@ void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch
     stopStringsExtractionSynchronously();
 
     m_importsPopulated = false;
+    m_delayImportsPopulated = false;
     m_exportsPopulated = false;
     m_dependenciesPopulated = false;
     m_stringsPopulated = false;
@@ -1492,6 +1535,16 @@ void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch
     }
     if (m_uiManager->m_importHintText) {
         m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
+    }
+    if (m_uiManager->m_delayImportModulesTree) {
+        m_uiManager->m_delayImportModulesTree->blockSignals(true);
+        m_uiManager->m_delayImportModulesTree->clear();
+        m_uiManager->m_delayImportModulesTree->blockSignals(false);
+    }
+    if (m_uiManager->m_delayImportFunctionsTree) {
+        m_uiManager->m_delayImportFunctionsTree->blockSignals(true);
+        m_uiManager->m_delayImportFunctionsTree->clear();
+        m_uiManager->m_delayImportFunctionsTree->blockSignals(false);
     }
     if (m_uiManager->m_exportsTree) {
         m_uiManager->m_exportsTree->clear();
@@ -1725,6 +1778,8 @@ void MainWindow::clearDisplay()
         if (m_uiManager->m_importHintText) {
             m_uiManager->m_importHintText->setPlainText(importHintPlaceholderText());
         }
+        if (m_uiManager->m_delayImportModulesTree) m_uiManager->m_delayImportModulesTree->clear();
+        if (m_uiManager->m_delayImportFunctionsTree) m_uiManager->m_delayImportFunctionsTree->clear();
         if (m_uiManager->m_exportsTree) m_uiManager->m_exportsTree->clear();
         if (m_uiManager->m_dependenciesTree) m_uiManager->m_dependenciesTree->clear();
         if (m_uiManager->m_stringsTree) m_uiManager->m_stringsTree->clear();
@@ -1740,9 +1795,15 @@ void MainWindow::clearDisplay()
         if (m_uiManager->m_findingsTree) {
             m_uiManager->m_findingsTree->clear();
         }
+        if (m_uiManager->m_findingsOverviewTree) {
+            m_uiManager->m_findingsOverviewTree->clear();
+        }
+        m_cachedFindings.clear();
+        m_cachedPassFindings.clear();
         if (m_uiManager->m_findingsSummaryLabel) {
             m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
         }
+        showFindingsInsightHtml(QString());
 
         // Also clear hex viewer highlights
         if (m_uiManager->m_hexViewer) {
@@ -1751,6 +1812,7 @@ void MainWindow::clearDisplay()
 
         // Reset lazy-population flags for the next file.
         m_importsPopulated = false;
+        m_delayImportsPopulated = false;
         m_exportsPopulated = false;
         m_dependenciesPopulated = false;
         m_stringsPopulated = false;
@@ -1928,33 +1990,140 @@ void MainWindow::analysisDisplayPhaseTree()
 
 void MainWindow::populateFindingsTab()
 {
-    if (!m_uiManager || !m_uiManager->m_findingsTree || !m_peParser || !m_peParser->isValid()) {
+    if (!m_uiManager || !m_peParser || !m_peParser->isValid()) {
         return;
     }
 
     PEFindingsEngine::loadRules();
 
-    m_uiManager->m_findingsTree->clear();
-
     const auto rvaToFo = [this](quint32 rva) -> quint32 {
         return m_peParser ? m_peParser->rvaToFileOffset(rva) : 0u;
     };
-    const QVector<PEFindingInstance> findings =
-        PEFindingsEngine::evaluate(m_peParser->getDataModel(), rvaToFo);
+    m_cachedFindings = PEFindingsEngine::evaluate(m_peParser->getDataModel(), rvaToFo);
+    m_cachedPassFindings = PEFindingsEngine::evaluateHardeningPasses(m_peParser->getDataModel());
+
+    populateFindingsOverview();
+    applyFindingsFilter();
+}
+
+void MainWindow::populateFindingsOverview()
+{
+    if (!m_uiManager || !m_uiManager->m_findingsOverviewTree || !m_peParser || !m_peParser->isValid()) {
+        return;
+    }
+
+    m_uiManager->m_findingsOverviewTree->clear();
+    QTreeWidgetItem *insights = m_peParser->buildFileInsightsItem();
+    if (!insights) {
+        return;
+    }
+
+    for (int i = 0; i < insights->childCount(); ++i) {
+        QTreeWidgetItem *src = insights->child(i);
+        QTreeWidgetItem *row = new QTreeWidgetItem(m_uiManager->m_findingsOverviewTree);
+        row->setText(0, src->text(0));
+        row->setText(1, src->text(1));
+        const QString fieldKey = src->data(0, PEParserNew::kTreeFieldKeyRole).toString();
+        if (!fieldKey.isEmpty()) {
+            row->setData(0, PEParserNew::kTreeFieldKeyRole, fieldKey);
+        }
+        const QVariant offVar = src->data(0, kFieldOffsetRole);
+        const QVariant sizeVar = src->data(0, kFieldSizeRole);
+        if (offVar.isValid()) {
+            row->setData(0, kFieldOffsetRole, offVar);
+        }
+        if (sizeVar.isValid()) {
+            row->setData(0, kFieldSizeRole, sizeVar);
+        }
+    }
+    delete insights;
+
+    QTreeWidget *tree = m_uiManager->m_findingsOverviewTree;
+    const int rows = tree->topLevelItemCount();
+    int rowHeight = rows > 0 ? tree->sizeHintForRow(0) : 22;
+    if (rowHeight < 20) {
+        rowHeight = 22;
+    }
+    constexpr int kOverviewHeaderHeight = 26;
+    constexpr int kMaxVisibleRows = 20;
+    const int visibleRows = qMin(rows, kMaxVisibleRows);
+    const int contentHeight = kOverviewHeaderHeight + visibleRows * rowHeight + 4;
+    tree->setFixedHeight(contentHeight);
+    if (m_uiManager->m_findingsInsightText) {
+        m_uiManager->m_findingsInsightText->setMinimumHeight(qMax(88, contentHeight));
+    }
+    if (rows > kMaxVisibleRows) {
+        tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    } else {
+        tree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    }
+}
+
+void MainWindow::applyFindingsFilter()
+{
+    if (!m_uiManager || !m_uiManager->m_findingsTree) {
+        return;
+    }
+
+    m_uiManager->m_findingsTree->clear();
+
+    const QString severityFilter = m_uiManager->m_findingsSeverityCombo
+        ? m_uiManager->m_findingsSeverityCombo->currentData().toString()
+        : QStringLiteral("all");
+    const bool showPasses =
+        m_uiManager->m_findingsShowPassesCheck && m_uiManager->m_findingsShowPassesCheck->isChecked();
+
+    QVector<PEFindingInstance> visible = m_cachedFindings;
+    if (showPasses) {
+        visible += m_cachedPassFindings;
+    }
+
+    auto severityMatches = [&](const PEFindingInstance &f) -> bool {
+        if (severityFilter == QStringLiteral("all")) {
+            return true;
+        }
+        if (f.isPass) {
+            return severityFilter == QStringLiteral("info");
+        }
+        switch (f.severity) {
+        case PEFindingSeverity::High:
+            return severityFilter == QStringLiteral("high");
+        case PEFindingSeverity::Medium:
+            return severityFilter == QStringLiteral("medium");
+        case PEFindingSeverity::Low:
+            return severityFilter == QStringLiteral("low");
+        default:
+            return severityFilter == QStringLiteral("info");
+        }
+    };
+
+    QVector<PEFindingInstance> filtered;
+    filtered.reserve(visible.size());
+    for (const PEFindingInstance &f : visible) {
+        if (f.isPass && !showPasses) {
+            continue;
+        }
+        if (severityMatches(f)) {
+            filtered.append(f);
+        }
+    }
 
     if (m_uiManager->m_findingsSummaryLabel) {
-        if (findings.isEmpty()) {
+        if (filtered.isEmpty()) {
             m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
         } else {
             QMap<QString, QString> params;
-            params[QStringLiteral("count")] = QString::number(findings.size());
+            params[QStringLiteral("count")] = QString::number(filtered.size());
             m_uiManager->m_findingsSummaryLabel->setText(
                 LANG_PARAMS(QStringLiteral("findings/summary_count"), params));
         }
     }
 
-    auto severityColor = [](PEFindingSeverity sev) -> QColor {
-        switch (sev) {
+    auto severityColor = [](const PEFindingInstance &finding) -> QColor {
+        if (finding.isPass) {
+            return QColor(230, 255, 230);
+        }
+        switch (finding.severity) {
         case PEFindingSeverity::High:
             return QColor(255, 230, 230);
         case PEFindingSeverity::Medium:
@@ -1967,21 +2136,63 @@ void MainWindow::populateFindingsTab()
     };
 
     const QVector<PEFindingRule> &rules = PEFindingsEngine::rules();
-    for (const PEFindingInstance &finding : findings) {
+    static const char *const kCategoryOrder[] = {"hardening", "content", "metadata", "imports", "other"};
+
+    auto categoryForFinding = [&](const PEFindingInstance &finding) -> QString {
+        if (!finding.category.isEmpty()) {
+            return finding.category;
+        }
+        for (const PEFindingRule &rule : rules) {
+            if (rule.id == finding.ruleId) {
+                return PEFindingsEngine::categoryKeyForRule(rule);
+            }
+        }
+        return finding.isPass ? QStringLiteral("hardening") : QStringLiteral("other");
+    };
+
+    QMap<QString, QTreeWidgetItem *> categoryNodes;
+
+    for (const char *catKey : kCategoryOrder) {
+        const QString key = QString::fromLatin1(catKey);
+        QTreeWidgetItem *catItem = new QTreeWidgetItem(m_uiManager->m_findingsTree);
+        catItem->setText(0, QString());
+        catItem->setText(1, PEFindingsEngine::categoryDisplayName(key));
+        catItem->setText(2, QString());
+        catItem->setData(0, kFindingCategoryHeaderRole, true);
+        catItem->setFirstColumnSpanned(false);
+        catItem->setExpanded(true);
+        const QFont bold = catItem->font(1);
+        QFont f = bold;
+        f.setBold(true);
+        catItem->setFont(1, f);
+        categoryNodes.insert(key, catItem);
+    }
+
+    for (const PEFindingInstance &finding : filtered) {
         QString title = finding.title;
         QString detail = finding.detail;
         for (const PEFindingRule &rule : rules) {
             if (rule.id == finding.ruleId) {
                 title = LANG(rule.titleKey);
-                if (detail.startsWith(QStringLiteral("findings/"))) {
+                if (detail.isEmpty() || detail.startsWith(QStringLiteral("findings/"))) {
                     detail = LANG(rule.detailKey);
                 }
                 break;
             }
         }
 
-        QTreeWidgetItem *row = new QTreeWidgetItem();
-        row->setText(0, PEFindingsEngine::severityDisplayName(finding.severity));
+        const QString catKey = categoryForFinding(finding);
+        QTreeWidgetItem *parent = categoryNodes.value(catKey, categoryNodes.value(QStringLiteral("other")));
+        if (!parent) {
+            parent = categoryNodes.value(QStringLiteral("other"));
+        }
+
+        QTreeWidgetItem *row = new QTreeWidgetItem(parent);
+        if (finding.isPass) {
+            row->setText(0, LANG(QStringLiteral("findings/severity_pass")));
+        } else {
+            row->setText(0, PEFindingsEngine::severityDisplayName(finding.severity));
+        }
         row->setText(1, title);
         row->setText(2, detail);
         if (!finding.treeField.isEmpty()) {
@@ -1991,12 +2202,62 @@ void MainWindow::populateFindingsTab()
             row->setData(0, kFieldOffsetRole, finding.hexOffset);
             row->setData(0, kFieldSizeRole, finding.hexSize);
         }
-        const QColor bg = severityColor(finding.severity);
+        const QColor bg = severityColor(finding);
         for (int col = 0; col < 3; ++col) {
             row->setBackground(col, bg);
         }
-        m_uiManager->m_findingsTree->addTopLevelItem(row);
     }
+
+    for (const char *catKey : kCategoryOrder) {
+        QTreeWidgetItem *catItem = categoryNodes.value(QString::fromLatin1(catKey));
+        if (catItem && catItem->childCount() == 0) {
+            catItem->setHidden(true);
+        }
+    }
+}
+
+void MainWindow::onFindingsFilterChanged()
+{
+    applyFindingsFilter();
+}
+
+void MainWindow::onOverviewItemClicked(QTreeWidgetItem *item, int column)
+{
+    Q_UNUSED(column);
+    if (!item || !m_uiManager || !m_peParser || !m_peParser->isValid()) {
+        return;
+    }
+
+    const QString treeField = item->data(0, PEParserNew::kTreeFieldKeyRole).toString();
+    const FieldHexRange range = resolveFieldHexRange(item, treeField);
+
+    if (!treeField.isEmpty()) {
+        const QString richExplanation = m_peParser->getFileInsightExplanation(treeField);
+        if (!richExplanation.isEmpty()) {
+            showFindingsInsightHtml(richExplanation);
+            m_lastExplainedFieldName = treeField;
+        }
+    }
+
+    if (range.canHighlight || range.canGoTo) {
+        applyFieldHexNavigation(item, range);
+    } else if (m_uiManager->m_hexViewer) {
+        m_uiManager->m_hexViewer->clearHighlights();
+    }
+}
+
+void MainWindow::selectPeTreeItemForContext(QTreeWidgetItem *item)
+{
+    if (!item || !m_uiManager || !m_uiManager->m_peTree) {
+        return;
+    }
+    QTreeWidgetItem *parent = item->parent();
+    while (parent) {
+        parent->setExpanded(true);
+        parent = parent->parent();
+    }
+    m_uiManager->m_peTree->setCurrentItem(item);
+    m_uiManager->m_peTree->scrollToItem(item);
 }
 
 QTreeWidgetItem *MainWindow::findPeTreeItemByFieldKey(const QString &fieldKey) const
@@ -2021,14 +2282,18 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
     if (!item || !m_uiManager || !m_peParser || !m_peParser->isValid()) {
         return;
     }
-
-    if (m_uiManager->m_analysisTabWidget) {
-        m_uiManager->m_analysisTabWidget->setCurrentIndex(0);
+    if (item->data(0, kFindingCategoryHeaderRole).toBool()) {
+        return;
     }
 
     const QString treeField = item->data(0, PEParserNew::kTreeFieldKeyRole).toString();
-    QTreeWidgetItem *peItem = findPeTreeItemByFieldKey(treeField);
+    const FieldHexRange range = resolveFieldHexRange(item, treeField);
+    QTreeWidgetItem *peItem = treeField.isEmpty() ? nullptr : findPeTreeItemByFieldKey(treeField);
+
     if (peItem) {
+        if (m_uiManager->m_analysisTabWidget) {
+            m_uiManager->m_analysisTabWidget->setCurrentIndex(0);
+        }
         QTreeWidgetItem *parent = peItem->parent();
         while (parent) {
             parent->setExpanded(true);
@@ -2040,18 +2305,20 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
         return;
     }
 
-    const QVariant offVar = item->data(0, kFieldOffsetRole);
-    const QVariant sizeVar = item->data(0, kFieldSizeRole);
-    if (offVar.isValid() && sizeVar.isValid() && m_uiManager->m_hexViewer) {
-        bool offsetOk = false;
-        bool sizeOk = false;
-        const quint32 offset = offVar.toUInt(&offsetOk);
-        const quint32 size = sizeVar.toUInt(&sizeOk);
-        if (offsetOk && sizeOk && size > 0) {
-            m_uiManager->m_hexViewer->highlightRange(offset, size, QColor(255, 200, 100));
-            m_uiManager->m_hexViewer->goToOffset(static_cast<qint64>(offset));
-        }
+    if (range.canHighlight || range.canGoTo) {
+        applyFieldHexNavigation(item, range);
     }
+
+    const QString title = item->text(1);
+    const QString detail = item->text(2);
+    const QString html = QStringLiteral(
+                             "<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;"
+                             "color:#222;line-height:1.55;'>"
+                             "<div style='font-weight:600;font-size:12px;margin-bottom:8px;'>%1</div>"
+                             "<div style='color:#333;'>%2</div>"
+                             "</div>")
+                             .arg(title.toHtmlEscaped(), detail.toHtmlEscaped());
+    showFindingsInsightHtml(html);
 }
 
 void MainWindow::analysisDisplayPhaseWelcomeOnly()
@@ -2146,7 +2413,7 @@ void MainWindow::analysisDisplayPhaseStringsTab()
 void MainWindow::onStringsFilterChanged()
 {
     if (!m_fileLoaded || !m_uiManager) return;
-    const bool stringsTabActive = m_uiManager->m_analysisTabWidget && m_uiManager->m_analysisTabWidget->currentIndex() == 4;
+    const bool stringsTabActive = m_uiManager->m_analysisTabWidget && m_uiManager->m_analysisTabWidget->currentIndex() == 5;
     const bool senderTriggersExtraction =
         sender() == m_uiManager->m_stringsMinLengthSpin ||
         sender() == m_uiManager->m_stringsSectionCombo;
@@ -2164,18 +2431,21 @@ void MainWindow::onAnalysisTabChanged(int index)
     if (!m_fileLoaded || !m_uiManager || !m_peParser || !m_peParser->isValid()) return;
 
     // Tab order in UIManager:
-    // 0 = Structure, 1 = Imports, 2 = Exports, 3 = Dependencies, 4 = Strings, 5 = Findings
+    // 0 = Structure, 1 = Imports, 2 = Delay Imports, 3 = Exports, 4 = Dependencies, 5 = Strings, 6 = Findings
     switch (index) {
         case 1:
             populateImportsTab();
             break;
         case 2:
-            populateExportsTab();
+            populateDelayImportsTab();
             break;
         case 3:
-            populateDependenciesTab();
+            populateExportsTab();
             break;
         case 4:
+            populateDependenciesTab();
+            break;
+        case 5:
             populateStringsTab();
             break;
         default:
@@ -2218,6 +2488,43 @@ void MainWindow::populateImportsTab()
     }
 
     m_importsPopulated = true;
+}
+
+void MainWindow::populateDelayImportsTab()
+{
+    if (m_delayImportsPopulated) return;
+    if (!m_uiManager || !m_uiManager->m_delayImportModulesTree) return;
+
+    m_uiManager->m_delayImportModulesTree->blockSignals(true);
+    m_uiManager->m_delayImportModulesTree->clear();
+    if (m_uiManager->m_delayImportFunctionsTree) {
+        m_uiManager->m_delayImportFunctionsTree->blockSignals(true);
+        m_uiManager->m_delayImportFunctionsTree->clear();
+        m_uiManager->m_delayImportFunctionsTree->blockSignals(false);
+    }
+    m_uiManager->m_delayImportModulesTree->blockSignals(false);
+
+    const QStringList delayImports = m_peParser->getDelayImportModules();
+    const auto &delayImportDetails = m_peParser->getDelayImportFunctionDetails();
+
+    for (const QString &moduleName : delayImports) {
+        const QList<PEDataModel::ImportFunctionEntry> functions = delayImportDetails.value(moduleName);
+        QTreeWidgetItem *moduleItem = new QTreeWidgetItem(m_uiManager->m_delayImportModulesTree);
+        moduleItem->setText(0, moduleName);
+        moduleItem->setText(1, QString::number(functions.size()));
+    }
+
+    if (m_uiManager->m_delayImportModulesTree->topLevelItemCount() > 0) {
+        m_uiManager->m_delayImportModulesTree->setCurrentItem(
+            m_uiManager->m_delayImportModulesTree->topLevelItem(0));
+    } else {
+        QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_delayImportModulesTree);
+        placeholder->setText(0, LANG("UI/delay_imports_none"));
+        placeholder->setText(1, QString());
+        populateDelayImportFunctions(QString());
+    }
+
+    m_delayImportsPopulated = true;
 }
 
 void MainWindow::populateExportsTab()
@@ -3085,16 +3392,19 @@ void MainWindow::updateUILanguage()
             tw->setTabText(1, LANG("UI/tab_imports"));
         }
         if (tw->count() > 2) {
-            tw->setTabText(2, LANG("UI/tab_exports"));
+            tw->setTabText(2, LANG("UI/tab_delay_imports"));
         }
         if (tw->count() > 3) {
-            tw->setTabText(3, LANG("UI/tab_dependencies"));
+            tw->setTabText(3, LANG("UI/tab_exports"));
         }
         if (tw->count() > 4) {
-            tw->setTabText(4, LANG("UI/tab_strings"));
+            tw->setTabText(4, LANG("UI/tab_dependencies"));
         }
         if (tw->count() > 5) {
-            tw->setTabText(5, LANG("UI/tab_findings"));
+            tw->setTabText(5, LANG("UI/tab_strings"));
+        }
+        if (tw->count() > 6) {
+            tw->setTabText(6, LANG("UI/tab_findings"));
         }
         if (m_fileLoaded && m_peParser && m_peParser->isValid()) {
             populateFindingsTab();
@@ -3108,6 +3418,30 @@ void MainWindow::updateUILanguage()
             LANG(QStringLiteral("findings/header_detail"))
         });
     }
+    if (m_uiManager && m_uiManager->m_findingsOverviewTree) {
+        m_uiManager->m_findingsOverviewTree->setHeaderLabels({
+            LANG("UI/tree_header_field"),
+            LANG("UI/tree_header_value")
+        });
+    }
+    if (m_uiManager && m_uiManager->m_findingsShowPassesCheck) {
+        m_uiManager->m_findingsShowPassesCheck->setText(LANG(QStringLiteral("findings/show_passes")));
+    }
+    if (m_uiManager && m_uiManager->m_findingsInsightTitleLabel) {
+        m_uiManager->m_findingsInsightTitleLabel->setText(LANG(QStringLiteral("findings/insight_title")));
+    }
+    if (m_uiManager && m_uiManager->m_findingsInsightText) {
+        m_uiManager->m_findingsInsightText->setPlaceholderText(LANG(QStringLiteral("findings/insight_placeholder")));
+    }
+    if (m_uiManager && m_uiManager->m_findingsSeverityCombo) {
+        const int idx = m_uiManager->m_findingsSeverityCombo->currentIndex();
+        m_uiManager->m_findingsSeverityCombo->setItemText(0, LANG(QStringLiteral("findings/filter_severity_all")));
+        m_uiManager->m_findingsSeverityCombo->setItemText(1, LANG(QStringLiteral("findings/filter_severity_high")));
+        m_uiManager->m_findingsSeverityCombo->setItemText(2, LANG(QStringLiteral("findings/filter_severity_medium")));
+        m_uiManager->m_findingsSeverityCombo->setItemText(3, LANG(QStringLiteral("findings/filter_severity_low")));
+        m_uiManager->m_findingsSeverityCombo->setItemText(4, LANG(QStringLiteral("findings/filter_severity_info")));
+        m_uiManager->m_findingsSeverityCombo->setCurrentIndex(idx);
+    }
     if (m_uiManager && m_uiManager->m_findingsSummaryLabel && m_uiManager->m_findingsTree) {
         if (m_uiManager->m_findingsTree->topLevelItemCount() == 0) {
             m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
@@ -3120,6 +3454,18 @@ void MainWindow::updateUILanguage()
 
     if (m_uiManager && m_uiManager->m_importFunctionsTree) {
         m_uiManager->m_importFunctionsTree->setHeaderLabels({
+            LANG("UI/imports_functions_header_name"),
+            LANG("UI/imports_functions_header_offset"),
+            LANG("UI/imports_functions_header_ordinal")
+        });
+    }
+
+    if (m_uiManager && m_uiManager->m_delayImportModulesTree) {
+        m_uiManager->m_delayImportModulesTree->setHeaderLabels(
+            {LANG("UI/imports_header_module"), LANG("UI/imports_header_count")});
+    }
+    if (m_uiManager && m_uiManager->m_delayImportFunctionsTree) {
+        m_uiManager->m_delayImportFunctionsTree->setHeaderLabels({
             LANG("UI/imports_functions_header_name"),
             LANG("UI/imports_functions_header_offset"),
             LANG("UI/imports_functions_header_ordinal")
@@ -3524,5 +3870,70 @@ void MainWindow::onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetIte
     }
 
     populateImportFunctions(current->text(0));
+}
+
+void MainWindow::populateDelayImportFunctions(const QString &moduleName)
+{
+    if (!m_uiManager || !m_uiManager->m_delayImportFunctionsTree) {
+        return;
+    }
+
+    m_uiManager->m_delayImportFunctionsTree->blockSignals(true);
+    m_uiManager->m_delayImportFunctionsTree->clear();
+    m_uiManager->m_delayImportFunctionsTree->blockSignals(false);
+
+    if (!m_fileLoaded || !m_peParser) {
+        return;
+    }
+
+    const auto &delayImportDetails = m_peParser->getDelayImportFunctionDetails();
+    const QList<PEDataModel::ImportFunctionEntry> functions =
+        moduleName.isEmpty() ? QList<PEDataModel::ImportFunctionEntry>() : delayImportDetails.value(moduleName);
+
+    if (functions.isEmpty()) {
+        QTreeWidgetItem *placeholder = new QTreeWidgetItem(m_uiManager->m_delayImportFunctionsTree);
+        placeholder->setText(0, LANG("UI/delay_imports_no_functions"));
+        placeholder->setFirstColumnSpanned(true);
+        placeholder->setFlags(Qt::NoItemFlags);
+        return;
+    }
+
+    for (const PEDataModel::ImportFunctionEntry &entry : functions) {
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_delayImportFunctionsTree);
+        item->setText(0, entry.name);
+        if (entry.thunkRVA != 0) {
+            item->setText(1, PEUtils::formatHexWidth(entry.thunkRVA, 8));
+        } else {
+            item->setText(1, QString());
+        }
+        if (entry.importedByOrdinal) {
+            item->setText(2, QString::number(entry.ordinal));
+        } else {
+            item->setText(2, QString());
+        }
+    }
+}
+
+void MainWindow::onDelayImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
+{
+    Q_UNUSED(previous);
+
+    if (!m_fileLoaded || !m_peParser) {
+        return;
+    }
+
+    if (!current) {
+        populateDelayImportFunctions(QString());
+        return;
+    }
+
+    const QString noneLabel = LanguageManager::getInstance().getString(
+        QStringLiteral("UI/delay_imports_none"), QStringLiteral("No delay-import modules"));
+    if (current->text(0) == noneLabel) {
+        populateDelayImportFunctions(QString());
+        return;
+    }
+
+    populateDelayImportFunctions(current->text(0));
 }
 

@@ -1,4 +1,5 @@
 #include "pe_analysis.h"
+#include "pe_data_model.h"
 #include "pe_structures.h"
 
 #include <QByteArray>
@@ -76,6 +77,15 @@ bool runPeAnalysisSelfTests()
 
     const quint32 rsdsRecSize = PEAnalysis::codeViewRecordByteSize(rsds, 0, static_cast<quint32>(rsds.size()));
     check(rsdsRecSize == static_cast<quint32>(rsds.size()), "rsds record size");
+
+    PEDataModel model;
+    model.setImports({QStringLiteral("KERNEL32.dll")});
+    PEDataModel::ImportFunctionEntry fn;
+    fn.name = QStringLiteral("Sleep");
+    fn.importedByOrdinal = false;
+    model.setImportFunctions({{QStringLiteral("KERNEL32.dll"), {fn}}});
+    const QString imphash = PEAnalysis::computeImphash(model);
+    check(imphash == QStringLiteral("72a7c9e1cdcc97a350848ac2b5ec8156"), "imphash single import");
 
     return ok;
 }

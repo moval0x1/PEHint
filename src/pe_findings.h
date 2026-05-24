@@ -21,9 +21,11 @@ struct PEFindingRule {
     QString titleKey;
     QString detailKey;
     QString treeField;
+    QString category;
     bool enabled = true;
     double threshold = 7.0;
     int maxImports = 3;
+    int minCount = 5;
 };
 
 struct PEFindingInstance {
@@ -35,6 +37,8 @@ struct PEFindingInstance {
     quint32 hexOffset = 0;
     quint32 hexSize = 0;
     bool hasHexNav = false;
+    bool isPass = false;
+    QString category;
 };
 
 class PEFindingsEngine
@@ -48,6 +52,9 @@ public:
         const std::function<quint32(quint32)> &rvaToFileOffset);
 
     static QString severityDisplayName(PEFindingSeverity severity);
+    static QString categoryDisplayName(const QString &categoryKey);
+    static QString categoryKeyForRule(const PEFindingRule &rule);
+    static QVector<PEFindingInstance> evaluateHardeningPasses(const PEDataModel &model);
 };
 
 #endif // PE_FINDINGS_H

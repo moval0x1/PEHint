@@ -257,8 +257,20 @@ public:
      * providing a comprehensive view of the PE structure.
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
+    /** Triage summary (overlay, entropy, PDB, version) — not part of the PE layout tree. */
+    QTreeWidgetItem *buildFileInsightsItem();
+    /** Rich HTML for the Findings file-summary panel (value + tips when absent). */
+    QString getFileInsightExplanation(const QString &fieldKey) const;
+    /** Whether clicking this insight row should highlight bytes in the hex view. */
+    bool fileInsightHasHexTarget(const QString &fieldKey) const;
+    /** Structure-tree field to select for context when the insight has no dedicated node. */
+    static QString relatedStructureFieldForInsight(const QString &fieldKey);
     QStringList getImportModules() const { return m_dataModel.getImports(); }
     const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getImportFunctionDetails() const { return m_dataModel.getImportFunctions(); }
+    QStringList getDelayImportModules() const { return m_dataModel.getDelayImports(); }
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getDelayImportFunctionDetails() const {
+        return m_dataModel.getDelayImportFunctions();
+    }
     const QList<PEDataModel::ExportFunctionEntry>& getExportFunctions() const { return m_dataModel.getExportFunctions(); }
     
     // Async parsing support - For handling large files without blocking UI
@@ -435,7 +447,6 @@ private:
      */
     void addDataDirectoryFields(QTreeWidgetItem *parent);
     void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
-    void addFileInsightsTree(QList<QTreeWidgetItem *> &treeItems);
     void addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
                              const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
                              bool highlightInHex, const QString &meaningOverride = QString());

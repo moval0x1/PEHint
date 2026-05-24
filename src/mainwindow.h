@@ -35,6 +35,7 @@
 #include <functional>
 
 #include "pe_parser_new.h"
+#include "pe_findings.h"
 #include "hexviewer.h"
 #include "pe_ui_manager.h"
 #include "pe_string_extractor.h"
@@ -79,6 +80,7 @@ public slots:
     void onHexViewerOptions();
     void onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onImportFunctionSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+    void onDelayImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onStringsFilterChanged();
     void onStringsExtractionFinished();
     void onCancelStringsExtraction();
@@ -86,6 +88,8 @@ public slots:
     void onStringsTreeItemDoubleClicked(QTreeWidgetItem *item, int column);
     void onAnalysisTabChanged(int index);
     void onFindingsItemClicked(QTreeWidgetItem *item, int column);
+    void onOverviewItemClicked(QTreeWidgetItem *item, int column);
+    void onFindingsFilterChanged();
 
     // Language management
     void setupLanguageMenu();
@@ -116,8 +120,12 @@ private:
     QFutureWatcher<StringExtractionResult> m_stringsExtractionWatcher;
     bool m_stringsExtractionRunning;
 
+    QVector<PEFindingInstance> m_cachedFindings;
+    QVector<PEFindingInstance> m_cachedPassFindings;
+
     // Lazy UI population flags (to keep initial open/drag fast)
     bool m_importsPopulated;
+    bool m_delayImportsPopulated;
     bool m_exportsPopulated;
     bool m_dependenciesPopulated;
     bool m_stringsPopulated;
@@ -150,7 +158,20 @@ private:
     /// Split heavy post-parse UI into event-loop slices to avoid Windows "(Not Responding)".
     void analysisDisplayPhaseTree();
     void populateFindingsTab();
+    void populateFindingsOverview();
+    void applyFindingsFilter();
     QTreeWidgetItem *findPeTreeItemByFieldKey(const QString &fieldKey) const;
+    void selectPeTreeItemForContext(QTreeWidgetItem *item);
+
+    struct FieldHexRange {
+        quint32 offset = 0;
+        quint32 size = 0;
+        bool canHighlight = false;
+        bool canGoTo = false;
+    };
+    FieldHexRange resolveFieldHexRange(QTreeWidgetItem *item, const QString &fieldName) const;
+    void applyFieldHexNavigation(QTreeWidgetItem *item, const FieldHexRange &range);
+    void showFindingsInsightHtml(const QString &html);
     void analysisDisplayPhaseWelcomeOnly();
     void analysisDisplayPhaseHexSetData();
     void analysisDisplayPhaseStringsTab();
@@ -158,6 +179,7 @@ private:
                                        std::function<void()> onComplete = nullptr,
                                        quint64 languageRefreshEpoch = 0);
     void populateImportFunctions(const QString &moduleName);
+    void populateDelayImportFunctions(const QString &moduleName);
     void applyStringsFilter();  ///< Refill strings tree from m_extractedStrings using current filter
     
     // Utility functions
@@ -176,6 +198,7 @@ private:
 
     // Lazy tab population helpers
     void populateImportsTab();
+    void populateDelayImportsTab();
     void populateExportsTab();
     void populateDependenciesTab();
     void populateStringsTab();
