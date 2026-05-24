@@ -40,6 +40,7 @@
 #include "pe_ui_manager.h"
 #include "pe_string_extractor.h"
 
+class FindingsController;
 class PEDataModel;
 
 class MainWindow : public QMainWindow
@@ -121,8 +122,7 @@ private:
     QFutureWatcher<StringExtractionResult> m_stringsExtractionWatcher;
     bool m_stringsExtractionRunning;
 
-    QVector<PEFindingInstance> m_cachedFindings;
-    QVector<PEFindingInstance> m_cachedPassFindings;
+    FindingsController *m_findingsController = nullptr;
 
     // Lazy UI population flags (to keep initial open/drag fast)
     bool m_importsPopulated;
@@ -159,9 +159,6 @@ private:
 
     /// Split heavy post-parse UI into event-loop slices to avoid Windows "(Not Responding)".
     void analysisDisplayPhaseTree();
-    void populateFindingsTab();
-    void populateFindingsOverview();
-    void applyFindingsFilter();
     QTreeWidgetItem *findPeTreeItemByFieldKey(const QString &fieldKey) const;
     void selectPeTreeItemForContext(QTreeWidgetItem *item);
 

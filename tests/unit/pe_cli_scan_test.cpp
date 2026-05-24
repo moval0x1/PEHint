@@ -1,4 +1,4 @@
-#include "minimal_pe_builder.h"
+#include "helpers/minimal_pe_builder.h"
 #include "pe_cli_scan.h"
 
 #include <QDir>

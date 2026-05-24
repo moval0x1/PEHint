@@ -152,6 +152,8 @@ set(PROJECT_SOURCES
     src/pe_authenticode.h
     src/pe_findings.cpp
     src/pe_findings.h
+    src/findings_controller.cpp
+    src/findings_controller.h
     src/pe_cli_scan.cpp
     src/pe_cli_scan.h
     src/section_layout_widget.cpp

@@ -1,7 +1,6 @@
 #include "pe_authenticode.h"
 
 #include <QChar>
-#include <QStringDecoder>
 
 namespace {
 

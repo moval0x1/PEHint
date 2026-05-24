@@ -13,9 +13,6 @@
 #include <QRegularExpression>
 #include <QMap>
 
-#include <type_traits>
-#include <utility>
-
 namespace {
 
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
@@ -92,30 +89,6 @@ PeFieldHexRange fallbackHexRange(QTreeWidgetItem *item)
     range.canGoTo = true;
     range.canHighlight = size > 0;
     return range;
-}
-
-template <typename T, typename = void>
-struct HasBuildFileInsightsOverview : std::false_type {
-};
-
-template <typename T>
-struct HasBuildFileInsightsOverview<T, std::void_t<decltype(std::declval<T &>().buildFileInsightsOverview())>>
-    : std::true_type {
-};
-
-template <typename PresenterT>
-QTreeWidgetItem *buildInsightsOverviewCompat(PEParserNew *parser)
-{
-    if (!parser) {
-        return nullptr;
-    }
-
-    if constexpr (HasBuildFileInsightsOverview<PresenterT>::value) {
-        PresenterT presenter(parser);
-        return presenter.buildFileInsightsOverview();
-    }
-
-    return parser->buildFileInsightsItem();
 }
 
 } // namespace
@@ -354,7 +327,7 @@ void FindingsController::populateOverview()
 
     m_ui->m_findingsOverviewTree->clear();
 
-    QTreeWidgetItem *insights = buildInsightsOverviewCompat<PEUIPresenter>(m_parser);
+    QTreeWidgetItem *insights = PEUIPresenter(m_parser).buildFileInsightsOverview();
     if (!insights) {
         return;
     }
@@ -387,8 +360,6 @@ void FindingsController::populateOverview()
                 row->setBackground(col, bg);
                 row->setForeground(col, fg);
             }
-            row->setText(1, metrics.authenticodePresent ? LANG(QStringLiteral("UI/signed_table_yes"))
-                                                        : LANG(QStringLiteral("UI/signed_table_no")));
         }
 
         if (!row->text(1).isEmpty()) {

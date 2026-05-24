@@ -416,10 +416,6 @@ private:
      */
     QString findConfigFile(const QString &fileName) const;
 
-    void addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
-                             const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
-                             bool highlightInHex, const QString &meaningOverride = QString());
-
     /** Rebuilds m_fieldOffsetLookup once per loaded image (getFieldOffset is hot on tree selection). */
     void ensureFieldOffsetLookup();
     void invalidateFieldOffsetLookup();

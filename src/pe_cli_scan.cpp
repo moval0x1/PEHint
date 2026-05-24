@@ -6,11 +6,19 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QTextStream>
+#include <QTimer>
+#include <algorithm>
+#include <memory>
 
 namespace {
 
@@ -48,16 +56,60 @@ bool severityAtLeast(PEFindingSeverity value, PEFindingSeverity minimum)
     return severityRank(value) >= severityRank(minimum);
 }
 
+bool isSupportedPeFilePath(const QString &path)
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    return suffix == QStringLiteral("exe") || suffix == QStringLiteral("dll")
+           || suffix == QStringLiteral("sys");
+}
+
+QStringList listSupportedFilesInDirectory(const QString &dirPath)
+{
+    QDir dir(dirPath);
+    const QFileInfoList entries = dir.entryInfoList(
+        QStringList() << QStringLiteral("*.exe") << QStringLiteral("*.dll") << QStringLiteral("*.sys"),
+        QDir::Files | QDir::Readable | QDir::NoSymLinks,
+        QDir::Name | QDir::IgnoreCase);
+    QStringList files;
+    files.reserve(entries.size());
+    for (const QFileInfo &entry : entries) {
+        files.append(entry.absoluteFilePath());
+    }
+    return files;
+}
+
+QStringList uniqueSortedPaths(const QStringList &paths)
+{
+    QSet<QString> seen;
+    QStringList out;
+    out.reserve(paths.size());
+    for (const QString &path : paths) {
+        const QString absolute = QFileInfo(path).absoluteFilePath();
+        if (!seen.contains(absolute)) {
+            seen.insert(absolute);
+            out.append(absolute);
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
+    return out;
+}
+
 void printCliHelp()
 {
     QTextStream out(stdout);
     out << "PEHint — headless PE triage scan\n\n"
         << "Usage:\n"
-        << "  PEHint --scan [options] <pe-file>\n\n"
+        << "  PEHint --scan [options] <pe-file> [more-pe-files...]\n"
+        << "  PEHint --scan --dir <directory> [options]\n"
+        << "  PEHint --scan --watch <directory> [options]\n\n"
         << "Options:\n"
         << "  --format <text|json>   Output format (default: text)\n"
         << "  --min-severity <level> Minimum severity to report: info, low, medium, high (default: low)\n"
         << "  --include-passes       Include hardening pass rows (ASLR/DEP/CFG enabled)\n"
+        << "  --dir <directory>      Scan all .exe/.dll/.sys files in a directory (non-recursive)\n"
+        << "  --watch <directory>    Watch directory and rescan changed .exe/.dll/.sys files\n"
         << "  --lang <en|pt>         UI language for finding text (default: en)\n"
         << "  -h, --help             Show this help\n\n"
         << "Exit codes:\n"
@@ -109,6 +161,11 @@ bool hasActionableFindings(const QVector<PEFindingInstance> &findings)
         }
     }
     return false;
+}
+
+void printFileHeader(QTextStream &out, const QString &filePath)
+{
+    out << "=== " << filePath << " ===\n";
 }
 
 void printTextReport(QTextStream &out,
@@ -182,6 +239,41 @@ void printJsonReport(QTextStream &out,
     out << QJsonDocument(root).toJson(QJsonDocument::Compact) << '\n';
 }
 
+int scanOneFile(const QString &filePath,
+                const QString &format,
+                PEFindingSeverity minSeverity,
+                bool includePasses,
+                bool printHeader)
+{
+    QTextStream out(stdout);
+    QTextStream err(stderr);
+    PEParserNew parserEngine;
+    if (!parserEngine.loadFile(filePath)) {
+        err << "Error: failed to parse " << filePath << '\n';
+        return 1;
+    }
+
+    const PEDataModel &model = parserEngine.getDataModel();
+    const auto rvaToFo = [&parserEngine](quint32 rva) -> quint32 { return parserEngine.rvaToFileOffset(rva); };
+
+    QVector<PEFindingInstance> findings = PEFindingsEngine::evaluate(model, rvaToFo);
+    if (includePasses) {
+        findings += PEFindingsEngine::evaluateHardeningPasses(model);
+    }
+    findings = filterFindings(findings, minSeverity, includePasses);
+
+    const int exitCode = hasActionableFindings(findings) ? 2 : 0;
+    if (printHeader && format != QStringLiteral("json")) {
+        printFileHeader(out, filePath);
+    }
+    if (format == QStringLiteral("json")) {
+        printJsonReport(out, filePath, true, model, findings, exitCode);
+    } else {
+        printTextReport(out, filePath, model, findings);
+    }
+    return exitCode;
+}
+
 } // namespace
 
 bool peCliScanRequested(int argc, char *argv[])
@@ -196,14 +288,18 @@ bool peCliScanRequested(int argc, char *argv[])
 
 int runPeCliScan(int argc, char *argv[])
 {
-    QCoreApplication app(argc, argv);
+    std::unique_ptr<QCoreApplication> ownedApp;
+    if (!QCoreApplication::instance()) {
+        ownedApp = std::make_unique<QCoreApplication>(argc, argv);
+    }
+    QCoreApplication *app = QCoreApplication::instance();
     QCoreApplication::setApplicationName(QStringLiteral("PEHint"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Headless PE findings scan"));
     parser.addHelpOption();
     QCommandLineOption scanOption(QStringLiteral("scan"),
-                                  QStringLiteral("Scan a PE file and print findings (no GUI)."));
+                                  QStringLiteral("Scan PE files and print findings (no GUI)."));
     parser.addOption(scanOption);
     QCommandLineOption formatOption(QStringLiteral("format"),
                                     QStringLiteral("Output format: text or json."),
@@ -211,39 +307,76 @@ int runPeCliScan(int argc, char *argv[])
                                     QStringLiteral("text"));
     parser.addOption(formatOption);
     QCommandLineOption minSeverityOption(QStringLiteral("min-severity"),
-                                           QStringLiteral("Minimum severity: info, low, medium, high."),
-                                           QStringLiteral("level"),
-                                           QStringLiteral("low"));
+                                         QStringLiteral("Minimum severity: info, low, medium, high."),
+                                         QStringLiteral("level"),
+                                         QStringLiteral("low"));
     parser.addOption(minSeverityOption);
     QCommandLineOption includePassesOption(QStringLiteral("include-passes"),
-                                             QStringLiteral("Include hardening pass findings."));
+                                           QStringLiteral("Include hardening pass findings."));
     parser.addOption(includePassesOption);
+    QCommandLineOption dirOption(QStringLiteral("dir"),
+                                 QStringLiteral("Scan all .exe/.dll/.sys files in a directory (non-recursive)."),
+                                 QStringLiteral("directory"));
+    parser.addOption(dirOption);
+    QCommandLineOption watchOption(QStringLiteral("watch"),
+                                   QStringLiteral("Watch directory and rescan changed .exe/.dll/.sys files."),
+                                   QStringLiteral("directory"));
+    parser.addOption(watchOption);
     QCommandLineOption langOption(QStringLiteral("lang"),
                                   QStringLiteral("Language for finding strings: en or pt."),
                                   QStringLiteral("code"),
                                   QStringLiteral("en"));
     parser.addOption(langOption);
-    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("PE file to scan"));
-    parser.process(app);
+    parser.addPositionalArgument(QStringLiteral("files"), QStringLiteral("PE file(s) to scan"));
+
+    QStringList argList;
+    argList.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        argList << QString::fromLocal8Bit(argv[i]);
+    }
+    if (!parser.parse(argList)) {
+        return 0;
+    }
 
     if (!parser.isSet(scanOption)) {
         printCliHelp();
         return 1;
     }
 
-    const QStringList positional = parser.positionalArguments();
-    if (positional.isEmpty()) {
-        QTextStream err(stderr);
-        err << "Error: missing PE file path.\n";
-        printCliHelp();
-        return 1;
-    }
-
-    const QString filePath = QFileInfo(positional.first()).absoluteFilePath();
     const QString format = parser.value(formatOption).trimmed().toLower();
     const PEFindingSeverity minSeverity = parseMinSeverity(parser.value(minSeverityOption));
     const bool includePasses = parser.isSet(includePassesOption);
     const QString lang = parser.value(langOption).trimmed().toLower();
+    const QString dirPath = parser.value(dirOption).trimmed();
+    const QString watchPath = parser.value(watchOption).trimmed();
+
+    if (!watchPath.isEmpty() && !QFileInfo(watchPath).isDir()) {
+        QTextStream err(stderr);
+        err << "Error: --watch requires a valid directory.\n";
+        return 1;
+    }
+    if (!dirPath.isEmpty() && !QFileInfo(dirPath).isDir()) {
+        QTextStream err(stderr);
+        err << "Error: --dir requires a valid directory.\n";
+        return 1;
+    }
+
+    QStringList filesToScan;
+    const QStringList positional = parser.positionalArguments();
+    for (const QString &pathArg : positional) {
+        filesToScan.append(QFileInfo(pathArg).absoluteFilePath());
+    }
+    if (!dirPath.isEmpty()) {
+        filesToScan += listSupportedFilesInDirectory(QFileInfo(dirPath).absoluteFilePath());
+    }
+    filesToScan = uniqueSortedPaths(filesToScan);
+
+    if (watchPath.isEmpty() && filesToScan.isEmpty()) {
+        QTextStream err(stderr);
+        err << "Error: provide one or more PE files, --dir, or --watch.\n";
+        printCliHelp();
+        return 1;
+    }
 
     LanguageManager &langMgr = LanguageManager::getInstance();
     langMgr.initialize();
@@ -255,32 +388,97 @@ int runPeCliScan(int argc, char *argv[])
 
     PEFindingsEngine::loadRules();
 
-    PEParserNew parserEngine;
-    if (!parserEngine.loadFile(filePath)) {
-        QTextStream err(stderr);
-        err << "Error: failed to parse " << filePath << '\n';
-        return 1;
+    int aggregateExitCode = 0;
+    if (!filesToScan.isEmpty()) {
+        const bool showHeader = filesToScan.size() > 1;
+        for (const QString &filePath : filesToScan) {
+            if (!isSupportedPeFilePath(filePath)) {
+                continue;
+            }
+            const int oneExit = scanOneFile(filePath, format, minSeverity, includePasses, showHeader);
+            if (oneExit == 1) {
+                aggregateExitCode = 1;
+            } else if (oneExit == 2 && aggregateExitCode == 0) {
+                aggregateExitCode = 2;
+            }
+        }
     }
 
-    const PEDataModel &model = parserEngine.getDataModel();
-    const auto rvaToFo = [&parserEngine](quint32 rva) -> quint32 {
-        return parserEngine.rvaToFileOffset(rva);
+    if (watchPath.isEmpty()) {
+        return aggregateExitCode;
+    }
+
+    const QString watchDir = QFileInfo(watchPath).absoluteFilePath();
+    QTextStream out(stdout);
+    out << "Watching: " << watchDir << '\n';
+
+    QFileSystemWatcher watcher;
+    watcher.addPath(watchDir);
+    QTimer debounceTimer;
+    debounceTimer.setSingleShot(true);
+    debounceTimer.setInterval(500);
+
+    QHash<QString, QDateTime> knownMtime;
+    QSet<QString> pendingChanges;
+
+    const auto updateWatchedFiles = [&watcher, watchDir]() {
+        const QStringList currentlyWatched = watcher.files();
+        for (const QString &watchedPath : currentlyWatched) {
+            watcher.removePath(watchedPath);
+        }
+        for (const QString &filePath : listSupportedFilesInDirectory(watchDir)) {
+            watcher.addPath(filePath);
+        }
     };
 
-    QVector<PEFindingInstance> findings = PEFindingsEngine::evaluate(model, rvaToFo);
-    if (includePasses) {
-        findings += PEFindingsEngine::evaluateHardeningPasses(model);
-    }
-    findings = filterFindings(findings, minSeverity, includePasses);
+    const auto detectChangedFiles = [&knownMtime, &pendingChanges, watchDir]() {
+        QHash<QString, QDateTime> current;
+        const QStringList files = listSupportedFilesInDirectory(watchDir);
+        for (const QString &path : files) {
+            const QDateTime mtime = QFileInfo(path).lastModified();
+            current.insert(path, mtime);
+            if (!knownMtime.contains(path) || knownMtime.value(path) != mtime) {
+                pendingChanges.insert(path);
+            }
+        }
+        for (auto it = knownMtime.constBegin(); it != knownMtime.constEnd(); ++it) {
+            if (!current.contains(it.key())) {
+                pendingChanges.insert(it.key());
+            }
+        }
+        knownMtime = current;
+    };
 
-    const int exitCode = hasActionableFindings(findings) ? 2 : 0;
-    QTextStream out(stdout);
+    detectChangedFiles();
+    updateWatchedFiles();
 
-    if (format == QStringLiteral("json")) {
-        printJsonReport(out, filePath, true, model, findings, exitCode);
-    } else {
-        printTextReport(out, filePath, model, findings);
-    }
+    QObject::connect(&watcher, &QFileSystemWatcher::directoryChanged, app, [&](const QString &) {
+        detectChangedFiles();
+        updateWatchedFiles();
+        debounceTimer.start();
+    });
+    QObject::connect(&watcher, &QFileSystemWatcher::fileChanged, app, [&](const QString &path) {
+        pendingChanges.insert(path);
+        detectChangedFiles();
+        updateWatchedFiles();
+        debounceTimer.start();
+    });
+    QObject::connect(&debounceTimer, &QTimer::timeout, app, [&]() {
+        QStringList changed = uniqueSortedPaths(pendingChanges.values());
+        pendingChanges.clear();
+        for (const QString &filePath : changed) {
+            if (!QFileInfo::exists(filePath) || !isSupportedPeFilePath(filePath)) {
+                continue;
+            }
+            const int oneExit = scanOneFile(filePath, format, minSeverity, includePasses, true);
+            if (oneExit == 1) {
+                aggregateExitCode = 1;
+            } else if (oneExit == 2 && aggregateExitCode == 0) {
+                aggregateExitCode = 2;
+            }
+        }
+    });
 
-    return exitCode;
+    app->exec();
+    return aggregateExitCode;
 }

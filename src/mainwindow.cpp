@@ -34,6 +34,7 @@
 #include "pe_dependency_analyzer.h"
 #include "pe_string_extractor.h"
 #include "pe_findings.h"
+#include "findings_controller.h"
 #include "section_layout_widget.h"
 #include "sdk_api_markdown_reader.h"
 #include <QJsonDocument>
@@ -113,8 +114,6 @@ QString dependencyTooltipText(const DependencyNode &node)
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
 constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
-constexpr int kFindingCategoryHeaderRole = Qt::UserRole + 41;
-constexpr int kFindingRuleIdRole = Qt::UserRole + 42;
 
 QColor flaggedImportRowColor(PEFindingSeverity severity)
 {
@@ -152,25 +151,6 @@ void applyFlaggedImportRowStyle(QTreeWidgetItem *item, const QString &moduleName
     } else {
         item->setToolTip(0, LANG(QStringLiteral("UI/imports_flagged_tooltip_short")));
     }
-}
-
-QString formatHardcodedMatchesInsightHtml(const QString &title, const QString &intro,
-                                          const QVector<PEHardcodedMatch> &matches)
-{
-    QString html = QStringLiteral(
-                       "<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;"
-                       "color:#222;line-height:1.55;'>"
-                       "<p style='font-weight:600;font-size:12px;margin:0 0 6px 0;'>%1</p>"
-                       "<p style='color:#555;margin:0 0 8px 0;'>%2</p>"
-                       "<ul style='margin:0;padding-left:18px;'>")
-                       .arg(title.toHtmlEscaped(), intro.toHtmlEscaped());
-    for (const PEHardcodedMatch &m : matches) {
-        html += QStringLiteral("<li style='margin-bottom:4px;'><code>%1</code> "
-                               "<span style='color:#666;'>@ %2</span></li>")
-                    .arg(m.value.toHtmlEscaped(), PEUtils::formatHexWidth(m.fileOffset, 8));
-    }
-    html += QStringLiteral("</ul></div>");
-    return html;
 }
 
 /** File Insights rows that attach explicit offset/size roles for hex sync. */
@@ -522,7 +502,10 @@ MainWindow::MainWindow(QWidget *parent)
     // Setup UI components - REFACTORED: Now delegates to UIManager
     // This must be done BEFORE trying to access UI components
     setupUI();
-    
+
+    m_findingsController = new FindingsController(m_uiManager, this);
+    m_findingsController->setParser(m_peParser);
+
     // Now that UI is set up, we can access UI components
     setupConnections();
     setupMenus();
@@ -630,7 +613,49 @@ void MainWindow::setupConnections()
         connect(m_uiManager->m_dependenciesTree, &QTreeWidget::customContextMenuRequested,
                 this, &MainWindow::onDependenciesCustomContextMenu);
     }
-    
+
+    if (m_findingsController) {
+        m_findingsController->setNavigationHooks(
+            [this](QTreeWidgetItem *item, const QString &field) {
+                const FieldHexRange r = resolveFieldHexRange(item, field);
+                PeFieldHexRange out;
+                out.offset = r.offset;
+                out.size = r.size;
+                out.canHighlight = r.canHighlight;
+                out.canGoTo = r.canGoTo;
+                return out;
+            },
+            [this](QTreeWidgetItem *item, const PeFieldHexRange &pr) {
+                FieldHexRange r;
+                r.offset = pr.offset;
+                r.size = pr.size;
+                r.canHighlight = pr.canHighlight;
+                r.canGoTo = pr.canGoTo;
+                applyFieldHexNavigation(item, r);
+            },
+            [this](const QString &key) { return findPeTreeItemByFieldKey(key); },
+            [this](QTreeWidgetItem *peItem) {
+                if (m_uiManager->m_analysisTabWidget) {
+                    m_uiManager->m_analysisTabWidget->setCurrentIndex(0);
+                }
+                QTreeWidgetItem *parent = peItem->parent();
+                while (parent) {
+                    parent->setExpanded(true);
+                    parent = parent->parent();
+                }
+                m_uiManager->m_peTree->setCurrentItem(peItem);
+                m_uiManager->m_peTree->scrollToItem(peItem);
+                onTreeItemClicked(peItem, 0);
+            });
+        connect(m_findingsController, &FindingsController::insightHtmlChanged, this,
+                &MainWindow::showFindingsInsightHtml);
+        connect(m_findingsController, &FindingsController::requestClearHexHighlights, this, [this]() {
+            if (m_uiManager && m_uiManager->m_hexViewer) {
+                m_uiManager->m_hexViewer->clearHighlights();
+            }
+        });
+    }
+
     CrashHandler::getInstance().logInfo("MainWindow", "Signal-slot connections setup completed");
 }
 
@@ -1858,18 +1883,9 @@ void MainWindow::clearDisplay()
         }
         if (m_uiManager->m_stringsCancelButton) m_uiManager->m_stringsCancelButton->setEnabled(false);
         if (m_uiManager->m_stringsExportButton) m_uiManager->m_stringsExportButton->setEnabled(false);
-        if (m_uiManager->m_findingsTree) {
-            m_uiManager->m_findingsTree->clear();
+        if (m_findingsController) {
+            m_findingsController->clear();
         }
-        if (m_uiManager->m_findingsOverviewTree) {
-            m_uiManager->m_findingsOverviewTree->clear();
-        }
-        m_cachedFindings.clear();
-        m_cachedPassFindings.clear();
-        if (m_uiManager->m_findingsSummaryLabel) {
-            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
-        }
-        showFindingsInsightHtml(QString());
 
         // Also clear hex viewer highlights
         if (m_uiManager->m_hexViewer) {
@@ -2052,306 +2068,29 @@ void MainWindow::analysisDisplayPhaseTree()
         m_uiManager->m_collapseAllButton->setEnabled(hasItems);
     }
 
-    populateFindingsTab();
-}
-
-void MainWindow::populateFindingsTab()
-{
-    if (!m_uiManager || !m_peParser || !m_peParser->isValid()) {
-        return;
-    }
-
-    PEFindingsEngine::loadRules();
-
-    const auto rvaToFo = [this](quint32 rva) -> quint32 {
-        return m_peParser ? m_peParser->rvaToFileOffset(rva) : 0u;
-    };
-    m_cachedFindings = PEFindingsEngine::evaluate(m_peParser->getDataModel(), rvaToFo);
-    m_cachedPassFindings = PEFindingsEngine::evaluateHardeningPasses(m_peParser->getDataModel());
-
-    populateFindingsOverview();
-    applyFindingsFilter();
-}
-
-void MainWindow::populateFindingsOverview()
-{
-    if (!m_uiManager || !m_uiManager->m_findingsOverviewTree || !m_peParser || !m_peParser->isValid()) {
-        return;
-    }
-
-    m_uiManager->m_findingsOverviewTree->clear();
-    QTreeWidgetItem *insights = m_peParser->buildFileInsightsItem();
-    if (!insights) {
-        return;
-    }
-
-    for (int i = 0; i < insights->childCount(); ++i) {
-        QTreeWidgetItem *src = insights->child(i);
-        QTreeWidgetItem *row = new QTreeWidgetItem(m_uiManager->m_findingsOverviewTree);
-        row->setText(0, src->text(0));
-        row->setText(1, src->text(1));
-        const QString fieldKey = src->data(0, PEParserNew::kTreeFieldKeyRole).toString();
-        if (!fieldKey.isEmpty()) {
-            row->setData(0, PEParserNew::kTreeFieldKeyRole, fieldKey);
-        }
-        const QVariant offVar = src->data(0, kFieldOffsetRole);
-        const QVariant sizeVar = src->data(0, kFieldSizeRole);
-        if (offVar.isValid()) {
-            row->setData(0, kFieldOffsetRole, offVar);
-        }
-        if (sizeVar.isValid()) {
-            row->setData(0, kFieldSizeRole, sizeVar);
-        }
-
-        if (fieldKey == QLatin1String("Signed") && m_peParser) {
-            const PEFileMetrics metrics = m_peParser->getDataModel().getFileMetrics();
-            const QColor bg = metrics.authenticodePresent ? QColor(230, 255, 230) : QColor(255, 243, 224);
-            const QColor fg = metrics.authenticodePresent ? QColor(22, 101, 52) : QColor(146, 64, 14);
-            for (int col = 0; col < 2; ++col) {
-                row->setBackground(col, bg);
-                row->setForeground(col, fg);
-            }
-            row->setText(1, metrics.authenticodePresent ? LANG(QStringLiteral("UI/signed_table_yes"))
-                                                        : LANG(QStringLiteral("UI/signed_table_no")));
-        }
-
-        if (!row->text(1).isEmpty()) {
-            row->setToolTip(1, row->text(1));
-        }
-    }
-    delete insights;
-
-    QTreeWidget *tree = m_uiManager->m_findingsOverviewTree;
-    const int rows = tree->topLevelItemCount();
-    int rowHeight = rows > 0 ? tree->sizeHintForRow(0) : 22;
-    if (rowHeight < 20) {
-        rowHeight = 22;
-    }
-    constexpr int kOverviewHeaderHeight = 26;
-    constexpr int kMaxVisibleRows = 6;
-    const int visibleRows = qMin(rows, kMaxVisibleRows);
-    const int contentHeight = kOverviewHeaderHeight + visibleRows * rowHeight + 6;
-    tree->setFixedHeight(contentHeight);
-
-    tree->resizeColumnToContents(0);
-    tree->resizeColumnToContents(1);
-    constexpr int kOverviewChrome = 28;
-    constexpr int kMaxOverviewWidth = 560;
-    constexpr int kMaxFieldColumnWidth = 118;
-    if (tree->columnWidth(0) > kMaxFieldColumnWidth) {
-        tree->setColumnWidth(0, kMaxFieldColumnWidth);
-    }
-    const int tableWidth = tree->columnWidth(0) + tree->columnWidth(1) + kOverviewChrome;
-    tree->setFixedWidth(qMin(tableWidth, kMaxOverviewWidth));
-
-    if (m_uiManager->m_findingsInsightText) {
-        const int insightHeight = qBound(72, contentHeight, 132);
-        m_uiManager->m_findingsInsightText->setFixedHeight(insightHeight);
-    }
-
-    if (m_uiManager->m_sectionLayoutWidget && m_peParser) {
-        const PEDataModel &model = m_peParser->getDataModel();
-        quint32 imageSize = 0;
-        if (const IMAGE_OPTIONAL_HEADER *opt = model.getOptionalHeader()) {
-            imageSize = opt->SizeOfImage;
-        }
-        m_uiManager->m_sectionLayoutWidget->setSections(model.getSections(), imageSize);
-    }
-
-    if (rows > kMaxVisibleRows) {
-        tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    } else {
-        tree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    if (m_findingsController) {
+        m_findingsController->refresh();
     }
 }
 
-void MainWindow::applyFindingsFilter()
-{
-    if (!m_uiManager || !m_uiManager->m_findingsTree) {
-        return;
-    }
 
-    m_uiManager->m_findingsTree->clear();
 
-    const QString severityFilter = m_uiManager->m_findingsSeverityCombo
-        ? m_uiManager->m_findingsSeverityCombo->currentData().toString()
-        : QStringLiteral("all");
-    const bool showPasses =
-        m_uiManager->m_findingsShowPassesCheck && m_uiManager->m_findingsShowPassesCheck->isChecked();
 
-    QVector<PEFindingInstance> visible = m_cachedFindings;
-    if (showPasses) {
-        visible += m_cachedPassFindings;
-    }
 
-    auto severityMatches = [&](const PEFindingInstance &f) -> bool {
-        if (severityFilter == QStringLiteral("all")) {
-            return true;
-        }
-        if (f.isPass) {
-            return severityFilter == QStringLiteral("info");
-        }
-        switch (f.severity) {
-        case PEFindingSeverity::High:
-            return severityFilter == QStringLiteral("high");
-        case PEFindingSeverity::Medium:
-            return severityFilter == QStringLiteral("medium");
-        case PEFindingSeverity::Low:
-            return severityFilter == QStringLiteral("low");
-        default:
-            return severityFilter == QStringLiteral("info");
-        }
-    };
 
-    QVector<PEFindingInstance> filtered;
-    filtered.reserve(visible.size());
-    for (const PEFindingInstance &f : visible) {
-        if (f.isPass && !showPasses) {
-            continue;
-        }
-        if (severityMatches(f)) {
-            filtered.append(f);
-        }
-    }
-
-    if (m_uiManager->m_findingsSummaryLabel) {
-        if (filtered.isEmpty()) {
-            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
-        } else {
-            QMap<QString, QString> params;
-            params[QStringLiteral("count")] = QString::number(filtered.size());
-            m_uiManager->m_findingsSummaryLabel->setText(
-                LANG_PARAMS(QStringLiteral("findings/summary_count"), params));
-        }
-    }
-
-    auto severityColor = [](const PEFindingInstance &finding) -> QColor {
-        if (finding.isPass) {
-            return QColor(230, 255, 230);
-        }
-        switch (finding.severity) {
-        case PEFindingSeverity::High:
-            return QColor(255, 230, 230);
-        case PEFindingSeverity::Medium:
-            return QColor(255, 248, 220);
-        case PEFindingSeverity::Low:
-            return QColor(240, 248, 255);
-        default:
-            return QColor(245, 245, 245);
-        }
-    };
-
-    const QVector<PEFindingRule> &rules = PEFindingsEngine::rules();
-    static const char *const kCategoryOrder[] = {"hardening", "content", "metadata", "imports", "other"};
-
-    auto categoryForFinding = [&](const PEFindingInstance &finding) -> QString {
-        if (!finding.category.isEmpty()) {
-            return finding.category;
-        }
-        for (const PEFindingRule &rule : rules) {
-            if (rule.id == finding.ruleId) {
-                return PEFindingsEngine::categoryKeyForRule(rule);
-            }
-        }
-        return finding.isPass ? QStringLiteral("hardening") : QStringLiteral("other");
-    };
-
-    QMap<QString, QTreeWidgetItem *> categoryNodes;
-
-    for (const char *catKey : kCategoryOrder) {
-        const QString key = QString::fromLatin1(catKey);
-        QTreeWidgetItem *catItem = new QTreeWidgetItem(m_uiManager->m_findingsTree);
-        catItem->setText(0, QString());
-        catItem->setText(1, PEFindingsEngine::categoryDisplayName(key));
-        catItem->setText(2, QString());
-        catItem->setData(0, kFindingCategoryHeaderRole, true);
-        catItem->setFirstColumnSpanned(false);
-        catItem->setExpanded(true);
-        const QFont bold = catItem->font(1);
-        QFont f = bold;
-        f.setBold(true);
-        catItem->setFont(1, f);
-        categoryNodes.insert(key, catItem);
-    }
-
-    for (const PEFindingInstance &finding : filtered) {
-        QString title = finding.title;
-        QString detail = finding.detail;
-        for (const PEFindingRule &rule : rules) {
-            if (rule.id == finding.ruleId) {
-                title = LANG(rule.titleKey);
-                if (detail.isEmpty() || detail.startsWith(QStringLiteral("findings/"))) {
-                    detail = LANG(rule.detailKey);
-                }
-                break;
-            }
-        }
-
-        const QString catKey = categoryForFinding(finding);
-        QTreeWidgetItem *parent = categoryNodes.value(catKey, categoryNodes.value(QStringLiteral("other")));
-        if (!parent) {
-            parent = categoryNodes.value(QStringLiteral("other"));
-        }
-
-        QTreeWidgetItem *row = new QTreeWidgetItem(parent);
-        if (finding.isPass) {
-            row->setText(0, LANG(QStringLiteral("findings/severity_pass")));
-        } else {
-            row->setText(0, PEFindingsEngine::severityDisplayName(finding.severity));
-        }
-        row->setText(1, title);
-        row->setText(2, detail);
-        if (!finding.treeField.isEmpty()) {
-            row->setData(0, PEParserNew::kTreeFieldKeyRole, finding.treeField);
-        }
-        if (finding.hasHexNav && finding.hexSize > 0) {
-            row->setData(0, kFieldOffsetRole, finding.hexOffset);
-            row->setData(0, kFieldSizeRole, finding.hexSize);
-        }
-        if (!finding.ruleId.isEmpty()) {
-            row->setData(0, kFindingRuleIdRole, finding.ruleId);
-        }
-        const QColor bg = severityColor(finding);
-        for (int col = 0; col < 3; ++col) {
-            row->setBackground(col, bg);
-        }
-    }
-
-    for (const char *catKey : kCategoryOrder) {
-        QTreeWidgetItem *catItem = categoryNodes.value(QString::fromLatin1(catKey));
-        if (catItem && catItem->childCount() == 0) {
-            catItem->setHidden(true);
-        }
-    }
-}
 
 void MainWindow::onFindingsFilterChanged()
 {
-    applyFindingsFilter();
+    if (m_findingsController) {
+        m_findingsController->applyFilter();
+    }
 }
 
 void MainWindow::onOverviewItemClicked(QTreeWidgetItem *item, int column)
 {
     Q_UNUSED(column);
-    if (!item || !m_uiManager || !m_peParser || !m_peParser->isValid()) {
-        return;
-    }
-
-    const QString treeField = item->data(0, PEParserNew::kTreeFieldKeyRole).toString();
-    const FieldHexRange range = resolveFieldHexRange(item, treeField);
-
-    if (!treeField.isEmpty()) {
-        const QString richExplanation = m_peParser->getFileInsightExplanation(treeField);
-        if (!richExplanation.isEmpty()) {
-            showFindingsInsightHtml(richExplanation);
-            m_lastExplainedFieldName = treeField;
-        }
-    }
-
-    if (range.canHighlight || range.canGoTo) {
-        applyFieldHexNavigation(item, range);
-    } else if (m_uiManager->m_hexViewer) {
-        m_uiManager->m_hexViewer->clearHighlights();
+    if (m_findingsController) {
+        m_findingsController->handleOverviewItemClicked(item);
     }
 }
 
@@ -2388,71 +2127,9 @@ QTreeWidgetItem *MainWindow::findPeTreeItemByFieldKey(const QString &fieldKey) c
 void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
 {
     Q_UNUSED(column);
-    if (!item || !m_uiManager || !m_peParser || !m_peParser->isValid()) {
-        return;
+    if (m_findingsController) {
+        m_findingsController->handleFindingItemClicked(item);
     }
-    if (item->data(0, kFindingCategoryHeaderRole).toBool()) {
-        return;
-    }
-
-    const QString treeField = item->data(0, PEParserNew::kTreeFieldKeyRole).toString();
-    const FieldHexRange range = resolveFieldHexRange(item, treeField);
-    QTreeWidgetItem *peItem = treeField.isEmpty() ? nullptr : findPeTreeItemByFieldKey(treeField);
-
-    if (peItem) {
-        if (m_uiManager->m_analysisTabWidget) {
-            m_uiManager->m_analysisTabWidget->setCurrentIndex(0);
-        }
-        QTreeWidgetItem *parent = peItem->parent();
-        while (parent) {
-            parent->setExpanded(true);
-            parent = parent->parent();
-        }
-        m_uiManager->m_peTree->setCurrentItem(peItem);
-        m_uiManager->m_peTree->scrollToItem(peItem);
-        onTreeItemClicked(peItem, 0);
-        return;
-    }
-
-    if (range.canHighlight || range.canGoTo) {
-        applyFieldHexNavigation(item, range);
-    }
-
-    const QString ruleId = item->data(0, kFindingRuleIdRole).toString();
-    const QString baseRuleId = ruleId.section(QLatin1Char(':'), 0, 0);
-    if (baseRuleId == QStringLiteral("hardcoded_url") || baseRuleId == QStringLiteral("hardcoded_ip")
-        || baseRuleId == QStringLiteral("hardcoded_registry")
-        || baseRuleId == QStringLiteral("suspicious_command")) {
-        const PEContentScan scan = m_peParser->getDataModel().getContentScan();
-        const QVector<PEHardcodedMatch> &matches =
-            baseRuleId == QStringLiteral("hardcoded_url") ? scan.urls
-            : baseRuleId == QStringLiteral("hardcoded_ip") ? scan.ips
-            : baseRuleId == QStringLiteral("hardcoded_registry") ? scan.registryPaths
-            : scan.suspiciousCommands;
-        const QString title = item->text(1);
-        const QString intro = LANG(QStringLiteral("findings/hardcoded_matches_intro"));
-        showFindingsInsightHtml(formatHardcodedMatchesInsightHtml(title, intro, matches));
-        return;
-    }
-
-    const QString title = item->text(1);
-    const QString detail = item->text(2);
-    const QString helpKey = QStringLiteral("findings/") + baseRuleId + QStringLiteral("_help");
-    const QString helpText = LANG(helpKey);
-    QString html = QStringLiteral(
-                             "<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;"
-                             "color:#222;line-height:1.55;'>"
-                             "<div style='font-weight:600;font-size:12px;margin-bottom:8px;'>%1</div>"
-                             "<div style='color:#333;'>%2</div>")
-                             .arg(title.toHtmlEscaped(), detail.toHtmlEscaped());
-    if (!helpText.isEmpty() && helpText != helpKey) {
-        html += QStringLiteral(
-                    "<div style='margin-top:10px;padding:8px 10px;background:#f0f9ff;border-left:3px solid "
-                    "#38bdf8;border-radius:4px;color:#0c4a6e;'>%1</div>")
-                    .arg(helpText.toHtmlEscaped());
-    }
-    html += QStringLiteral("</div>");
-    showFindingsInsightHtml(html);
 }
 
 void MainWindow::analysisDisplayPhaseWelcomeOnly()
@@ -3655,46 +3332,10 @@ void MainWindow::updateUILanguage()
         if (tw->count() > 7) {
             tw->setTabText(7, LANG("UI/tab_findings"));
         }
-        if (m_fileLoaded && m_peParser && m_peParser->isValid()) {
-            populateFindingsTab();
-        }
     }
 
-    if (m_uiManager && m_uiManager->m_findingsTree) {
-        m_uiManager->m_findingsTree->setHeaderLabels({
-            LANG(QStringLiteral("findings/header_severity")),
-            LANG(QStringLiteral("findings/header_title")),
-            LANG(QStringLiteral("findings/header_detail"))
-        });
-    }
-    if (m_uiManager && m_uiManager->m_findingsOverviewTree) {
-        m_uiManager->m_findingsOverviewTree->setHeaderLabels({
-            LANG("UI/tree_header_field"),
-            LANG("UI/tree_header_value")
-        });
-    }
-    if (m_uiManager && m_uiManager->m_findingsShowPassesCheck) {
-        m_uiManager->m_findingsShowPassesCheck->setText(LANG(QStringLiteral("findings/show_passes")));
-    }
-    if (m_uiManager && m_uiManager->m_findingsInsightTitleLabel) {
-        m_uiManager->m_findingsInsightTitleLabel->setText(LANG(QStringLiteral("findings/insight_title")));
-    }
-    if (m_uiManager && m_uiManager->m_findingsInsightText) {
-        m_uiManager->m_findingsInsightText->setPlaceholderText(LANG(QStringLiteral("findings/insight_placeholder")));
-    }
-    if (m_uiManager && m_uiManager->m_findingsSeverityCombo) {
-        const int idx = m_uiManager->m_findingsSeverityCombo->currentIndex();
-        m_uiManager->m_findingsSeverityCombo->setItemText(0, LANG(QStringLiteral("findings/filter_severity_all")));
-        m_uiManager->m_findingsSeverityCombo->setItemText(1, LANG(QStringLiteral("findings/filter_severity_high")));
-        m_uiManager->m_findingsSeverityCombo->setItemText(2, LANG(QStringLiteral("findings/filter_severity_medium")));
-        m_uiManager->m_findingsSeverityCombo->setItemText(3, LANG(QStringLiteral("findings/filter_severity_low")));
-        m_uiManager->m_findingsSeverityCombo->setItemText(4, LANG(QStringLiteral("findings/filter_severity_info")));
-        m_uiManager->m_findingsSeverityCombo->setCurrentIndex(idx);
-    }
-    if (m_uiManager && m_uiManager->m_findingsSummaryLabel && m_uiManager->m_findingsTree) {
-        if (m_uiManager->m_findingsTree->topLevelItemCount() == 0) {
-            m_uiManager->m_findingsSummaryLabel->setText(LANG(QStringLiteral("findings/summary_none")));
-        }
+    if (m_findingsController) {
+        m_findingsController->updateLanguageStrings();
     }
 
     if (m_uiManager && m_uiManager->m_importModulesTree) {

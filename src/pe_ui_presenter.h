@@ -19,10 +19,14 @@ public:
     explicit PEUIPresenter(PEParserNew *parser);
 
     QList<QTreeWidgetItem *> buildStructureTree();
+    QTreeWidgetItem *buildFileInsightsOverview();
 
 private:
     PEParserNew *m_parser;
 
+    void addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
+                             const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
+                             bool highlightInHex, const QString &meaningOverride = QString());
     void addTreeField(QTreeWidgetItem *parent, const QString &name, const QString &value, quint32 offset,
                       quint32 size, const QString &jsonFieldKey = QString());
     void addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader);
