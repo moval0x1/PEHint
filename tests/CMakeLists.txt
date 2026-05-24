@@ -22,8 +22,11 @@ add_executable(PEHintTests
     helpers/minimal_pe_builder.h
     unit/test_main.cpp
     unit/pe_analysis_self_test.cpp
+    unit/pe_cli_scan_test.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.h
+    ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.h
     ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
@@ -35,6 +38,8 @@ add_executable(PEHintTests
     ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_authenticode.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_cli_scan.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.h
     ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.cpp

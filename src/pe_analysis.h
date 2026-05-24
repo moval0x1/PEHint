@@ -58,6 +58,7 @@ struct PEFileMetrics {
     QString toolchainSummary;
     bool toolchainValid = false;
     bool authenticodePresent = false;
+    QString authenticodePublisher;
     quint32 certTableSize = 0;
     int importFunctionCount = 0;
     int exportFunctionCount = 0;

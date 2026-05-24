@@ -148,6 +148,8 @@ set(PROJECT_SOURCES
     src/pe_utils.h
     src/pe_analysis.cpp
     src/pe_analysis.h
+    src/pe_authenticode.cpp
+    src/pe_authenticode.h
     src/pe_findings.cpp
     src/pe_findings.h
     src/pe_cli_scan.cpp
@@ -156,6 +158,7 @@ set(PROJECT_SOURCES
     src/section_layout_widget.h
     src/pe_ep_disasm.cpp
     src/pe_ep_disasm.h
+    src/pe_ui_presenter.cpp
     src/pe_data_model.cpp
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp

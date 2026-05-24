@@ -10,6 +10,7 @@
 
 bool runPeAnalysisSelfTests();
 bool runPeFindingsSelfTests();
+bool runPeCliScanSelfTests();
 
 int main(int argc, char *argv[])
 {
@@ -38,6 +39,11 @@ int main(int argc, char *argv[])
 
     if (!runPeFindingsSelfTests()) {
         std::cerr << "PE findings self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliScanSelfTests()) {
+        std::cerr << "PE CLI self-tests failed\n";
         ++failures;
     }
 

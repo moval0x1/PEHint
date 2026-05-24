@@ -229,10 +229,13 @@ QString importHintNoneForFunction(const QString &funcName)
 {
     QMap<QString, QString> p;
     p.insert(QStringLiteral("name"), funcName);
-    return LanguageManager::getInstance().getString(
+    QString hint = LanguageManager::getInstance().getString(
         QStringLiteral("UI/imports_hint_none"),
         p,
         QStringLiteral("No built-in summary for {name}. Search Microsoft Learn for the full reference and parameters."));
+    const QString encoded = QString::fromLatin1(QUrl::toPercentEncoding(funcName));
+    hint += QStringLiteral("\nhttps://learn.microsoft.com/en-us/search/?terms=%1").arg(encoded);
+    return hint;
 }
 
 QString formatImportHintDisplay(const ImportApiHint &h, const QString &optionalBannerHtml = QString())
@@ -2788,6 +2791,7 @@ void MainWindow::onResourcesItemClicked(QTreeWidgetItem *item, int /*column*/)
     }
 }
 
+
 void MainWindow::populateDependenciesTab()
 {
     if (m_dependenciesPopulated) return;
@@ -2824,7 +2828,7 @@ void MainWindow::populateDependenciesTab()
         placeholder->setFirstColumnSpanned(true);
         placeholder->setFlags(Qt::NoItemFlags);
     } else {
-        constexpr int kMaxDependencyDepth = 2;
+        constexpr int kMaxDependencyDepth = 4;
         const DependencyAnalysisResult depResult =
             PEDependencyAnalyzer::analyzeTransitive(imports, m_currentFilePath, kMaxDependencyDepth);
 
@@ -3640,13 +3644,16 @@ void MainWindow::updateUILanguage()
             tw->setTabText(3, LANG("UI/tab_exports"));
         }
         if (tw->count() > 4) {
-            tw->setTabText(4, LANG("UI/tab_dependencies"));
+            tw->setTabText(4, LANG("UI/tab_resources"));
         }
         if (tw->count() > 5) {
-            tw->setTabText(5, LANG("UI/tab_strings"));
+            tw->setTabText(5, LANG("UI/tab_dependencies"));
         }
         if (tw->count() > 6) {
-            tw->setTabText(6, LANG("UI/tab_findings"));
+            tw->setTabText(6, LANG("UI/tab_strings"));
+        }
+        if (tw->count() > 7) {
+            tw->setTabText(7, LANG("UI/tab_findings"));
         }
         if (m_fileLoaded && m_peParser && m_peParser->isValid()) {
             populateFindingsTab();
@@ -3726,6 +3733,16 @@ void MainWindow::updateUILanguage()
             LANG("UI/exports_header_name"),
             LANG("UI/exports_header_offset"),
             LANG("UI/exports_header_ordinal")
+        });
+    }
+
+    if (m_uiManager && m_uiManager->m_resourcesTree) {
+        m_uiManager->m_resourcesTree->setHeaderLabels({
+            LANG("UI/resources_header_type"),
+            LANG("UI/resources_header_name"),
+            LANG("UI/resources_header_language"),
+            LANG("UI/resources_header_size"),
+            LANG("UI/resources_header_offset")
         });
     }
 

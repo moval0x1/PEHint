@@ -45,6 +45,15 @@ QString reg32(int index)
     return QStringLiteral("r?");
 }
 
+QString shortJumpTarget(int offset, quint8 rel8)
+{
+    const qint8 signedRel = static_cast<qint8>(rel8);
+    const int target = offset + 2 + signedRel;
+    const QChar sign = target < 0 ? QLatin1Char('-') : QLatin1Char('+');
+    const uint absTarget = static_cast<uint>(target < 0 ? -target : target);
+    return QStringLiteral("%1 0x%2").arg(sign).arg(absTarget, 0, 16);
+}
+
 int decodeOne(bool is64Bit, const QByteArray &bytes, int offset, QString *lineOut, int *sizeOut)
 {
     quint8 b0 = 0;
@@ -67,43 +76,55 @@ int decodeOne(bool is64Bit, const QByteArray &bytes, int offset, QString *lineOu
         *sizeOut = 1;
         return 1;
     }
+    if (b0 == 0xEB && offset + 2 <= bytes.size()) {
+        quint8 rel8 = 0;
+        readU8(bytes, offset + 1, &rel8);
+        *lineOut = QStringLiteral("jmp %1").arg(shortJumpTarget(offset, rel8));
+        *sizeOut = 2;
+        return 2;
+    }
+    if ((b0 == 0x74 || b0 == 0x75) && offset + 2 <= bytes.size()) {
+        quint8 rel8 = 0;
+        readU8(bytes, offset + 1, &rel8);
+        const QString mnemonic = (b0 == 0x74) ? QStringLiteral("jz") : QStringLiteral("jnz");
+        *lineOut = QStringLiteral("%1 %2").arg(mnemonic, shortJumpTarget(offset, rel8));
+        *sizeOut = 2;
+        return 2;
+    }
 
     if (is64Bit) {
-        if (b0 == 0x48 && offset + 3 < bytes.size()) {
+        if ((b0 == 0x40 || b0 == 0x48) && offset + 3 <= bytes.size()) {
+            const quint8 rex = b0;
             quint8 b1 = static_cast<quint8>(bytes.at(offset + 1));
             quint8 b2 = static_cast<quint8>(bytes.at(offset + 2));
+            const int mod = (b2 >> 6) & 0x3;
+            const int regBase = ((b2 >> 3) & 0x7) | ((rex & 0x04) ? 8 : 0);
+            const int rmBase = (b2 & 0x7) | ((rex & 0x01) ? 8 : 0);
             if (b1 == 0x83 && b2 == 0xEC && offset + 4 <= bytes.size()) {
                 const quint8 imm = static_cast<quint8>(bytes.at(offset + 3));
                 *lineOut = QStringLiteral("sub rsp, 0x%1").arg(imm, 2, 16, QChar('0'));
                 *sizeOut = 4;
                 return 4;
             }
-            if (b1 == 0x89 && offset + 3 <= bytes.size()) {
-                const int dst = (b2 >> 3) & 7;
-                const int src = b2 & 7;
-                *lineOut = QStringLiteral("mov %1, %2").arg(reg64(dst), reg64(src));
+            if (b1 == 0x89 && mod == 0x3) {
+                *lineOut = QStringLiteral("mov %1, %2").arg(reg64(rmBase), reg64(regBase));
                 *sizeOut = 3;
                 return 3;
             }
-            if (b1 == 0x8B && offset + 3 <= bytes.size()) {
-                const int dst = (b2 >> 3) & 7;
-                const int src = b2 & 7;
-                *lineOut = QStringLiteral("mov %1, %2").arg(reg64(dst), reg64(src));
+            if (b1 == 0x8B && mod == 0x3) {
+                *lineOut = QStringLiteral("mov %1, %2").arg(reg64(regBase), reg64(rmBase));
                 *sizeOut = 3;
                 return 3;
             }
-            if (b1 == 0x31 && offset + 3 <= bytes.size()) {
-                const int dst = (b2 >> 3) & 7;
-                const int src = b2 & 7;
-                *lineOut = QStringLiteral("xor %1, %2").arg(reg64(dst), reg64(src));
+            if (b1 == 0x31 && mod == 0x3) {
+                *lineOut = QStringLiteral("xor %1, %2").arg(reg64(rmBase), reg64(regBase));
                 *sizeOut = 3;
                 return 3;
             }
-            if (b1 == 0xFF && offset + 3 <= bytes.size()) {
+            if (b1 == 0xFF && mod == 0x3) {
                 const int op = (b2 >> 3) & 7;
-                const int reg = b2 & 7;
                 if (op == 2) {
-                    *lineOut = QStringLiteral("call %1").arg(reg64(reg));
+                    *lineOut = QStringLiteral("call %1").arg(reg64(rmBase));
                     *sizeOut = 3;
                     return 3;
                 }

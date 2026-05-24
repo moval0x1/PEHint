@@ -1,4 +1,5 @@
 #include "pe_analysis.h"
+#include "pe_authenticode.h"
 #include "pe_data_model.h"
 
 #include <QCryptographicHash>
@@ -25,6 +26,25 @@ constexpr quint32 kRsdsFixedSize = 24;  // CvSignature + Signature[16] + Age
 constexpr quint32 kNb10FixedSize = 12;  // signature + offset + age
 constexpr quint64 kMinOverlayBytes = 1;
 constexpr int kImageDirectoryEntrySecurity = 4;
+
+const IMAGE_DATA_DIRECTORY *optionalDataDirectory(const IMAGE_OPTIONAL_HEADER *opt, int index)
+{
+    if (!opt || index < 0 || index >= 16) {
+        return nullptr;
+    }
+    if (opt->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+        const auto *oh64 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64 *>(opt);
+        if (static_cast<quint32>(index) >= oh64->NumberOfRvaAndSizes) {
+            return nullptr;
+        }
+        return &oh64->DataDirectory[index];
+    }
+    const auto *oh32 = reinterpret_cast<const IMAGE_OPTIONAL_HEADER32 *>(opt);
+    if (static_cast<quint32>(index) >= oh32->NumberOfRvaAndSizes) {
+        return nullptr;
+    }
+    return &oh32->DataDirectory[index];
+}
 
 QString formatGuidRsds(const quint8 *sig16)
 {
@@ -124,11 +144,12 @@ PEOverlayInfo PEAnalysis::detectOverlay(const QByteArray &fileData,
         if (optionalHeader->SizeOfHeaders > 0) {
             physicalEnd = qMax(physicalEnd, static_cast<quint64>(optionalHeader->SizeOfHeaders));
         }
-        const IMAGE_DATA_DIRECTORY &certDir =
-            optionalHeader->DataDirectory[kImageDirectoryEntrySecurity];
-        if (certDir.Size > 0 && certDir.VirtualAddress > 0) {
-            const quint64 certEnd = static_cast<quint64>(certDir.VirtualAddress) + certDir.Size;
-            physicalEnd = qMax(physicalEnd, certEnd);
+        if (const IMAGE_DATA_DIRECTORY *certDir =
+                optionalDataDirectory(optionalHeader, kImageDirectoryEntrySecurity)) {
+            if (certDir->Size > 0 && certDir->VirtualAddress > 0) {
+                const quint64 certEnd = static_cast<quint64>(certDir->VirtualAddress) + certDir->Size;
+                physicalEnd = qMax(physicalEnd, certEnd);
+            }
         }
     }
 
@@ -410,10 +431,13 @@ PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const P
 
     metrics.authenticodePresent = false;
     const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
-    if (opt && opt->NumberOfRvaAndSizes > 4) {
-        const IMAGE_DATA_DIRECTORY &certDir = opt->DataDirectory[4];
-        metrics.authenticodePresent = certDir.VirtualAddress != 0 && certDir.Size != 0;
-        metrics.certTableSize = certDir.Size;
+    if (const IMAGE_DATA_DIRECTORY *certDir = optionalDataDirectory(opt, 4)) {
+        metrics.authenticodePresent = certDir->VirtualAddress != 0 && certDir->Size != 0;
+        metrics.certTableSize = certDir->Size;
+        if (metrics.authenticodePresent) {
+            metrics.authenticodePublisher =
+                extractAuthenticodePublisher(fileData, certDir->VirtualAddress, certDir->Size);
+        }
     }
 
     const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &imports = dataModel.getImportFunctions();
@@ -851,15 +875,20 @@ bool resourceLayout(const QByteArray &fileData,
                     quint32 &resourceRva,
                     quint32 &sizeOfHeaders)
 {
+    Q_UNUSED(fileData);
     resourceRva = 0;
     sizeOfHeaders = 0;
     const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
-    if (!opt || opt->NumberOfRvaAndSizes <= 2) {
+    if (!opt) {
         return false;
     }
-    resourceRva = opt->DataDirectory[2].VirtualAddress;
+    const IMAGE_DATA_DIRECTORY *resDir = optionalDataDirectory(opt, 2);
+    if (!resDir || resDir->VirtualAddress == 0) {
+        return false;
+    }
+    resourceRva = resDir->VirtualAddress;
     sizeOfHeaders = opt->SizeOfHeaders;
-    return resourceRva != 0;
+    return true;
 }
 
 bool walkResourceByType(const QByteArray &data,

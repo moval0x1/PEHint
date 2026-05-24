@@ -47,6 +47,8 @@
 #include <QVector>
 #include <limits>
 
+class PEUIPresenter;
+
 /**
  * @brief New modular PE Parser that follows SOLID principles
  * 
@@ -75,6 +77,8 @@
 class PEParserNew : public QObject
 {
     Q_OBJECT
+
+    friend class PEUIPresenter;
 
 public:
     /** English key matching explanations.json (and getFieldOffset map). When set on column 0, used instead of translated display text. */
@@ -411,65 +415,10 @@ private:
      * 4. Source directory (for development builds)
      */
     QString findConfigFile(const QString &fileName) const;
-    
-    // Tree building methods - For UI compatibility
-    
-    /**
-     * @brief Adds DOS header fields to a tree item
-     * @param parent Parent tree item
-     * @param dosHeader DOS header structure
-     */
-    void addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader);
 
-    
-    /**
-     * @brief Adds PE header fields to a tree item
-     * @param parent Parent tree item
-     * @param fileHeader File header structure
-     */
-    void addPEHeaderFields(QTreeWidgetItem *parent, const IMAGE_FILE_HEADER *fileHeader);
-    
-    /**
-     * @brief Adds optional header fields to a tree item
-     * @param parent Parent tree item
-     * @param optionalHeader Optional header structure
-     */
-    void addOptionalHeaderFields(QTreeWidgetItem *parent, const IMAGE_OPTIONAL_HEADER *optionalHeader);
-    
-    /**
-     * @brief Adds section fields to a tree item
-     * @param parent Parent tree item
-     */
-    void addSectionFields(QTreeWidgetItem *parent);
-    
-    /**
-     * @brief Adds data directory fields to a tree item
-     * @param parent Parent tree item
-     */
-    void addDataDirectoryFields(QTreeWidgetItem *parent);
-    void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
     void addInsightTreeField(QTreeWidgetItem *parent, const QString &displayName, const QString &value,
                              const QString &jsonFieldKey, quint32 fileOffset, quint32 size,
                              bool highlightInHex, const QString &meaningOverride = QString());
-
-    void appendExceptionDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    /** Security directory: @p filePointer is optional-header VirtualAddress (a file offset, not an RVA). */
-    void appendCertificateDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 filePointer, quint32 regionSize);
-    void appendTLSDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendLoadConfigDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendResourceDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendComDescriptorDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    
-    /**
-     * @brief Adds a field to a tree item
-     * @param parent Parent tree item
-     * @param name Field name
-     * @param value Field value
-     * @param offset Field offset
-     * @param size Field size
-     */
-    void addTreeField(QTreeWidgetItem *parent, const QString &name, const QString &value, quint32 offset, quint32 size,
-                      const QString &jsonFieldKey = QString());
 
     /** Rebuilds m_fieldOffsetLookup once per loaded image (getFieldOffset is hot on tree selection). */
     void ensureFieldOffsetLookup();
