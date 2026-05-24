@@ -197,6 +197,23 @@ bool runPeFindingsSelfTests()
     const PEContentScan realIpScan = PEAnalysis::computeContentScan(realIpData, ipModel);
     check(!realIpScan.ips.isEmpty(), "192.168.1.50 is still detected as IP");
 
+    QByteArray oidData(0x200, '\0');
+    oidData.insert(0x80, "SHA2-2562.5.4.102.5");
+    IMAGE_SECTION_HEADER oidSec{};
+    std::memcpy(oidSec.Name, ".rdata", 6);
+    oidSec.PointerToRawData = 0x80;
+    oidSec.SizeOfRawData = 0x100;
+    PEDataModel oidModel;
+    oidModel.setValid(true);
+    oidModel.addSection(&oidSec);
+    const PEContentScan oidScan = PEAnalysis::computeContentScan(oidData, oidModel);
+    check(oidScan.ips.isEmpty(), "SHA2-256 OID chain is not flagged as IP");
+
+    check(!PEUtils::isPlausibleHardcodedIpv4(QStringLiteral("5.4.102.5"),
+                                             QStringLiteral("SHA2-2562.5.4.102.5"),
+                                             QStringLiteral("SHA2-2562.5.4.102.5").indexOf(QStringLiteral("5.4.102.5"))),
+          "OID fragment 5.4.102.5 rejected");
+
     QByteArray urlData(0x400, '\0');
     urlData.insert(0x50, "see http://llvm.org/); for info");
     IMAGE_SECTION_HEADER text{};
@@ -209,6 +226,76 @@ bool runPeFindingsSelfTests()
     const PEContentScan urlScan = PEAnalysis::computeContentScan(urlData, urlModel);
     check(!urlScan.urls.isEmpty() && urlScan.urls.first().value == QStringLiteral("http://llvm.org/"),
           "URL trailing ); is trimmed");
+
+    QMap<QString, QList<PEDataModel::ImportFunctionEntry>> injectionImports;
+    auto addImport = [&](const QString &dll, const QString &fn) {
+        PEDataModel::ImportFunctionEntry e;
+        e.name = fn;
+        injectionImports[dll].append(e);
+    };
+    addImport(QStringLiteral("KERNEL32.dll"), QStringLiteral("VirtualAllocEx"));
+    addImport(QStringLiteral("KERNEL32.dll"), QStringLiteral("WriteProcessMemory"));
+    addImport(QStringLiteral("KERNEL32.dll"), QStringLiteral("CreateRemoteThread"));
+    model.setImportFunctions(injectionImports);
+
+    const auto comboFindings = PEFindingsEngine::evaluate(model, [](quint32) -> quint32 { return 0u; });
+    bool hasInjectionCombo = false;
+    for (const PEFindingInstance &f : comboFindings) {
+        if (f.ruleId == QStringLiteral("import_combo:process_injection")) {
+            hasInjectionCombo = true;
+            break;
+        }
+    }
+    check(hasInjectionCombo, "import_combo process_injection triggered");
+
+    QByteArray regData(0x300, '\0');
+    regData.insert(0x30, "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+    IMAGE_SECTION_HEADER regSec{};
+    std::memcpy(regSec.Name, ".data", 5);
+    regSec.PointerToRawData = 0x30;
+    regSec.SizeOfRawData = 0x120;
+    PEDataModel regModel;
+    regModel.setValid(true);
+    regModel.addSection(&regSec);
+    const PEContentScan regScan = PEAnalysis::computeContentScan(regData, regModel);
+    check(!regScan.registryPaths.isEmpty(), "computeContentScan finds registry path");
+
+    regModel.setContentScan(regScan);
+    const auto regFindings = PEFindingsEngine::evaluate(regModel, [](quint32) -> quint32 { return 0u; });
+    bool hasRegistryFinding = false;
+    for (const PEFindingInstance &f : regFindings) {
+        if (f.ruleId == QStringLiteral("hardcoded_registry")) {
+            hasRegistryFinding = true;
+            break;
+        }
+    }
+    check(hasRegistryFinding, "hardcoded_registry finding triggered");
+
+    check(PEAnalysis::matchesSuspiciousCommand(QStringLiteral("run powershell -enc abc")),
+          "matchesSuspiciousCommand detects powershell");
+
+    QByteArray cmdData(0x200, '\0');
+    cmdData.insert(0x60, "C:\\Windows\\System32\\cmd.exe /c whoami");
+    IMAGE_SECTION_HEADER cmdSec{};
+    std::memcpy(cmdSec.Name, ".rdata", 6);
+    cmdSec.PointerToRawData = 0x60;
+    cmdSec.SizeOfRawData = 0x100;
+    PEDataModel cmdModel;
+    cmdModel.setValid(true);
+    cmdModel.addSection(&cmdSec);
+    const PEContentScan cmdScan = PEAnalysis::computeContentScan(cmdData, cmdModel);
+    check(!cmdScan.suspiciousCommands.isEmpty(), "computeContentScan finds cmd.exe");
+
+    cmdModel.setContentScan(cmdScan);
+    const auto cmdFindings = PEFindingsEngine::evaluate(cmdModel, [](quint32) -> quint32 { return 0u; });
+    bool hasCommandFinding = false;
+    for (const PEFindingInstance &f : cmdFindings) {
+        if (f.ruleId == QStringLiteral("suspicious_command")) {
+            hasCommandFinding = true;
+            break;
+        }
+    }
+    check(hasCommandFinding, "suspicious_command finding triggered");
 
     return ok;
 }

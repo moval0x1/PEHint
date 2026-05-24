@@ -2,7 +2,13 @@
 #include "pe_data_model.h"
 
 #include <QCryptographicHash>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <cmath>
 #include <cstddef>
@@ -326,6 +332,50 @@ quint64 PEAnalysis::computePeLogicalSize(const PEDataModel &dataModel, qint64 fi
     return logicalEnd;
 }
 
+QString sectionNameFromRva(quint32 rva, const QList<const IMAGE_SECTION_HEADER *> &sections)
+{
+    for (const IMAGE_SECTION_HEADER *section : sections) {
+        if (!section) {
+            continue;
+        }
+        const quint32 start = section->VirtualAddress;
+        const quint32 span = qMax(section->SizeOfRawData, section->getVirtualSize());
+        if (rva >= start && rva < start + span) {
+            const char *namePtr = reinterpret_cast<const char *>(section->Name);
+            int nameLength = 0;
+            while (nameLength < 8 && namePtr[nameLength] != '\0'
+                   && static_cast<unsigned char>(namePtr[nameLength]) >= 32) {
+                ++nameLength;
+            }
+            return QString::fromLatin1(namePtr, nameLength);
+        }
+    }
+    return QString();
+}
+
+quint32 rvaToFileOffsetForMetrics(quint32 rva, const QList<const IMAGE_SECTION_HEADER *> &sections,
+                                  quint32 sizeOfHeaders, quint32 fileSize)
+{
+    if (rva < sizeOfHeaders && rva < fileSize) {
+        return rva;
+    }
+    for (const IMAGE_SECTION_HEADER *section : sections) {
+        if (!section) {
+            continue;
+        }
+        const quint32 start = section->VirtualAddress;
+        const quint32 span = qMax(section->SizeOfRawData, section->getVirtualSize());
+        if (rva >= start && rva < start + span) {
+            const quint32 offset = section->PointerToRawData + (rva - start);
+            if (offset < fileSize) {
+                return offset;
+            }
+            return 0;
+        }
+    }
+    return 0;
+}
+
 PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel)
 {
     PEFileMetrics metrics;
@@ -357,6 +407,42 @@ PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const P
             metrics.toolchainValid = true;
         }
     }
+
+    metrics.authenticodePresent = false;
+    const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
+    if (opt && opt->NumberOfRvaAndSizes > 4) {
+        const IMAGE_DATA_DIRECTORY &certDir = opt->DataDirectory[4];
+        metrics.authenticodePresent = certDir.VirtualAddress != 0 && certDir.Size != 0;
+        metrics.certTableSize = certDir.Size;
+    }
+
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &imports = dataModel.getImportFunctions();
+    for (auto it = imports.constBegin(); it != imports.constEnd(); ++it) {
+        metrics.importFunctionCount += it.value().size();
+    }
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &delayImports =
+        dataModel.getDelayImportFunctions();
+    for (auto it = delayImports.constBegin(); it != delayImports.constEnd(); ++it) {
+        metrics.importFunctionCount += it.value().size();
+    }
+    metrics.exportFunctionCount = dataModel.getExportFunctions().size();
+
+    if (opt) {
+        metrics.entryPointRva = opt->AddressOfEntryPoint;
+        const QList<const IMAGE_SECTION_HEADER *> &sections = dataModel.getSections();
+        metrics.entryPointSection = sectionNameFromRva(metrics.entryPointRva, sections);
+        const quint32 fileSize = static_cast<quint32>(fileData.size());
+        const quint32 epOff = rvaToFileOffsetForMetrics(metrics.entryPointRva, sections,
+                                                          opt->SizeOfHeaders, fileSize);
+        if (epOff > 0 && epOff < fileSize) {
+            metrics.entryPointFileOffset = epOff;
+            const int take = qMin(8, static_cast<int>(fileSize - epOff));
+            metrics.entryPointBytesHex =
+                PEUtils::formatHex(fileData.mid(static_cast<int>(epOff), take));
+        }
+    }
+
+    metrics.triageSummaryValid = true;
 
     return metrics;
 }
@@ -429,109 +515,6 @@ bool isStandardDosStubMessage(const QString &message)
            || lower.contains(QStringLiteral("this is a windows nt character-mode"));
 }
 
-bool looksLikeVersionQuadruple(int o1, int o2, int o3, int o4)
-{
-    if (o2 == 0 && o3 == 0 && o4 == 0) {
-        return true;
-    }
-    if (o3 == 0 && o4 == 0) {
-        return true;
-    }
-    if (o1 <= 30 && o2 <= 30 && o3 <= 30 && o4 <= 30) {
-        return true;
-    }
-    return false;
-}
-
-bool isLikelyNetworkIpv4(int o1, int o2, int o3, int o4)
-{
-    if (o1 >= 100 || o2 >= 100 || o3 >= 100 || o4 >= 100) {
-        return true;
-    }
-    if (o1 == o2 && o2 == o3 && o3 == o4 && o1 > 0) {
-        return true;
-    }
-    if (o1 == 10 && (o2 > 0 || o3 > 0 || o4 > 0)) {
-        return true;
-    }
-    if (o1 == 127 && o4 > 0) {
-        return true;
-    }
-    if (o1 == 172 && o2 >= 16 && o2 <= 31) {
-        return true;
-    }
-    if (o1 == 192 && o2 == 168) {
-        return true;
-    }
-    return false;
-}
-
-bool hasMetadataContextAroundMatch(const QString &fullText, int matchStart, int matchLength)
-{
-    const QString before =
-        fullText.mid(qMax(0, matchStart - 48), qMin(48, matchStart)).toLower();
-    const QString after =
-        fullText.mid(matchStart + matchLength, 48).toLower();
-    const QString window = before + after;
-    static const char *const kMarkers[] = {
-        "version", "version=", "version=v", "assemblyidentity", "processorarchitecture",
-        "publickeytoken", "netframework", "frameworkdisplayname", "mscorlib", "mscoree",
-        "corlib", "runtime", "targetframework", "productversion", "fileversion"
-    };
-    for (const char *marker : kMarkers) {
-        if (window.contains(QString::fromLatin1(marker))) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool isPlausibleIpv4(const QString &ip, const QString &fullText, int matchStart)
-{
-    const QStringList parts = ip.split(QLatin1Char('.'));
-    if (parts.size() != 4) {
-        return false;
-    }
-    int octets[4] = {0, 0, 0, 0};
-    bool ok = false;
-    for (int i = 0; i < 4; ++i) {
-        octets[i] = parts.at(i).toInt(&ok);
-        if (!ok || octets[i] < 0 || octets[i] > 255) {
-            return false;
-        }
-    }
-    if (ip == QStringLiteral("0.0.0.0") || ip == QStringLiteral("255.255.255.255")) {
-        return false;
-    }
-
-    if (looksLikeVersionQuadruple(octets[0], octets[1], octets[2], octets[3])
-        && !isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
-        return false;
-    }
-
-    if (!isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
-        return false;
-    }
-
-    if (matchStart > 0 && matchStart + ip.size() < fullText.size()) {
-        const QChar before = fullText.at(matchStart - 1);
-        const QChar after = fullText.at(matchStart + ip.size());
-        if ((before == QChar('\'') || before == QChar('"'))
-            && (after == QChar('\'') || after == QChar('"') || after == QChar('\\'))) {
-            return false;
-        }
-        if (before.isDigit() || (after.isDigit() && after != QChar('.'))) {
-            return false;
-        }
-    }
-
-    if (hasMetadataContextAroundMatch(fullText, matchStart, ip.size())) {
-        return false;
-    }
-
-    return true;
-}
-
 QString sanitizeHardcodedUrl(const QString &raw)
 {
     QString url = raw.trimmed();
@@ -573,12 +556,154 @@ bool isPlausibleHardcodedUrl(const QString &url)
     return true;
 }
 
+bool isPlausibleRegistryPath(const QString &value)
+{
+    if (value.size() < 8) {
+        return false;
+    }
+    const QString upper = value.toUpper();
+    if (upper.contains(QStringLiteral("HKEY_"))) {
+        return true;
+    }
+    if (upper.startsWith(QStringLiteral("HKLM")) || upper.startsWith(QStringLiteral("HKCU"))
+        || upper.startsWith(QStringLiteral("HKCR")) || upper.startsWith(QStringLiteral("HKU"))
+        || upper.startsWith(QStringLiteral("HKCC"))) {
+        return true;
+    }
+    if (value.contains(QStringLiteral("\\Software\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\CurrentVersion\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\Registry\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\System\\CurrentControlSet\\"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return false;
+}
+
+struct SuspiciousStringPattern {
+    QString id;
+    QString match;
+    QString matchLower;
+};
+
+QVector<SuspiciousStringPattern> g_suspiciousPatterns;
+bool g_suspiciousPatternsLoaded = false;
+
+QString findAnalysisConfigFile(const QString &fileName)
+{
+    QStringList paths;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    paths << QDir(appDir).absoluteFilePath(QStringLiteral("config/") + fileName);
+    paths << QDir::currentPath() + QStringLiteral("/config/") + fileName;
+    QDir up(appDir);
+    if (up.cdUp() && up.cdUp() && up.cdUp()) {
+        paths << up.absoluteFilePath(QStringLiteral("config/") + fileName);
+    }
+    paths << QDir(appDir).absoluteFilePath(QStringLiteral("../../../config/") + fileName);
+    for (const QString &path : paths) {
+        if (QFile::exists(path)) {
+            return path;
+        }
+    }
+    return QString();
+}
+
+void loadSuspiciousStringPatterns()
+{
+    g_suspiciousPatterns.clear();
+    g_suspiciousPatternsLoaded = true;
+
+    const QString path = findAnalysisConfigFile(QStringLiteral("suspicious_strings.json"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return;
+    }
+
+    const QJsonArray patterns = doc.object().value(QStringLiteral("patterns")).toArray();
+    for (const QJsonValue &val : patterns) {
+        if (!val.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = val.toObject();
+        if (!obj.value(QStringLiteral("enabled")).toBool(true)) {
+            continue;
+        }
+        SuspiciousStringPattern pat;
+        pat.id = obj.value(QStringLiteral("id")).toString();
+        pat.match = obj.value(QStringLiteral("match")).toString();
+        if (pat.match.size() < 3) {
+            continue;
+        }
+        if (pat.id.isEmpty()) {
+            pat.id = pat.match.toLower();
+        }
+        pat.matchLower = pat.match.toLower();
+        g_suspiciousPatterns.append(pat);
+    }
+}
+
+const QVector<SuspiciousStringPattern> &suspiciousStringPatterns()
+{
+    if (!g_suspiciousPatternsLoaded) {
+        loadSuspiciousStringPatterns();
+    }
+    return g_suspiciousPatterns;
+}
+
+void collectSuspiciousCommandMatches(const QByteArray &region,
+                                     quint32 regionFileOffset,
+                                     QVector<PEHardcodedMatch> &out,
+                                     int maxMatches)
+{
+    if (region.isEmpty() || maxMatches <= 0 || out.size() >= maxMatches) {
+        return;
+    }
+    const QString text = QString::fromLatin1(region);
+    const QString lower = text.toLower();
+    for (const SuspiciousStringPattern &pat : suspiciousStringPatterns()) {
+        int searchFrom = 0;
+        while (searchFrom < lower.size() && out.size() < maxMatches) {
+            const int idx = lower.indexOf(pat.matchLower, searchFrom);
+            if (idx < 0) {
+                break;
+            }
+            const QString value = text.mid(idx, pat.match.size());
+            bool duplicate = false;
+            for (const PEHardcodedMatch &existing : out) {
+                if (existing.fileOffset == regionFileOffset + static_cast<quint32>(idx)
+                    && existing.value.compare(value, Qt::CaseInsensitive) == 0) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) {
+                PEHardcodedMatch entry;
+                entry.value = value;
+                entry.length = static_cast<quint32>(pat.match.size());
+                entry.fileOffset = regionFileOffset + static_cast<quint32>(idx);
+                out.append(entry);
+            }
+            searchFrom = idx + pat.matchLower.size();
+        }
+    }
+}
+
 void collectRegexMatches(const QByteArray &region,
                          quint32 regionFileOffset,
                          const QRegularExpression &re,
                          QVector<PEHardcodedMatch> &out,
                          int maxMatches,
-                         std::function<bool(const QString &, const QString &, int)> acceptMatch)
+                         std::function<bool(const QString &, const QString &, int)> acceptMatch,
+                         bool sanitizeAsUrl = true)
 {
     if (region.isEmpty() || maxMatches <= 0 || out.size() >= maxMatches) {
         return;
@@ -589,7 +714,9 @@ void collectRegexMatches(const QByteArray &region,
         const QRegularExpressionMatch match = it.next();
         QString value = match.captured(0).trimmed();
         const int matchStart = match.capturedStart(0);
-        value = sanitizeHardcodedUrl(value);
+        if (sanitizeAsUrl) {
+            value = sanitizeHardcodedUrl(value);
+        }
         if (value.size() < 7 || !acceptMatch(value, text, matchStart)) {
             continue;
         }
@@ -630,11 +757,16 @@ PEContentScan PEAnalysis::computeContentScan(const QByteArray &fileData, const P
 
     constexpr int kMaxUrlMatches = 12;
     constexpr int kMaxIpMatches = 12;
+    constexpr int kMaxRegistryMatches = 12;
+    constexpr int kMaxCommandMatches = 12;
     const QRegularExpression urlRe(
         QStringLiteral(R"((?:https?://|www\.)[^\s\x00\"<>)\];]{7,})"),
         QRegularExpression::CaseInsensitiveOption);
     const QRegularExpression ipRe(
         QStringLiteral(R"(\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b)"));
+    const QRegularExpression registryRe(
+        QStringLiteral(R"((?:HKEY_[A-Za-z_]+|HKLM|HKCU|HKCR|HKU|HKCC)\\[ -~\\]{4,})"),
+        QRegularExpression::CaseInsensitiveOption);
 
     const QList<const IMAGE_SECTION_HEADER *> sections = dataModel.getSections();
     for (const IMAGE_SECTION_HEADER *sec : sections) {
@@ -654,14 +786,36 @@ PEContentScan PEAnalysis::computeContentScan(const QByteArray &fileData, const P
                             });
         collectRegexMatches(slice, rawOff, ipRe, scan.ips, kMaxIpMatches,
                             [](const QString &ip, const QString &text, int start) {
-                                return isPlausibleIpv4(ip, text, start);
+                                return PEUtils::isPlausibleHardcodedIpv4(ip, text, start);
                             });
-        if (scan.urls.size() >= kMaxUrlMatches && scan.ips.size() >= kMaxIpMatches) {
+        collectRegexMatches(slice, rawOff, registryRe, scan.registryPaths, kMaxRegistryMatches,
+                            [](const QString &path, const QString &, int) {
+                                return isPlausibleRegistryPath(path);
+                            },
+                            false);
+        collectSuspiciousCommandMatches(slice, rawOff, scan.suspiciousCommands, kMaxCommandMatches);
+        if (scan.urls.size() >= kMaxUrlMatches && scan.ips.size() >= kMaxIpMatches
+            && scan.registryPaths.size() >= kMaxRegistryMatches
+            && scan.suspiciousCommands.size() >= kMaxCommandMatches) {
             break;
         }
     }
 
     return scan;
+}
+
+bool PEAnalysis::matchesSuspiciousCommand(const QString &value)
+{
+    if (value.size() < 3) {
+        return false;
+    }
+    const QString lower = value.toLower();
+    for (const SuspiciousStringPattern &pat : suspiciousStringPatterns()) {
+        if (lower.contains(pat.matchLower)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 namespace {

@@ -4,6 +4,8 @@
  */
 
 #include "pe_string_extractor.h"
+#include "pe_analysis.h"
+#include "pe_utils.h"
 #include "pe_structures.h"
 #include <QFile>
 #include <QRegularExpression>
@@ -129,88 +131,6 @@ StringExtractionResult PEStringExtractor::extractFromFile(const QString &filePat
 
 namespace {
 
-bool ipv4OctetsFromString(const QString &ip, int out[4])
-{
-    const QStringList parts = ip.split(QLatin1Char('.'));
-    if (parts.size() != 4) {
-        return false;
-    }
-    bool ok = false;
-    for (int i = 0; i < 4; ++i) {
-        out[i] = parts.at(i).toInt(&ok);
-        if (!ok || out[i] < 0 || out[i] > 255) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool looksLikeVersionQuadruple(int o1, int o2, int o3, int o4)
-{
-    if (o2 == 0 && o3 == 0 && o4 == 0) {
-        return true;
-    }
-    if (o3 == 0 && o4 == 0) {
-        return true;
-    }
-    if (o1 <= 30 && o2 <= 30 && o3 <= 30 && o4 <= 30) {
-        return true;
-    }
-    return false;
-}
-
-bool isLikelyNetworkIpv4(int o1, int o2, int o3, int o4)
-{
-    if (o1 >= 100 || o2 >= 100 || o3 >= 100 || o4 >= 100) {
-        return true;
-    }
-    if (o1 == o2 && o2 == o3 && o3 == o4 && o1 > 0) {
-        return true;
-    }
-    if (o1 == 10 && (o2 > 0 || o3 > 0 || o4 > 0)) {
-        return true;
-    }
-    if (o1 == 127 && o4 > 0) {
-        return true;
-    }
-    if (o1 == 172 && o2 >= 16 && o2 <= 31) {
-        return true;
-    }
-    if (o1 == 192 && o2 == 168) {
-        return true;
-    }
-    return false;
-}
-
-bool isPlausibleIpv4Token(const QString &ip)
-{
-    int octets[4] = {0, 0, 0, 0};
-    if (!ipv4OctetsFromString(ip, octets)) {
-        return false;
-    }
-    if (ip == QStringLiteral("0.0.0.0") || ip == QStringLiteral("255.255.255.255")) {
-        return false;
-    }
-    if (looksLikeVersionQuadruple(octets[0], octets[1], octets[2], octets[3])
-        && !isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
-        return false;
-    }
-    return isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3]);
-}
-
-bool stringContainsPlausibleIpv4(const QString &value)
-{
-    static const QRegularExpression ipRe(
-        QStringLiteral(R"(\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b)"));
-    QRegularExpressionMatchIterator it = ipRe.globalMatch(value);
-    while (it.hasNext()) {
-        if (isPlausibleIpv4Token(it.next().captured(0))) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool stringContainsUrl(const QString &value)
 {
     const QString lower = value.toLower();
@@ -251,10 +171,13 @@ bool PEStringExtractor::matchesContentFilter(const QString &value, const QString
         return stringContainsUrl(value);
     }
     if (filterKey == QStringLiteral("ip")) {
-        return stringContainsPlausibleIpv4(value);
+        return PEUtils::stringContainsPlausibleHardcodedIpv4(value);
     }
     if (filterKey == QStringLiteral("registry")) {
         return stringContainsRegistryPath(value);
+    }
+    if (filterKey == QStringLiteral("command")) {
+        return PEAnalysis::matchesSuspiciousCommand(value);
     }
     return true;
 }

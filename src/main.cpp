@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "pe_cli_scan.h"
 
 #include <QApplication>
 #include <QColor>
@@ -43,6 +44,10 @@ int main(int argc, char *argv[])
 {
     // Windows defaults to hiding QAction icons in menus; show them for Open / Exit / About, etc.
     QCoreApplication::setAttribute(Qt::AA_DontShowIconsInMenus, false);
+
+    if (peCliScanRequested(argc, argv)) {
+        return runPeCliScan(argc, argv);
+    }
 
     QApplication a(argc, argv);
     applyLightTheme(a);

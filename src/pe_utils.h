@@ -149,7 +149,12 @@ public:
     static bool hasAuthenticode(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER64 &optionalHeader);
     static bool hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER32 &optionalHeader);
     static bool hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER64 &optionalHeader);
-    
+
+    /** Reject OID/version dotted chains misread as IPv4 (e.g. 2.5.4.102.5 in SHA-256 strings). */
+    static bool isPlausibleHardcodedIpv4(const QString &ip, const QString &fullText = QString(),
+                                         int matchStart = -1);
+    static bool stringContainsPlausibleHardcodedIpv4(const QString &value);
+
 private:
     PEUtils() = delete; // Static class, prevent instantiation
     

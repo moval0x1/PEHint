@@ -54,7 +54,7 @@ public:
      */
     static StringExtractionResult extractFromFile(const QString &filePath, int minLength = 4);
 
-    /** Content triage filters for the Strings tab (url / ip / registry). */
+    /** Content triage filters for the Strings tab (url / ip / registry / command). */
     static bool matchesContentFilter(const QString &value, const QString &filterKey);
 };
 

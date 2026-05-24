@@ -57,6 +57,15 @@ struct PEFileMetrics {
     bool fileRatioValid = false;
     QString toolchainSummary;
     bool toolchainValid = false;
+    bool authenticodePresent = false;
+    quint32 certTableSize = 0;
+    int importFunctionCount = 0;
+    int exportFunctionCount = 0;
+    quint32 entryPointRva = 0;
+    QString entryPointSection;
+    QString entryPointBytesHex;
+    quint32 entryPointFileOffset = 0;
+    bool triageSummaryValid = false;
 };
 
 struct PEHardcodedMatch {
@@ -73,6 +82,8 @@ struct PEContentScan {
     quint32 dosStubSize = 0;
     QVector<PEHardcodedMatch> urls;
     QVector<PEHardcodedMatch> ips;
+    QVector<PEHardcodedMatch> registryPaths;
+    QVector<PEHardcodedMatch> suspiciousCommands;
 };
 
 struct PEVersionInfo {
@@ -119,6 +130,9 @@ public:
     static PEFileMetrics computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel);
 
     static PEContentScan computeContentScan(const QByteArray &fileData, const PEDataModel &dataModel);
+
+    /** True when @p value matches a pattern in config/suspicious_strings.json (Strings tab filter). */
+    static bool matchesSuspiciousCommand(const QString &value);
 
     /** Parses VS_VERSION_INFO strings from the PE resource directory (RT_VERSION). */
     static PEVersionInfo parseVersionResource(const QByteArray &fileData, const PEDataModel &dataModel);

@@ -19,6 +19,7 @@
 #include "language_manager.h"
 #include <QApplication>
 #include <QIcon>
+#include <QHeaderView>
 #include <QSplitter>
 #include <QTextBrowser>
 
@@ -612,6 +613,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_url"), QStringLiteral("url"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ip"), QStringLiteral("ip"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_registry"), QStringLiteral("registry"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_command"), QStringLiteral("command"));
     m_stringsTypeCombo->setMaximumWidth(150);
     m_stringsMinLengthSpin = new QSpinBox();
     m_stringsMinLengthSpin->setRange(2, 64);
@@ -669,6 +671,8 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     overviewLeftLayout->setContentsMargins(0, 0, 0, 0);
     overviewLeftLayout->setSpacing(2);
 
+    overviewLeft->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+
     QLabel *overviewTitle = new QLabel(LANG("findings/overview_title"));
     overviewTitle->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; padding: 2px 0;"));
     overviewLeftLayout->addWidget(overviewTitle);
@@ -680,12 +684,14 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
         LANG("UI/tree_header_field"),
         LANG("UI/tree_header_value")
     });
-    m_findingsOverviewTree->setColumnWidth(0, 160);
-    m_findingsOverviewTree->setColumnWidth(1, 280);
+    m_findingsOverviewTree->setColumnWidth(0, 120);
+    m_findingsOverviewTree->header()->setStretchLastSection(false);
+    m_findingsOverviewTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_findingsOverviewTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_findingsOverviewTree->setUniformRowHeights(true);
     m_findingsOverviewTree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_findingsOverviewTree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_findingsOverviewTree->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_findingsOverviewTree->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     m_findingsOverviewTree->setStyleSheet(
         QStringLiteral("QTreeWidget { font-size: 11px; } QHeaderView::section { font-size: 11px; padding: 2px 4px; }"));
     m_findingsOverviewTree->setCursor(Qt::PointingHandCursor);
@@ -711,8 +717,8 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_findingsInsightText->setPlaceholderText(LANG("findings/insight_placeholder"));
     overviewRightLayout->addWidget(m_findingsInsightText, 1);
 
-    overviewRowLayout->addWidget(overviewLeft, 2);
-    overviewRowLayout->addWidget(overviewRight, 3);
+    overviewRowLayout->addWidget(overviewLeft, 0);
+    overviewRowLayout->addWidget(overviewRight, 1);
     findingsLayout->addWidget(overviewRow);
 
     QHBoxLayout *findingsFilterLayout = new QHBoxLayout();

@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QMap>
+#include <QRegularExpression>
 #include <cstddef>
 
 QString PEUtils::formatHexInternal(quint64 value, int width)
@@ -977,4 +978,168 @@ bool PEUtils::hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPT
 {
     Q_UNUSED(fileData); // Legacy parameter, not used in new implementation
     return hasStrongNameSignature(optionalHeader);
+}
+
+namespace {
+
+bool ipv4OctetsFromString(const QString &ip, int out[4])
+{
+    const QStringList parts = ip.split(QLatin1Char('.'));
+    if (parts.size() != 4) {
+        return false;
+    }
+    bool ok = false;
+    for (int i = 0; i < 4; ++i) {
+        out[i] = parts.at(i).toInt(&ok);
+        if (!ok || out[i] < 0 || out[i] > 255) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool looksLikeVersionQuadruple(int o1, int o2, int o3, int o4)
+{
+    if (o2 == 0 && o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o1 <= 30 && o2 <= 30 && o3 <= 30 && o4 <= 30) {
+        return true;
+    }
+    return false;
+}
+
+bool isLikelyNetworkIpv4(int o1, int o2, int o3, int o4)
+{
+    if (o1 >= 100 || o2 >= 100 || o3 >= 100 || o4 >= 100) {
+        return true;
+    }
+    if (o1 == o2 && o2 == o3 && o3 == o4 && o1 > 0) {
+        return true;
+    }
+    if (o1 == 10 && (o2 > 0 || o3 > 0 || o4 > 0)) {
+        return true;
+    }
+    if (o1 == 127 && o4 > 0) {
+        return true;
+    }
+    if (o1 == 172 && o2 >= 16 && o2 <= 31) {
+        return true;
+    }
+    if (o1 == 192 && o2 == 168) {
+        return true;
+    }
+    return false;
+}
+
+bool isEmbeddedInLongDottedChain(const QString &text, int matchStart, int matchLength)
+{
+    if (matchStart < 0 || matchLength <= 0 || matchStart >= text.size()) {
+        return false;
+    }
+    int start = matchStart;
+    int end = matchStart + matchLength;
+    while (start > 0) {
+        const QChar c = text.at(start - 1);
+        if (c.isDigit() || c == QLatin1Char('.')) {
+            --start;
+        } else {
+            break;
+        }
+    }
+    while (end < text.size()) {
+        const QChar c = text.at(end);
+        if (c.isDigit() || c == QLatin1Char('.')) {
+            ++end;
+        } else {
+            break;
+        }
+    }
+    return text.mid(start, end - start).count(QLatin1Char('.')) > 3;
+}
+
+bool hasMetadataContextAroundMatch(const QString &fullText, int matchStart, int matchLength)
+{
+    const QString before =
+        fullText.mid(qMax(0, matchStart - 48), qMin(48, matchStart)).toLower();
+    const QString after =
+        fullText.mid(matchStart + matchLength, 48).toLower();
+    const QString window = before + after;
+    static const char *const kMarkers[] = {
+        "version", "version=", "version=v", "assemblyidentity", "processorarchitecture",
+        "publickeytoken", "netframework", "frameworkdisplayname", "mscorlib", "mscoree",
+        "corlib", "runtime", "targetframework", "productversion", "fileversion",
+        "sha1", "sha2", "sha256", "sha-256", "sha-1", "sha2-256", "md5", "oid", "digest",
+        "algorithm", "encryption", "rsassa", "pkcs", "x509", "certificate"
+    };
+    for (const char *marker : kMarkers) {
+        if (window.contains(QString::fromLatin1(marker))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool PEUtils::isPlausibleHardcodedIpv4(const QString &ip, const QString &fullText, int matchStart)
+{
+    int octets[4] = {0, 0, 0, 0};
+    if (!ipv4OctetsFromString(ip, octets)) {
+        return false;
+    }
+    if (ip == QStringLiteral("0.0.0.0") || ip == QStringLiteral("255.255.255.255")) {
+        return false;
+    }
+
+    if (looksLikeVersionQuadruple(octets[0], octets[1], octets[2], octets[3])
+        && !isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (!isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (!fullText.isEmpty() && matchStart >= 0) {
+        if (isEmbeddedInLongDottedChain(fullText, matchStart, ip.size())) {
+            return false;
+        }
+
+        if (matchStart > 0 && matchStart + ip.size() < fullText.size()) {
+            const QChar before = fullText.at(matchStart - 1);
+            const QChar after = fullText.at(matchStart + ip.size());
+            if ((before == QChar('\'') || before == QChar('"'))
+                && (after == QChar('\'') || after == QChar('"') || after == QChar('\\'))) {
+                return false;
+            }
+            if (before.isDigit() || (after.isDigit() && after != QChar('.'))) {
+                return false;
+            }
+        }
+
+        if (hasMetadataContextAroundMatch(fullText, matchStart, ip.size())) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool PEUtils::stringContainsPlausibleHardcodedIpv4(const QString &value)
+{
+    static const QRegularExpression ipRe(
+        QStringLiteral(R"(\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b)"));
+    QRegularExpressionMatchIterator it = ipRe.globalMatch(value);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const QString ip = match.captured(0);
+        if (isPlausibleHardcodedIpv4(ip, value, match.capturedStart(0))) {
+            return true;
+        }
+    }
+    return false;
 }

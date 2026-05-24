@@ -177,7 +177,7 @@ bool fileInsightUsesHexRoles(const QString &fieldName)
 {
     return fieldName == QLatin1String("Overlay") || fieldName == QLatin1String("PDB Path")
            || fieldName == QLatin1String("PDB Raw") || fieldName == QLatin1String("PDB GUID")
-           || fieldName == QLatin1String("PDB Age");
+           || fieldName == QLatin1String("PDB Age") || fieldName == QLatin1String("Entry Point");
 }
 
 /** Parse "(0xNNNN bytes)" from File Insights value text when tree size role is zero. */
@@ -2093,6 +2093,22 @@ void MainWindow::populateFindingsOverview()
         if (sizeVar.isValid()) {
             row->setData(0, kFieldSizeRole, sizeVar);
         }
+
+        if (fieldKey == QLatin1String("Signed") && m_peParser) {
+            const PEFileMetrics metrics = m_peParser->getDataModel().getFileMetrics();
+            const QColor bg = metrics.authenticodePresent ? QColor(230, 255, 230) : QColor(255, 243, 224);
+            const QColor fg = metrics.authenticodePresent ? QColor(22, 101, 52) : QColor(146, 64, 14);
+            for (int col = 0; col < 2; ++col) {
+                row->setBackground(col, bg);
+                row->setForeground(col, fg);
+            }
+            row->setText(1, metrics.authenticodePresent ? LANG(QStringLiteral("UI/signed_table_yes"))
+                                                        : LANG(QStringLiteral("UI/signed_table_no")));
+        }
+
+        if (!row->text(1).isEmpty()) {
+            row->setToolTip(1, row->text(1));
+        }
     }
     delete insights;
 
@@ -2104,9 +2120,16 @@ void MainWindow::populateFindingsOverview()
     }
     constexpr int kOverviewHeaderHeight = 26;
     constexpr int kMaxVisibleRows = 20;
-    const int visibleRows = qMin(rows, kMaxVisibleRows);
-    const int contentHeight = kOverviewHeaderHeight + visibleRows * rowHeight + 4;
+    const int contentHeight = kOverviewHeaderHeight + rows * rowHeight + 6;
     tree->setFixedHeight(contentHeight);
+
+    tree->resizeColumnToContents(0);
+    tree->resizeColumnToContents(1);
+    constexpr int kOverviewChrome = 28;
+    constexpr int kMaxOverviewWidth = 560;
+    const int tableWidth = tree->columnWidth(0) + tree->columnWidth(1) + kOverviewChrome;
+    tree->setFixedWidth(qMin(tableWidth, kMaxOverviewWidth));
+
     if (m_uiManager->m_findingsInsightText) {
         m_uiManager->m_findingsInsightText->setMinimumHeight(qMax(88, contentHeight));
     }
@@ -2372,10 +2395,15 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
 
     const QString ruleId = item->data(0, kFindingRuleIdRole).toString();
     const QString baseRuleId = ruleId.section(QLatin1Char(':'), 0, 0);
-    if (baseRuleId == QStringLiteral("hardcoded_url") || baseRuleId == QStringLiteral("hardcoded_ip")) {
+    if (baseRuleId == QStringLiteral("hardcoded_url") || baseRuleId == QStringLiteral("hardcoded_ip")
+        || baseRuleId == QStringLiteral("hardcoded_registry")
+        || baseRuleId == QStringLiteral("suspicious_command")) {
         const PEContentScan scan = m_peParser->getDataModel().getContentScan();
         const QVector<PEHardcodedMatch> &matches =
-            baseRuleId == QStringLiteral("hardcoded_url") ? scan.urls : scan.ips;
+            baseRuleId == QStringLiteral("hardcoded_url") ? scan.urls
+            : baseRuleId == QStringLiteral("hardcoded_ip") ? scan.ips
+            : baseRuleId == QStringLiteral("hardcoded_registry") ? scan.registryPaths
+            : scan.suspiciousCommands;
         const QString title = item->text(1);
         const QString intro = LANG(QStringLiteral("findings/hardcoded_matches_intro"));
         showFindingsInsightHtml(formatHardcodedMatchesInsightHtml(title, intro, matches));
@@ -3013,7 +3041,7 @@ void MainWindow::applyStringsFilter()
         if (typeFilter == QLatin1String("ascii") && s.isUnicode) continue;
         if (typeFilter == QLatin1String("unicode") && !s.isUnicode) continue;
         if ((typeFilter == QLatin1String("url") || typeFilter == QLatin1String("ip")
-             || typeFilter == QLatin1String("registry"))
+             || typeFilter == QLatin1String("registry") || typeFilter == QLatin1String("command"))
             && !PEStringExtractor::matchesContentFilter(s.value, typeFilter)) {
             continue;
         }
@@ -3622,6 +3650,7 @@ void MainWindow::updateUILanguage()
         m_uiManager->m_stringsTypeCombo->setItemText(3, LANG("UI/strings_filter_type_url"));
         m_uiManager->m_stringsTypeCombo->setItemText(4, LANG("UI/strings_filter_type_ip"));
         m_uiManager->m_stringsTypeCombo->setItemText(5, LANG("UI/strings_filter_type_registry"));
+        m_uiManager->m_stringsTypeCombo->setItemText(6, LANG("UI/strings_filter_type_command"));
     }
     if (m_uiManager && m_uiManager->m_stringsMinLengthSpin) {
         m_uiManager->m_stringsMinLengthSpin->setPrefix(LANG("UI/strings_min_len_prefix"));

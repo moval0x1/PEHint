@@ -134,6 +134,8 @@ bool isFileInsightJsonKey(const QString &jsonFieldKey)
         QStringLiteral("ImpHash"),
         QStringLiteral("File Ratio"),
         QStringLiteral("Toolchain"),
+        QStringLiteral("Signed"),
+        QStringLiteral("Entry Point"),
         QStringLiteral("PDB Path"),
         QStringLiteral("PDB Raw"),
         QStringLiteral("PDB GUID"),
@@ -169,6 +171,10 @@ QString insightMeaningText(const QString &jsonFieldKey)
           "Ratio of PE logical size (headers + section raw data) to total file size; lower values suggest overlay or appended data." },
         { "Toolchain", "UI/toolchain_meaning",
           "Compiler/linker fingerprint inferred from the Rich Header (when present)." },
+        { "Signed", "UI/signed_meaning",
+          "Whether the file carries a digital signature (Authenticode). Signed files include a certificate table; unsigned files do not." },
+        { "Entry Point", "UI/entry_point_meaning",
+          "Where Windows starts running this program — the memory address (RVA) and the section that contains the first instructions." },
         { "PDB Path", "UI/pdb_path_meaning",
           "Program database path from the CodeView debug directory (RSDS or NB10)." },
         { "PDB Raw", "UI/pdb_raw_meaning",
@@ -223,6 +229,8 @@ QString fileInsightFieldLabel(const QString &fieldKey)
         { QStringLiteral("ImpHash"), "UI/field_imphash" },
         { QStringLiteral("File Ratio"), "UI/field_file_ratio" },
         { QStringLiteral("Toolchain"), "UI/field_toolchain" },
+        { QStringLiteral("Signed"), "UI/field_signed" },
+        { QStringLiteral("Entry Point"), "UI/field_entry_point" },
         { QStringLiteral("PDB Path"), "UI/field_pdb_path" },
         { QStringLiteral("PDB Raw"), "UI/field_pdb_raw" },
         { QStringLiteral("PDB GUID"), "UI/field_pdb_guid" },
@@ -288,6 +296,18 @@ bool PEParserNew::fileInsightHasHexTarget(const QString &fieldKey) const
         return version.manifestPresent;
     }
     return false;
+}
+
+QString formatEntryPointSummary(const PEFileMetrics &metrics)
+{
+    if (metrics.entryPointRva == 0) {
+        return LANG(QStringLiteral("UI/entry_point_none"));
+    }
+    QMap<QString, QString> params;
+    params.insert(QStringLiteral("rva"), PEUtils::formatHexWidth(metrics.entryPointRva, 8));
+    params.insert(QStringLiteral("section"),
+                  metrics.entryPointSection.isEmpty() ? QStringLiteral("?") : metrics.entryPointSection);
+    return LANG_PARAMS(QStringLiteral("UI/entry_point_summary"), params);
 }
 
 QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
@@ -367,6 +387,21 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
         } else {
             absent = true;
             currentValue = LANG(QStringLiteral("UI/toolchain_none"));
+        }
+    } else if (fieldKey == QLatin1String("Signed")) {
+        if (metrics.authenticodePresent) {
+            QMap<QString, QString> params;
+            params.insert(QStringLiteral("size"), PEUtils::formatFileSize(metrics.certTableSize));
+            currentValue = LANG_PARAMS(QStringLiteral("UI/signed_yes"), params);
+        } else {
+            currentValue = LANG(QStringLiteral("UI/signed_no"));
+        }
+    } else if (fieldKey == QLatin1String("Entry Point")) {
+        if (metrics.entryPointRva != 0) {
+            currentValue = formatEntryPointSummary(metrics);
+        } else {
+            absent = true;
+            currentValue = LANG(QStringLiteral("UI/entry_point_none"));
         }
     } else if (fieldKey == QLatin1String("PDB Path")) {
         tipKey = QStringLiteral("UI/insight_tip_debug_dir");
@@ -455,9 +490,30 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
                     "#f59e0b;border-radius:4px;color:#92400e;'>%1<br/><span style='color:#78716c;'>%2</span></div>")
                     .arg(currentValue.toHtmlEscaped(), LANG(QStringLiteral("UI/insight_absent_note")).toHtmlEscaped());
     } else if (!currentValue.isEmpty()) {
-        html += QStringLiteral("<div style='margin:0 0 12px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
-                    .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
-                         currentValue.toHtmlEscaped());
+        if (fieldKey == QLatin1String("Signed")) {
+            const bool signedOk = metrics.authenticodePresent;
+            const QString bg = signedOk ? QStringLiteral("#ecfdf5") : QStringLiteral("#fff8e6");
+            const QString border = signedOk ? QStringLiteral("#22c55e") : QStringLiteral("#f59e0b");
+            const QString fg = signedOk ? QStringLiteral("#166534") : QStringLiteral("#92400e");
+            html += QStringLiteral(
+                        "<div style='margin:0 0 12px 0;padding:8px 10px;background:%1;border-left:3px solid "
+                        "%2;border-radius:4px;color:%3;font-weight:600;'>%4</div>")
+                        .arg(bg, border, fg, currentValue.toHtmlEscaped());
+        } else if (fieldKey == QLatin1String("Entry Point") && !metrics.entryPointBytesHex.isEmpty()) {
+            html += QStringLiteral("<div style='margin:0 0 8px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
+                        .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
+                             currentValue.toHtmlEscaped());
+            QMap<QString, QString> byteParams;
+            byteParams.insert(QStringLiteral("bytes"), metrics.entryPointBytesHex);
+            html += QStringLiteral(
+                        "<div style='margin:0 0 12px 0;font-family:Consolas,monospace;font-size:10px;"
+                        "color:#374151;'>%1</div>")
+                        .arg(LANG_PARAMS(QStringLiteral("UI/entry_point_bytes_line"), byteParams).toHtmlEscaped());
+        } else {
+            html += QStringLiteral("<div style='margin:0 0 12px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
+                        .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
+                             currentValue.toHtmlEscaped());
+        }
     }
 
     const QString body = insightMeaningText(fieldKey);
@@ -1838,6 +1894,28 @@ QTreeWidgetItem *PEParserNew::buildFileInsightsItem()
     } else {
         addInsightTreeField(insights, LANG("UI/field_toolchain"), LANG("UI/toolchain_none"), QStringLiteral("Toolchain"),
                             0, 0, false, insightMeaningText(QStringLiteral("Toolchain")));
+    }
+
+    if (metrics.triageSummaryValid) {
+        if (metrics.authenticodePresent) {
+            addInsightTreeField(insights, LANG("UI/field_signed"), LANG("UI/signed_table_yes"),
+                                QStringLiteral("Signed"), 0, 0, false, insightMeaningText(QStringLiteral("Signed")));
+        } else {
+            addInsightTreeField(insights, LANG("UI/field_signed"), LANG("UI/signed_table_no"), QStringLiteral("Signed"), 0, 0,
+                                false, insightMeaningText(QStringLiteral("Signed")));
+        }
+
+        if (metrics.entryPointRva != 0) {
+            const QString epVal = formatEntryPointSummary(metrics);
+            const quint32 epSize = metrics.entryPointBytesHex.isEmpty() ? 1u : 8u;
+            addInsightTreeField(insights, LANG("UI/field_entry_point"), epVal, QStringLiteral("Entry Point"),
+                                metrics.entryPointFileOffset, epSize, metrics.entryPointFileOffset > 0,
+                                insightMeaningText(QStringLiteral("Entry Point")));
+        } else {
+            addInsightTreeField(insights, LANG("UI/field_entry_point"), LANG("UI/entry_point_none"),
+                                QStringLiteral("Entry Point"), 0, 0, false,
+                                insightMeaningText(QStringLiteral("Entry Point")));
+        }
     }
 
     if (pdb.present) {

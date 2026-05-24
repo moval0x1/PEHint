@@ -150,6 +150,8 @@ set(PROJECT_SOURCES
     src/pe_analysis.h
     src/pe_findings.cpp
     src/pe_findings.h
+    src/pe_cli_scan.cpp
+    src/pe_cli_scan.h
     src/pe_data_model.cpp
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp

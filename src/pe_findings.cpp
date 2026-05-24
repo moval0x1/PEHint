@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSet>
 #include <functional>
 
 namespace {
@@ -118,6 +119,22 @@ struct ImportFlagRule {
 
 QVector<ImportFlagRule> g_importFlags;
 bool g_importFlagsLoaded = false;
+
+struct ImportComboRequirement {
+    QString function;
+    QString dll;
+};
+
+struct ImportComboRule {
+    QString id;
+    QString name;
+    PEFindingSeverity severity = PEFindingSeverity::High;
+    QString note;
+    QVector<ImportComboRequirement> requires;
+};
+
+QVector<ImportComboRule> g_importCombos;
+bool g_importCombosLoaded = false;
 
 QString normalizeDllToken(const QString &dll)
 {
@@ -238,6 +255,165 @@ const QVector<ImportFlagRule> &importFlags()
         loadImportFlags();
     }
     return g_importFlags;
+}
+
+const ImportFlagRule *importFlagById(const QString &id)
+{
+    for (const ImportFlagRule &rule : importFlags()) {
+        if (rule.id == id) {
+            return &rule;
+        }
+    }
+    return nullptr;
+}
+
+bool parseImportComboRequirement(const QJsonValue &val, ImportComboRequirement *out)
+{
+    if (!out) {
+        return false;
+    }
+    if (val.isString()) {
+        const ImportFlagRule *flag = importFlagById(val.toString());
+        if (!flag) {
+            return false;
+        }
+        out->function = flag->function;
+        out->dll = flag->dll;
+        return !out->function.isEmpty();
+    }
+    if (!val.isObject()) {
+        return false;
+    }
+    const QJsonObject obj = val.toObject();
+    out->function = obj.value(QStringLiteral("function")).toString();
+    out->dll = obj.value(QStringLiteral("dll")).toString();
+    return !out->function.isEmpty();
+}
+
+void loadImportCombos()
+{
+    g_importCombos.clear();
+    g_importCombosLoaded = true;
+
+    const QString path = findConfigFile(QStringLiteral("import_combos.json"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return;
+    }
+
+    const QJsonArray combos = doc.object().value(QStringLiteral("combos")).toArray();
+    for (const QJsonValue &val : combos) {
+        if (!val.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = val.toObject();
+        if (!obj.value(QStringLiteral("enabled")).toBool(true)) {
+            continue;
+        }
+        ImportComboRule combo;
+        combo.id = obj.value(QStringLiteral("id")).toString();
+        combo.name = obj.value(QStringLiteral("name")).toString();
+        combo.severity = severityFromString(obj.value(QStringLiteral("severity")).toString());
+        combo.note = obj.value(QStringLiteral("note")).toString();
+        if (combo.id.isEmpty()) {
+            continue;
+        }
+        if (combo.name.isEmpty()) {
+            combo.name = combo.id;
+        }
+        const QJsonArray requires = obj.value(QStringLiteral("requires")).toArray();
+        for (const QJsonValue &reqVal : requires) {
+            ImportComboRequirement req;
+            if (parseImportComboRequirement(reqVal, &req)) {
+                combo.requires.append(req);
+            }
+        }
+        if (combo.requires.size() < 2) {
+            continue;
+        }
+        g_importCombos.append(combo);
+    }
+}
+
+const QVector<ImportComboRule> &importCombos()
+{
+    if (!g_importCombosLoaded) {
+        loadImportCombos();
+    }
+    return g_importCombos;
+}
+
+QString importLookupKey(const QString &moduleName, const QString &functionName)
+{
+    return normalizeDllToken(moduleName) + QChar('|') + functionName.trimmed().toLower();
+}
+
+QSet<QString> collectImportedFunctionKeys(const PEDataModel &model)
+{
+    QSet<QString> keys;
+    const auto scanModules = [&](const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &details) {
+        for (auto modIt = details.constBegin(); modIt != details.constEnd(); ++modIt) {
+            for (const PEDataModel::ImportFunctionEntry &entry : modIt.value()) {
+                if (entry.name.isEmpty() || entry.importedByOrdinal) {
+                    continue;
+                }
+                keys.insert(importLookupKey(modIt.key(), entry.name));
+            }
+        }
+    };
+    scanModules(model.getImportFunctions());
+    scanModules(model.getDelayImportFunctions());
+    return keys;
+}
+
+bool importComboRequirementMet(const ImportComboRequirement &req, const QSet<QString> &importKeys)
+{
+    return importKeys.contains(importLookupKey(req.dll, req.function));
+}
+
+void appendImportCombos(const PEDataModel &model, const PEFindingRule &metaRule, QVector<PEFindingInstance> &results)
+{
+    const QSet<QString> importKeys = collectImportedFunctionKeys(model);
+    for (const ImportComboRule &combo : importCombos()) {
+        QStringList matchedLabels;
+        bool allMet = true;
+        for (const ImportComboRequirement &req : combo.requires) {
+            if (!importComboRequirementMet(req, importKeys)) {
+                allMet = false;
+                break;
+            }
+            if (req.dll.isEmpty()) {
+                matchedLabels.append(req.function);
+            } else {
+                matchedLabels.append(req.dll + QChar('!') + req.function);
+            }
+        }
+        if (!allMet) {
+            continue;
+        }
+        QMap<QString, QString> params;
+        params[QStringLiteral("name")] = combo.name;
+        params[QStringLiteral("apis")] = matchedLabels.join(QStringLiteral(", "));
+        params[QStringLiteral("note")] = combo.note.isEmpty() ? QStringLiteral("-") : combo.note;
+        PEFindingInstance inst;
+        inst.ruleId = metaRule.id + QChar(':') + combo.id;
+        inst.severity = combo.severity;
+        inst.title = LANG_PARAMS(QStringLiteral("findings/import_combo_title"), params);
+        inst.detail = LANG_PARAMS(QStringLiteral("findings/import_combo_detail"), params);
+        inst.treeField = QStringLiteral("Data Directories");
+        inst.category = metaRule.category.isEmpty() ? QStringLiteral("imports") : metaRule.category;
+        results.append(inst);
+    }
 }
 
 void appendFlaggedImports(const PEDataModel &model, const PEFindingRule &metaRule, QVector<PEFindingInstance> &results)
@@ -902,6 +1078,11 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
             continue;
         }
 
+        if (check == QStringLiteral("import_combo")) {
+            appendImportCombos(model, rule, results);
+            continue;
+        }
+
         if (check == QStringLiteral("hardcoded_url")) {
             if (!contentScan.urls.isEmpty()) {
                 QMap<QString, QString> params;
@@ -918,6 +1099,28 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
                 QMap<QString, QString> params;
                 params[QStringLiteral("count")] = QString::number(contentScan.ips.size());
                 const PEHardcodedMatch &first = contentScan.ips.first();
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params), QString(),
+                               first.fileOffset, qMax(first.length, 1u));
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("hardcoded_registry")) {
+            if (!contentScan.registryPaths.isEmpty()) {
+                QMap<QString, QString> params;
+                params[QStringLiteral("count")] = QString::number(contentScan.registryPaths.size());
+                const PEHardcodedMatch &first = contentScan.registryPaths.first();
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params), QString(),
+                               first.fileOffset, qMax(first.length, 1u));
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("suspicious_command")) {
+            if (!contentScan.suspiciousCommands.isEmpty()) {
+                QMap<QString, QString> params;
+                params[QStringLiteral("count")] = QString::number(contentScan.suspiciousCommands.size());
+                const PEHardcodedMatch &first = contentScan.suspiciousCommands.first();
                 appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params), QString(),
                                first.fileOffset, qMax(first.length, 1u));
             }
@@ -979,10 +1182,11 @@ QString PEFindingsEngine::categoryKeyForRule(const PEFindingRule &rule)
     if (check.contains(QStringLiteral("import")) || check == QStringLiteral("no_imports")
         || check == QStringLiteral("few_imports") || check == QStringLiteral("gui_few_imports")
         || check == QStringLiteral("high_ordinal_imports") || check == QStringLiteral("dll_no_exports")
-        || check == QStringLiteral("flagged_import")) {
+        || check == QStringLiteral("flagged_import") || check == QStringLiteral("import_combo")) {
         return QStringLiteral("imports");
     }
     if (check.contains(QStringLiteral("url")) || check.contains(QStringLiteral("ip"))
+        || check.contains(QStringLiteral("registry")) || check.contains(QStringLiteral("command"))
         || check.contains(QStringLiteral("dos_stub")) || check.contains(QStringLiteral("duplicate_export"))) {
         return QStringLiteral("content");
     }
