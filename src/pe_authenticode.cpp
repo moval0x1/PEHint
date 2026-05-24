@@ -1,6 +1,19 @@
 #include "pe_authenticode.h"
 
 #include <QChar>
+#include <QFileInfo>
+
+#ifdef Q_OS_WIN
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <wincrypt.h>
+#include <wintrust.h>
+#include <softpub.h>
+#pragma comment(lib, "wintrust.lib")
+#pragma comment(lib, "crypt32.lib")
+#endif
 
 namespace {
 
@@ -96,8 +109,7 @@ QString findCnUtf16(const QByteArray &payload)
 
 QString findCommonNameUtf16(const QByteArray &payload)
 {
-    static const QByteArray kCommonNameUtf16(
-        "c\0o\0m\0m\0o\0n\0N\0a\0m\0e\0", 20);
+    static const QByteArray kCommonNameUtf16("c\0o\0m\0m\0o\0n\0N\0a\0m\0e\0", 20);
     int idx = payload.indexOf(kCommonNameUtf16);
     while (idx >= 0) {
         int cursor = idx + kCommonNameUtf16.size();
@@ -141,17 +153,15 @@ QString extractPublisherFromPkcs7Payload(const QByteArray &payload)
     return findCommonNameUtf16(payload);
 }
 
-} // namespace
-
-QString extractAuthenticodePublisher(const QByteArray &fileData, quint32 certTableOffset, quint32 certTableSize)
+QByteArray firstPkcs7Payload(const QByteArray &fileData, quint32 certTableOffset, quint32 certTableSize)
 {
     if (fileData.isEmpty() || certTableOffset == 0 || certTableSize < 8) {
-        return QString();
+        return QByteArray();
     }
     const quint64 start = certTableOffset;
     const quint64 fileSize = static_cast<quint64>(fileData.size());
     if (start >= fileSize) {
-        return QString();
+        return QByteArray();
     }
     const quint64 end = qMin(start + static_cast<quint64>(certTableSize), fileSize);
     quint64 cursor = start;
@@ -164,13 +174,7 @@ QString extractAuthenticodePublisher(const QByteArray &fileData, quint32 certTab
         const quint64 certEnd = qMin(cursor + static_cast<quint64>(certLength), end);
         const quint64 payloadStart = cursor + 8;
         if (payloadStart < certEnd) {
-            const int payloadOffset = static_cast<int>(payloadStart);
-            const int payloadLength = static_cast<int>(certEnd - payloadStart);
-            const QByteArray payload = fileData.mid(payloadOffset, payloadLength);
-            const QString publisher = extractPublisherFromPkcs7Payload(payload);
-            if (!publisher.isEmpty()) {
-                return publisher;
-            }
+            return fileData.mid(static_cast<int>(payloadStart), static_cast<int>(certEnd - payloadStart));
         }
         const quint64 advance = (static_cast<quint64>(certLength) + 7u) & ~7ull;
         if (advance == 0) {
@@ -178,5 +182,223 @@ QString extractAuthenticodePublisher(const QByteArray &fileData, quint32 certTab
         }
         cursor += advance;
     }
-    return QString();
+    return QByteArray();
+}
+
+#ifdef Q_OS_WIN
+QString certBlobThumbprint(const PCCERT_CONTEXT cert, ALG_ID algId)
+{
+    if (!cert) {
+        return QString();
+    }
+    DWORD hashLen = 0;
+    if (!CryptHashCertificate(0, algId, 0, cert->pbCertEncoded, cert->cbCertEncoded, nullptr, &hashLen)
+        || hashLen == 0) {
+        return QString();
+    }
+    QByteArray hash(static_cast<int>(hashLen), Qt::Uninitialized);
+    if (!CryptHashCertificate(0, algId, 0, cert->pbCertEncoded, cert->cbCertEncoded,
+                              reinterpret_cast<BYTE *>(hash.data()), &hashLen)) {
+        return QString();
+    }
+    hash.resize(static_cast<int>(hashLen));
+    QString hex;
+    hex.reserve(hash.size() * 2);
+    for (unsigned char b : hash) {
+        hex += QStringLiteral("%1").arg(b, 2, 16, QChar('0'));
+    }
+    return hex.toUpper();
+}
+
+QDateTime fileTimeToQDateTime(const FILETIME &ft)
+{
+    ULARGE_INTEGER uli;
+    uli.LowPart = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+    if (uli.QuadPart == 0) {
+        return QDateTime();
+    }
+    static const qint64 kEpochDiff = 11644473600000LL;
+    const qint64 ms = static_cast<qint64>(uli.QuadPart / 10000) - kEpochDiff;
+    return QDateTime::fromMSecsSinceEpoch(ms, Qt::UTC);
+}
+
+void enrichFromPkcs7Payload(PEAuthenticodeInfo &info, const QByteArray &payload)
+{
+    if (payload.isEmpty()) {
+        return;
+    }
+    HCERTSTORE store = nullptr;
+    HCRYPTMSG msg = nullptr;
+    CRYPT_DATA_BLOB blob{};
+    blob.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(payload.constData()));
+    blob.cbData = static_cast<DWORD>(payload.size());
+    if (!CryptQueryObject(CERT_QUERY_OBJECT_BLOB, &blob,
+                          CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
+                          CERT_QUERY_FORMAT_FLAG_BINARY, 0, nullptr, nullptr, nullptr, &store, &msg,
+                          nullptr)) {
+        return;
+    }
+
+    PCCERT_CONTEXT signer = CertFindCertificateInStore(store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
+                                                       CERT_FIND_SUBJECT_CERT, nullptr, nullptr);
+    if (signer) {
+        if (info.publisher.isEmpty()) {
+            DWORD nameLen = CertGetNameStringW(signer, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, nullptr, 0);
+            if (nameLen > 1) {
+                QVector<wchar_t> buf(static_cast<int>(nameLen));
+                CertGetNameStringW(signer, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, buf.data(), nameLen);
+                info.publisher = sanitizePublisher(QString::fromWCharArray(buf.data()));
+            }
+        }
+        info.thumbprintSha1 = certBlobThumbprint(signer, CALG_SHA1);
+        info.thumbprintSha256 = certBlobThumbprint(signer, CALG_SHA_256);
+        info.notBefore = fileTimeToQDateTime(signer->pCertInfo->NotBefore);
+        info.notAfter = fileTimeToQDateTime(signer->pCertInfo->NotAfter);
+        CertFreeCertificateContext(signer);
+    }
+
+    PCCERT_CONTEXT chainCert = nullptr;
+    while ((chainCert = CertEnumCertificatesInStore(store, chainCert)) != nullptr) {
+        DWORD nameLen = CertGetNameStringW(chainCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, nullptr, 0);
+        if (nameLen > 1) {
+            QVector<wchar_t> buf(static_cast<int>(nameLen));
+            CertGetNameStringW(chainCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, buf.data(), nameLen);
+            const QString subject = QString::fromWCharArray(buf.data()).trimmed();
+            if (!subject.isEmpty() && !info.certificateSubjects.contains(subject)) {
+                info.certificateSubjects.append(subject);
+            }
+        }
+    }
+
+    if (store) {
+        CertCloseStore(store, 0);
+    }
+    if (msg) {
+        CryptMsgClose(msg);
+    }
+}
+
+AuthenticodeTrustStatus verifyAuthenticodeTrust(const QString &sourceFilePath, QString *detailOut)
+{
+    if (sourceFilePath.isEmpty() || !QFileInfo::exists(sourceFilePath)) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("Trust verification requires a file path on disk.");
+        }
+        return AuthenticodeTrustStatus::UnknownError;
+    }
+
+    const std::wstring path = sourceFilePath.toStdWString();
+    WINTRUST_FILE_INFO fileInfo{};
+    fileInfo.cbStruct = sizeof(fileInfo);
+    fileInfo.pcwszFilePath = path.c_str();
+
+    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    WINTRUST_DATA trustData{};
+    trustData.cbStruct = sizeof(trustData);
+    trustData.dwUIChoice = WTD_UI_NONE;
+    trustData.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+    trustData.dwUnionChoice = WTD_CHOICE_FILE;
+    trustData.pFile = &fileInfo;
+    trustData.dwStateAction = WTD_STATEACTION_VERIFY;
+    trustData.dwProvFlags = WTD_SAFER_FLAG;
+
+    const LONG status = WinVerifyTrust(nullptr, &action, &trustData);
+    trustData.dwStateAction = WTD_STATEACTION_CLOSE;
+    WinVerifyTrust(nullptr, &action, &trustData);
+
+    if (status == ERROR_SUCCESS) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("Signature verified (WinVerifyTrust).");
+        }
+        return AuthenticodeTrustStatus::Valid;
+    }
+    if (status == TRUST_E_NOSIGNATURE || status == TRUST_E_SUBJECT_FORM_UNKNOWN) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("No Authenticode signature.");
+        }
+        return AuthenticodeTrustStatus::NotSigned;
+    }
+    if (status == CERT_E_EXPIRED) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("Signing certificate has expired.");
+        }
+        return AuthenticodeTrustStatus::Expired;
+    }
+    if (status == CERT_E_UNTRUSTEDROOT || status == CERT_E_CHAINING) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("Certificate chain is not trusted.");
+        }
+        return AuthenticodeTrustStatus::UntrustedRoot;
+    }
+    if (status == TRUST_E_BAD_DIGEST || status == TRUST_E_CERT_SIGNATURE) {
+        if (detailOut) {
+            *detailOut = QStringLiteral("Signature digest mismatch or invalid certificate signature.");
+        }
+        return AuthenticodeTrustStatus::InvalidSignature;
+    }
+    if (detailOut) {
+        *detailOut = QStringLiteral("WinVerifyTrust returned 0x%1.")
+                           .arg(QString::number(static_cast<quint32>(status), 16));
+    }
+    return AuthenticodeTrustStatus::UnknownError;
+}
+#endif
+
+} // namespace
+
+QString extractAuthenticodePublisher(const QByteArray &fileData, quint32 certTableOffset, quint32 certTableSize)
+{
+    const QByteArray payload = firstPkcs7Payload(fileData, certTableOffset, certTableSize);
+    return extractPublisherFromPkcs7Payload(payload);
+}
+
+PEAuthenticodeInfo analyzeAuthenticode(const QByteArray &fileData,
+                                         const QString &sourceFilePath,
+                                         quint32 certTableOffset,
+                                         quint32 certTableSize)
+{
+    PEAuthenticodeInfo info;
+    if (certTableOffset == 0 || certTableSize < 8) {
+        info.trustStatus = AuthenticodeTrustStatus::NotSigned;
+        info.statusMessage = QStringLiteral("No certificate table.");
+        return info;
+    }
+
+    info.present = true;
+    const QByteArray payload = firstPkcs7Payload(fileData, certTableOffset, certTableSize);
+    info.publisher = extractPublisherFromPkcs7Payload(payload);
+
+#ifdef Q_OS_WIN
+    enrichFromPkcs7Payload(info, payload);
+    info.trustStatus = verifyAuthenticodeTrust(sourceFilePath, &info.statusMessage);
+#else
+    Q_UNUSED(sourceFilePath);
+    info.trustStatus = AuthenticodeTrustStatus::VerificationUnavailable;
+    info.statusMessage = QStringLiteral("Signature trust verification is only available on Windows.");
+#endif
+
+    return info;
+}
+
+QString authenticodeTrustStatusLabel(AuthenticodeTrustStatus status)
+{
+    switch (status) {
+    case AuthenticodeTrustStatus::NotSigned:
+        return QStringLiteral("Not signed");
+    case AuthenticodeTrustStatus::Valid:
+        return QStringLiteral("Valid signature");
+    case AuthenticodeTrustStatus::InvalidSignature:
+        return QStringLiteral("Invalid signature");
+    case AuthenticodeTrustStatus::UntrustedRoot:
+        return QStringLiteral("Untrusted certificate chain");
+    case AuthenticodeTrustStatus::Expired:
+        return QStringLiteral("Expired certificate");
+    case AuthenticodeTrustStatus::Revoked:
+        return QStringLiteral("Revoked certificate");
+    case AuthenticodeTrustStatus::VerificationUnavailable:
+        return QStringLiteral("Verification unavailable");
+    default:
+        return QStringLiteral("Unknown trust status");
+    }
 }

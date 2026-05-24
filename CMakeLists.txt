@@ -150,6 +150,10 @@ set(PROJECT_SOURCES
     src/pe_analysis.h
     src/pe_authenticode.cpp
     src/pe_authenticode.h
+    src/pe_resource_preview.cpp
+    src/pe_resource_preview.h
+    src/import_api_hint_store.cpp
+    src/import_api_hint_store.h
     src/pe_findings.cpp
     src/pe_findings.h
     src/findings_controller.cpp
@@ -212,7 +216,7 @@ target_link_libraries(PEHint PRIVATE
 
 # Link Windows-specific libraries
 if(WIN32)
-    target_link_libraries(PEHint PRIVATE dbghelp)
+    target_link_libraries(PEHint PRIVATE dbghelp crypt32 wintrust)
 endif()
 
 # Include directories

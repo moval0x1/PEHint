@@ -1,0 +1,124 @@
+{
+  "hints": [
+    {
+      "dll": "kernel32.dll",
+      "function": "VirtualAlloc",
+      "summary": "Reserves or commits a region of pages in the virtual address space of the calling process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "VirtualProtect",
+      "summary": "Changes the protection on a region of committed pages in the virtual address space of the calling process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "WriteProcessMemory",
+      "summary": "Writes data to an area of memory in a specified process. Common in debuggers and injection tooling.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-writeprocessmemory"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "CreateRemoteThread",
+      "summary": "Creates a thread that runs in the virtual address space of another process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "LoadLibraryA",
+      "summary": "Maps the specified module into the address space of the calling process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "LoadLibraryW",
+      "summary": "Maps the specified module into the address space of the calling process (Unicode name).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "GetProcAddress",
+      "summary": "Retrieves the address of an exported function or variable from a loaded DLL.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "CreateProcessW",
+      "summary": "Creates a new process and its primary thread.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "IsDebuggerPresent",
+      "summary": "Determines whether the calling process is being debugged by a user-mode debugger.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent"
+    },
+    {
+      "dll": "ntdll.dll",
+      "function": "NtAllocateVirtualMemory",
+      "summary": "Native API to reserve or commit virtual memory in a process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntallocatevirtualmemory"
+    },
+    {
+      "dll": "advapi32.dll",
+      "function": "RegCreateKeyExW",
+      "summary": "Creates the specified registry key. If the key already exists, the function opens it.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regcreatekeyexw"
+    },
+    {
+      "dll": "advapi32.dll",
+      "function": "RegSetValueExW",
+      "summary": "Sets the data and type of a specified value under a registry key.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regsetvalueexw"
+    },
+    {
+      "dll": "advapi32.dll",
+      "function": "OpenProcessToken",
+      "summary": "Opens the access token associated with a process.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken"
+    },
+    {
+      "dll": "ws2_32.dll",
+      "function": "connect",
+      "summary": "Establishes a connection to a specified socket.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-connect"
+    },
+    {
+      "dll": "ws2_32.dll",
+      "function": "send",
+      "summary": "Sends data on a connected socket.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send"
+    },
+    {
+      "dll": "wininet.dll",
+      "function": "InternetOpenUrlW",
+      "summary": "Opens a resource specified by a complete FTP, HTTP, or HTTPS URL.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/wininet/nf-wininet-internetopenurlw"
+    },
+    {
+      "dll": "urlmon.dll",
+      "function": "URLDownloadToFileW",
+      "summary": "Downloads bits from the internet and saves them to a file.",
+      "learnUrl": "https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/ms775123(v=vs.85)"
+    },
+    {
+      "dll": "user32.dll",
+      "function": "SetWindowsHookExW",
+      "summary": "Installs an application-defined hook procedure into a hook chain.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowshookexw"
+    },
+    {
+      "dll": "shell32.dll",
+      "function": "ShellExecuteW",
+      "summary": "Performs an operation on a specified file (open, print, explore, etc.).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew"
+    },
+    {
+      "dll": "crypt32.dll",
+      "function": "CryptUnprotectData",
+      "summary": "Decrypts and verifies data protected by CryptProtectData (DPAPI).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptunprotectdata"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 #include "sdk_api_markdown_reader.h"
+#include "import_api_hint_store.h"
 
 #include <QHash>
 #include <QCoreApplication>
@@ -846,12 +847,12 @@ ImportApiHint SdkApiMarkdownReader::hintForImport(const QString &moduleDll, cons
         return empty;
     }
     if (m_root.isEmpty() && m_consoleDocsRoot.isEmpty()) {
-        return empty;
+        return ImportApiHintStore::instance().hintForImport(moduleDll, functionName);
     }
 
     const QStringList paths = candidatePathsForFunction(functionName);
     if (paths.isEmpty()) {
-        return empty;
+        return ImportApiHintStore::instance().hintForImport(moduleDll, functionName);
     }
 
     QStringList ordered;
@@ -907,8 +908,11 @@ ImportApiHint SdkApiMarkdownReader::hintForImport(const QString &moduleDll, cons
         "Licensed under CC-BY; see the Documentation link for the official topic.</p>");
     if (!h.summary.isEmpty() && h.remarks.isEmpty()) {
         h.remarks = ccLine;
-    } else if (!h.summary.isEmpty()) {
+    } else     if (!h.summary.isEmpty()) {
         h.remarks += ccLine;
     }
-    return h;
+    if (h.hasContent()) {
+        return h;
+    }
+    return ImportApiHintStore::instance().hintForImport(moduleDll, functionName);
 }

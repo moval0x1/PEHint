@@ -39,6 +39,7 @@ add_executable(PEHintTests
     ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_authenticode.cpp
+    ${CMAKE_SOURCE_DIR}/src/import_api_hint_store.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_cli_scan.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_findings.h
@@ -56,6 +57,10 @@ target_link_libraries(PEHintTests PRIVATE
     Qt6::Concurrent
     Qt6::Widgets
 )
+
+if(WIN32)
+    target_link_libraries(PEHintTests PRIVATE crypt32 wintrust)
+endif()
 
 # Include directories
 target_include_directories(PEHintTests PRIVATE 

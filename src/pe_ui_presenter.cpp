@@ -1,6 +1,8 @@
 #include "pe_ui_presenter.h"
 
 #include "pe_parser_new.h"
+#include "pe_authenticode.h"
+#include "pe_ep_disasm.h"
 #include "pe_utils.h"
 #include "language_manager.h"
 
@@ -1498,6 +1500,10 @@ QTreeWidgetItem *PEUIPresenter::buildFileInsightsOverview()
                     publisherParams,
                     signedValue);
             }
+            const QString trustLabel = authenticodeTrustStatusLabel(metrics.authenticodeInfo.trustStatus);
+            if (!trustLabel.isEmpty()) {
+                signedValue += QStringLiteral(" — %1").arg(trustLabel);
+            }
             addInsightTreeField(insights, LANG("UI/field_signed"), signedValue,
                                 QStringLiteral("Signed"), 0, 0, false,
                                 insightMeaningText(QStringLiteral("Signed")));
@@ -1508,7 +1514,9 @@ QTreeWidgetItem *PEUIPresenter::buildFileInsightsOverview()
 
         if (metrics.entryPointRva != 0) {
             const QString epVal = formatEntryPointSummary(metrics);
-            const quint32 epSize = metrics.entryPointBytesHex.isEmpty() ? 1u : 16u;
+            const quint32 epSize = metrics.entryPointBytesHex.isEmpty()
+                                       ? 1u
+                                       : static_cast<quint32>(PEEpDisasm::kDefaultEpByteSample);
             addInsightTreeField(insights, LANG("UI/field_entry_point"), epVal, QStringLiteral("Entry Point"),
                                 metrics.entryPointFileOffset, epSize, metrics.entryPointFileOffset > 0,
                                 insightMeaningText(QStringLiteral("Entry Point")));

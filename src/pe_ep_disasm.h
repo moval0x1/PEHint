@@ -6,7 +6,13 @@
 
 namespace PEEpDisasm {
 
-QStringList disassembleEntryPoint(bool is64Bit, const QByteArray &bytes, int maxInstructions = 12);
+constexpr int kDefaultMaxInstructions = 32;
+constexpr int kDefaultEpByteSample = 64;
+
+QStringList disassembleEntryPoint(bool is64Bit,
+                                  const QByteArray &bytes,
+                                  int maxInstructions = kDefaultMaxInstructions,
+                                  quint32 baseRva = 0);
 
 } // namespace PEEpDisasm
 

@@ -47,6 +47,8 @@
 #include <QComboBox>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QSplitter>
+#include <QLabel>
 #include "hexviewer.h"
 
 class SectionLayoutWidget;
@@ -103,7 +105,11 @@ public:
     QTreeWidget *m_delayImportFunctionsTree; ///< Functions for selected delay-import module
     QTreeWidget *m_exportsTree;       ///< Displays export functions list
     QTreeWidget *m_resourcesTree;     ///< Enumerated PE resources (type, name, language, size)
+    QTextBrowser *m_resourcesPreviewText; ///< Text/XML/hex preview for selected resource
+    QLabel *m_resourcesPreviewImage;    ///< Icon/bitmap preview for selected resource
     QTreeWidget *m_dependenciesTree;  ///< Displays DLL dependencies and resolve status
+    QLabel *m_dependenciesDepthLabel; ///< "Depth:" label for dependency recursion spin
+    QSpinBox *m_dependenciesDepthSpin; ///< Transitive dependency depth (0 = unlimited)
     QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
     QPushButton *m_dependenciesCollapseAllButton;   ///< Collapse all rows in the dependencies tree
     QTreeWidget *m_stringsTree;       ///< Displays extracted strings (offset, type, value)

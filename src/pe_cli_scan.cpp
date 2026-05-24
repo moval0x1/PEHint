@@ -7,7 +7,7 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QHash>
@@ -63,18 +63,23 @@ bool isSupportedPeFilePath(const QString &path)
            || suffix == QStringLiteral("sys");
 }
 
-QStringList listSupportedFilesInDirectory(const QString &dirPath)
+QStringList listSupportedFilesInDirectory(const QString &dirPath, bool recursive)
 {
     QDir dir(dirPath);
-    const QFileInfoList entries = dir.entryInfoList(
-        QStringList() << QStringLiteral("*.exe") << QStringLiteral("*.dll") << QStringLiteral("*.sys"),
-        QDir::Files | QDir::Readable | QDir::NoSymLinks,
-        QDir::Name | QDir::IgnoreCase);
-    QStringList files;
-    files.reserve(entries.size());
-    for (const QFileInfo &entry : entries) {
-        files.append(entry.absoluteFilePath());
+    QDirIterator::IteratorFlags flags = QDirIterator::NoIteratorFlags;
+    if (recursive) {
+        flags = QDirIterator::Subdirectories;
     }
+    QStringList files;
+    QDirIterator it(dirPath,
+                      QStringList() << QStringLiteral("*.exe") << QStringLiteral("*.dll") << QStringLiteral("*.sys"),
+                      QDir::Files | QDir::Readable | QDir::NoSymLinks, flags);
+    while (it.hasNext()) {
+        files.append(it.next());
+    }
+    std::sort(files.begin(), files.end(), [](const QString &a, const QString &b) {
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
     return files;
 }
 
@@ -108,8 +113,10 @@ void printCliHelp()
         << "  --format <text|json>   Output format (default: text)\n"
         << "  --min-severity <level> Minimum severity to report: info, low, medium, high (default: low)\n"
         << "  --include-passes       Include hardening pass rows (ASLR/DEP/CFG enabled)\n"
-        << "  --dir <directory>      Scan all .exe/.dll/.sys files in a directory (non-recursive)\n"
+        << "  --dir <directory>      Scan all .exe/.dll/.sys files in a directory\n"
+        << "  --recursive            With --dir or --watch, include subdirectories\n"
         << "  --watch <directory>    Watch directory and rescan changed .exe/.dll/.sys files\n"
+        << "  --debounce-ms <n>      Debounce watch rescans (default: 500)\n"
         << "  --lang <en|pt>         UI language for finding text (default: en)\n"
         << "  -h, --help             Show this help\n\n"
         << "Exit codes:\n"
@@ -322,6 +329,14 @@ int runPeCliScan(int argc, char *argv[])
                                    QStringLiteral("Watch directory and rescan changed .exe/.dll/.sys files."),
                                    QStringLiteral("directory"));
     parser.addOption(watchOption);
+    QCommandLineOption recursiveOption(QStringLiteral("recursive"),
+                                       QStringLiteral("Include subdirectories for --dir and --watch."));
+    parser.addOption(recursiveOption);
+    QCommandLineOption debounceOption(QStringLiteral("debounce-ms"),
+                                      QStringLiteral("Watch debounce interval in milliseconds."),
+                                      QStringLiteral("ms"),
+                                      QStringLiteral("500"));
+    parser.addOption(debounceOption);
     QCommandLineOption langOption(QStringLiteral("lang"),
                                   QStringLiteral("Language for finding strings: en or pt."),
                                   QStringLiteral("code"),
@@ -346,6 +361,8 @@ int runPeCliScan(int argc, char *argv[])
     const QString format = parser.value(formatOption).trimmed().toLower();
     const PEFindingSeverity minSeverity = parseMinSeverity(parser.value(minSeverityOption));
     const bool includePasses = parser.isSet(includePassesOption);
+    const bool recursive = parser.isSet(recursiveOption);
+    const int debounceMs = qMax(50, parser.value(debounceOption).toInt());
     const QString lang = parser.value(langOption).trimmed().toLower();
     const QString dirPath = parser.value(dirOption).trimmed();
     const QString watchPath = parser.value(watchOption).trimmed();
@@ -367,7 +384,7 @@ int runPeCliScan(int argc, char *argv[])
         filesToScan.append(QFileInfo(pathArg).absoluteFilePath());
     }
     if (!dirPath.isEmpty()) {
-        filesToScan += listSupportedFilesInDirectory(QFileInfo(dirPath).absoluteFilePath());
+        filesToScan += listSupportedFilesInDirectory(QFileInfo(dirPath).absoluteFilePath(), recursive);
     }
     filesToScan = uniqueSortedPaths(filesToScan);
 
@@ -416,24 +433,25 @@ int runPeCliScan(int argc, char *argv[])
     watcher.addPath(watchDir);
     QTimer debounceTimer;
     debounceTimer.setSingleShot(true);
-    debounceTimer.setInterval(500);
+    debounceTimer.setInterval(debounceMs);
 
     QHash<QString, QDateTime> knownMtime;
+    QHash<QString, QDateTime> lastScannedMtime;
     QSet<QString> pendingChanges;
 
-    const auto updateWatchedFiles = [&watcher, watchDir]() {
+    const auto updateWatchedFiles = [&watcher, watchDir, recursive]() {
         const QStringList currentlyWatched = watcher.files();
         for (const QString &watchedPath : currentlyWatched) {
             watcher.removePath(watchedPath);
         }
-        for (const QString &filePath : listSupportedFilesInDirectory(watchDir)) {
+        for (const QString &filePath : listSupportedFilesInDirectory(watchDir, recursive)) {
             watcher.addPath(filePath);
         }
     };
 
-    const auto detectChangedFiles = [&knownMtime, &pendingChanges, watchDir]() {
+    const auto detectChangedFiles = [&knownMtime, &pendingChanges, watchDir, recursive]() {
         QHash<QString, QDateTime> current;
-        const QStringList files = listSupportedFilesInDirectory(watchDir);
+        const QStringList files = listSupportedFilesInDirectory(watchDir, recursive);
         for (const QString &path : files) {
             const QDateTime mtime = QFileInfo(path).lastModified();
             current.insert(path, mtime);
@@ -470,7 +488,14 @@ int runPeCliScan(int argc, char *argv[])
             if (!QFileInfo::exists(filePath) || !isSupportedPeFilePath(filePath)) {
                 continue;
             }
+            const QDateTime mtime = QFileInfo(filePath).lastModified();
+            if (lastScannedMtime.value(filePath) == mtime) {
+                continue;
+            }
             const int oneExit = scanOneFile(filePath, format, minSeverity, includePasses, true);
+            if (oneExit != 1) {
+                lastScannedMtime.insert(filePath, mtime);
+            }
             if (oneExit == 1) {
                 aggregateExitCode = 1;
             } else if (oneExit == 2 && aggregateExitCode == 0) {

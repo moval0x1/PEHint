@@ -59,7 +59,11 @@ UIManager::UIManager(MainWindow *parent)
     , m_delayImportFunctionsTree(nullptr)
     , m_exportsTree(nullptr)
     , m_resourcesTree(nullptr)
+    , m_resourcesPreviewText(nullptr)
+    , m_resourcesPreviewImage(nullptr)
     , m_dependenciesTree(nullptr)
+    , m_dependenciesDepthLabel(nullptr)
+    , m_dependenciesDepthSpin(nullptr)
     , m_dependenciesExpandAllButton(nullptr)
     , m_dependenciesCollapseAllButton(nullptr)
     , m_stringsTree(nullptr)
@@ -580,7 +584,30 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_resourcesTree->setColumnWidth(3, 90);
     m_resourcesTree->setColumnWidth(4, 110);
 
-    resourcesLayout->addWidget(m_resourcesTree);
+    m_resourcesPreviewText = new QTextBrowser();
+    m_resourcesPreviewText->setReadOnly(true);
+    m_resourcesPreviewText->setOpenExternalLinks(false);
+    m_resourcesPreviewText->setMinimumHeight(120);
+    m_resourcesPreviewText->setPlaceholderText(LANG("UI/resources_preview_placeholder"));
+
+    m_resourcesPreviewImage = new QLabel();
+    m_resourcesPreviewImage->setAlignment(Qt::AlignCenter);
+    m_resourcesPreviewImage->setMinimumHeight(120);
+    m_resourcesPreviewImage->setStyleSheet(QStringLiteral("background:#fafafa;border:1px solid #e5e7eb;"));
+    m_resourcesPreviewImage->setVisible(false);
+
+    QSplitter *resourcesSplitter = new QSplitter(Qt::Horizontal);
+    resourcesSplitter->addWidget(m_resourcesTree);
+    QWidget *previewPane = new QWidget();
+    QVBoxLayout *previewLayout = new QVBoxLayout(previewPane);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+    previewLayout->addWidget(m_resourcesPreviewImage, 0);
+    previewLayout->addWidget(m_resourcesPreviewText, 1);
+    resourcesSplitter->addWidget(previewPane);
+    resourcesSplitter->setStretchFactor(0, 3);
+    resourcesSplitter->setStretchFactor(1, 2);
+
+    resourcesLayout->addWidget(resourcesSplitter);
     m_analysisTabWidget->addTab(resourcesTab, LANG("UI/tab_resources"));
 
     // --------------------------------------------------------------------
@@ -592,6 +619,15 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
 
     QHBoxLayout *dependenciesToolbarLayout = new QHBoxLayout();
     dependenciesToolbarLayout->setContentsMargins(0, 0, 0, 4);
+    m_dependenciesDepthLabel = new QLabel(LANG("UI/deps_depth_label"));
+    m_dependenciesDepthSpin = new QSpinBox();
+    m_dependenciesDepthSpin->setRange(0, 64);
+    m_dependenciesDepthSpin->setSpecialValueText(LANG("UI/deps_depth_unlimited"));
+    m_dependenciesDepthSpin->setValue(8);
+    m_dependenciesDepthSpin->setMaximumWidth(120);
+    m_dependenciesDepthSpin->setToolTip(LANG("UI/deps_depth_tooltip"));
+    dependenciesToolbarLayout->addWidget(m_dependenciesDepthLabel);
+    dependenciesToolbarLayout->addWidget(m_dependenciesDepthSpin);
     dependenciesToolbarLayout->addStretch();
     m_dependenciesExpandAllButton = new QPushButton(LANG("UI/context_expand_all"));
     m_dependenciesExpandAllButton->setObjectName(QStringLiteral("dependenciesExpandAllButton"));

@@ -1,4 +1,5 @@
 #include "pe_parser_new.h"
+#include "pe_authenticode.h"
 #include "pe_ui_presenter.h"
 #include "pe_ep_disasm.h"
 #include "pe_utils.h"
@@ -510,14 +511,49 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
                     .arg(currentValue.toHtmlEscaped(), LANG(QStringLiteral("UI/insight_absent_note")).toHtmlEscaped());
     } else if (!currentValue.isEmpty()) {
         if (fieldKey == QLatin1String("Signed")) {
-            const bool signedOk = metrics.authenticodePresent;
-            const QString bg = signedOk ? QStringLiteral("#ecfdf5") : QStringLiteral("#fff8e6");
-            const QString border = signedOk ? QStringLiteral("#22c55e") : QStringLiteral("#f59e0b");
-            const QString fg = signedOk ? QStringLiteral("#166534") : QStringLiteral("#92400e");
+            const PEAuthenticodeInfo &auth = metrics.authenticodeInfo;
+            const bool trustValid = auth.trustStatus == AuthenticodeTrustStatus::Valid;
+            const QString bg = trustValid ? QStringLiteral("#ecfdf5")
+                                          : (metrics.authenticodePresent ? QStringLiteral("#fff1f2")
+                                                                         : QStringLiteral("#fff8e6"));
+            const QString border = trustValid ? QStringLiteral("#22c55e")
+                                              : (metrics.authenticodePresent ? QStringLiteral("#ef4444")
+                                                                             : QStringLiteral("#f59e0b"));
+            const QString fg = trustValid ? QStringLiteral("#166534")
+                                          : (metrics.authenticodePresent ? QStringLiteral("#991b1b")
+                                                                         : QStringLiteral("#92400e"));
             html += QStringLiteral(
                         "<div style='margin:0 0 12px 0;padding:8px 10px;background:%1;border-left:3px solid "
                         "%2;border-radius:4px;color:%3;font-weight:600;'>%4</div>")
                         .arg(bg, border, fg, currentValue.toHtmlEscaped());
+            html += QStringLiteral("<div style='margin:0 0 8px 0;color:#374151;'><b>%1:</b> %2</div>")
+                        .arg(LANG(QStringLiteral("UI/signed_trust_label")).toHtmlEscaped(),
+                             authenticodeTrustStatusLabel(auth.trustStatus).toHtmlEscaped());
+            if (!auth.statusMessage.isEmpty()) {
+                html += QStringLiteral("<div style='margin:0 0 8px 0;color:#555;'>%1</div>")
+                            .arg(auth.statusMessage.toHtmlEscaped());
+            }
+            if (!auth.thumbprintSha256.isEmpty()) {
+                html += QStringLiteral(
+                            "<div style='margin:0 0 8px 0;font-family:Consolas,monospace;font-size:10px;"
+                            "color:#374151;'><b>SHA256:</b> %1</div>")
+                            .arg(auth.thumbprintSha256.toHtmlEscaped());
+            }
+            if (auth.notBefore.isValid() || auth.notAfter.isValid()) {
+                html += QStringLiteral("<div style='margin:0 0 8px 0;color:#555;'>%1 — %2</div>")
+                            .arg(auth.notBefore.isValid() ? auth.notBefore.toString(Qt::ISODate) : QStringLiteral("?"),
+                                 auth.notAfter.isValid() ? auth.notAfter.toString(Qt::ISODate) : QStringLiteral("?"));
+            }
+            if (!auth.certificateSubjects.isEmpty()) {
+                html += QStringLiteral("<div style='margin:8px 0 4px 0;font-weight:600;'>%1</div>")
+                            .arg(LANG(QStringLiteral("UI/signed_chain_label")).toHtmlEscaped());
+                html += QStringLiteral("<ul style='margin:0 0 12px 18px;padding:0;color:#444;'>");
+                for (const QString &subject : auth.certificateSubjects) {
+                    html += QStringLiteral("<li style='margin-bottom:3px;'>%1</li>")
+                                .arg(subject.toHtmlEscaped());
+                }
+                html += QStringLiteral("</ul>");
+            }
         } else if (fieldKey == QLatin1String("Entry Point") && !metrics.entryPointBytesHex.isEmpty()) {
             html += QStringLiteral("<div style='margin:0 0 8px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
                         .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
@@ -540,7 +576,9 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
             if (const IMAGE_OPTIONAL_HEADER *opt = m_dataModel.getOptionalHeader()) {
                 is64 = opt->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
             }
-            const QStringList asmLines = PEEpDisasm::disassembleEntryPoint(is64, epBytes, 12);
+            const QStringList asmLines =
+                PEEpDisasm::disassembleEntryPoint(is64, epBytes, PEEpDisasm::kDefaultMaxInstructions,
+                                                  metrics.entryPointRva);
             if (!asmLines.isEmpty()) {
                 QStringList escapedAsm;
                 escapedAsm.reserve(asmLines.size());
@@ -908,7 +946,7 @@ bool PEParserNew::loadFile(const QString &filePath)
     
     emit parsingProgress(50, LANG("UI/progress_data_directories"));
 
-    PEAnalysis::analyzeIntoModel(m_fileData, m_dataModel);
+    PEAnalysis::analyzeIntoModel(m_fileData, m_dataModel, QFileInfo(m_file.fileName()).absoluteFilePath());
     emit parsingProgress(60, LANG("UI/progress_file_analysis"));
     clearFieldExplanationCaches();
     

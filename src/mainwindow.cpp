@@ -35,6 +35,7 @@
 #include "pe_string_extractor.h"
 #include "pe_findings.h"
 #include "findings_controller.h"
+#include "pe_resource_preview.h"
 #include "section_layout_widget.h"
 #include "sdk_api_markdown_reader.h"
 #include <QJsonDocument>
@@ -612,6 +613,20 @@ void MainWindow::setupConnections()
     if (m_uiManager->m_dependenciesTree) {
         connect(m_uiManager->m_dependenciesTree, &QTreeWidget::customContextMenuRequested,
                 this, &MainWindow::onDependenciesCustomContextMenu);
+    }
+    if (m_uiManager->m_dependenciesDepthSpin) {
+        QSettings settings(QStringLiteral("PEHint"), QStringLiteral("PEHint"));
+        m_uiManager->m_dependenciesDepthSpin->setValue(
+            settings.value(QStringLiteral("dependencies/maxDepth"), 8).toInt());
+        connect(m_uiManager->m_dependenciesDepthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this,
+                [this](int value) {
+                    QSettings s(QStringLiteral("PEHint"), QStringLiteral("PEHint"));
+                    s.setValue(QStringLiteral("dependencies/maxDepth"), value);
+                    if (m_fileLoaded && m_peParser && m_peParser->isValid()) {
+                        m_dependenciesPopulated = false;
+                        populateDependenciesTab();
+                    }
+                });
     }
 
     if (m_findingsController) {
@@ -2415,8 +2430,10 @@ void MainWindow::populateResourcesTab()
     } else {
         constexpr int kResourceOffsetRole = Qt::UserRole;
         constexpr int kResourceSizeRole = Qt::UserRole + 1;
+        constexpr int kResourceIndexRole = Qt::UserRole + 2;
         m_uiManager->m_resourcesTree->setUpdatesEnabled(false);
-        for (const PEResourceItem &entry : resources) {
+        for (int i = 0; i < resources.size(); ++i) {
+            const PEResourceItem &entry = resources.at(i);
             QTreeWidgetItem *item = new QTreeWidgetItem(m_uiManager->m_resourcesTree);
             item->setText(0, entry.typeName);
             item->setText(1, entry.resourceName);
@@ -2427,6 +2444,7 @@ void MainWindow::populateResourcesTab()
                 item->setData(0, kResourceOffsetRole, QVariant::fromValue(entry.fileOffset));
                 item->setData(0, kResourceSizeRole, QVariant::fromValue(entry.size));
             }
+            item->setData(0, kResourceIndexRole, i);
             if (entry.rva != 0) {
                 const QString tip = QStringLiteral("RVA %1, %2 bytes")
                                         .arg(PEUtils::formatHexWidth(entry.rva, 8))
@@ -2446,26 +2464,59 @@ void MainWindow::populateResourcesTab()
 
 void MainWindow::onResourcesItemClicked(QTreeWidgetItem *item, int /*column*/)
 {
-    if (!item || !m_uiManager || !m_uiManager->m_hexViewer) {
+    if (!item || !m_uiManager || !m_uiManager->m_hexViewer || !m_peParser) {
         return;
     }
     constexpr int kResourceOffsetRole = Qt::UserRole;
     constexpr int kResourceSizeRole = Qt::UserRole + 1;
+    constexpr int kResourceIndexRole = Qt::UserRole + 2;
     const QVariant offsetVar = item->data(0, kResourceOffsetRole);
-    if (!offsetVar.isValid()) {
+    if (offsetVar.isValid()) {
+        const quint32 offset = offsetVar.toUInt();
+        const quint32 size = item->data(0, kResourceSizeRole).toUInt();
+        HexViewer *hex = m_uiManager->m_hexViewer;
+        if (size > 0) {
+            hex->highlightRange(offset, size, QColor(200, 230, 255));
+            m_lastHexHighlightOffset = static_cast<qint64>(offset);
+            m_lastHexHighlightSize = size;
+            m_lastHexHighlightRgba = QColor(200, 230, 255).rgba();
+        } else {
+            hex->goToOffset(static_cast<qint64>(offset));
+        }
+    }
+
+    const QVariant indexVar = item->data(0, kResourceIndexRole);
+    if (!indexVar.isValid() || !m_uiManager->m_resourcesPreviewText) {
         return;
     }
-    const quint32 offset = offsetVar.toUInt();
-    const quint32 size = item->data(0, kResourceSizeRole).toUInt();
-    HexViewer *hex = m_uiManager->m_hexViewer;
-    if (size > 0) {
-        hex->highlightRange(offset, size, QColor(200, 230, 255));
-        m_lastHexHighlightOffset = static_cast<qint64>(offset);
-        m_lastHexHighlightSize = size;
-        m_lastHexHighlightRgba = QColor(200, 230, 255).rgba();
-    } else {
-        hex->goToOffset(static_cast<qint64>(offset));
+    const int resourceIndex = indexVar.toInt();
+    const QVector<PEResourceItem> &resources = m_peParser->getResourceEntries();
+    if (resourceIndex < 0 || resourceIndex >= resources.size()) {
+        return;
     }
+    const ResourcePreview preview = buildResourcePreview(m_peParser->getFileData(), resources.at(resourceIndex));
+    m_uiManager->m_resourcesPreviewImage->clear();
+    m_uiManager->m_resourcesPreviewImage->setVisible(false);
+  if (preview.kind == ResourcePreview::Kind::Image && !preview.image.isNull()) {
+        m_uiManager->m_resourcesPreviewImage->setPixmap(
+            QPixmap::fromImage(preview.image).scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        m_uiManager->m_resourcesPreviewImage->setVisible(true);
+        m_uiManager->m_resourcesPreviewText->clear();
+        return;
+    }
+    if (preview.kind == ResourcePreview::Kind::Html) {
+        m_uiManager->m_resourcesPreviewText->setHtml(preview.htmlContent);
+        return;
+    }
+    if (preview.kind == ResourcePreview::Kind::Text) {
+        m_uiManager->m_resourcesPreviewText->setPlainText(preview.textContent);
+        return;
+    }
+    if (preview.kind == ResourcePreview::Kind::Hex) {
+        m_uiManager->m_resourcesPreviewText->setPlainText(preview.hexPreview);
+        return;
+    }
+    m_uiManager->m_resourcesPreviewText->clear();
 }
 
 
@@ -2505,9 +2556,16 @@ void MainWindow::populateDependenciesTab()
         placeholder->setFirstColumnSpanned(true);
         placeholder->setFlags(Qt::NoItemFlags);
     } else {
-        constexpr int kMaxDependencyDepth = 4;
+        constexpr int kMaxUnlimitedDependencyDepth = 64;
+        int maxDepth = 8;
+        if (m_uiManager->m_dependenciesDepthSpin) {
+            maxDepth = m_uiManager->m_dependenciesDepthSpin->value();
+            if (maxDepth == 0) {
+                maxDepth = kMaxUnlimitedDependencyDepth;
+            }
+        }
         const DependencyAnalysisResult depResult =
-            PEDependencyAnalyzer::analyzeTransitive(imports, m_currentFilePath, kMaxDependencyDepth);
+            PEDependencyAnalyzer::analyzeTransitive(imports, m_currentFilePath, maxDepth);
 
         for (const DependencyNode &node : depResult.dependencyTree) {
             addDependencyNode(node, nullptr, addDependencyNode);
@@ -3386,6 +3444,9 @@ void MainWindow::updateUILanguage()
             LANG("UI/resources_header_offset")
         });
     }
+    if (m_uiManager && m_uiManager->m_resourcesPreviewText) {
+        m_uiManager->m_resourcesPreviewText->setPlaceholderText(LANG("UI/resources_preview_placeholder"));
+    }
 
     if (m_uiManager && m_uiManager->m_dependenciesTree) {
         m_uiManager->m_dependenciesTree->setHeaderLabels({
@@ -3393,6 +3454,13 @@ void MainWindow::updateUILanguage()
             LANG("UI/deps_header_resolved_path"),
             LANG("UI/deps_header_found")
         });
+    }
+    if (m_uiManager && m_uiManager->m_dependenciesDepthLabel) {
+        m_uiManager->m_dependenciesDepthLabel->setText(LANG("UI/deps_depth_label"));
+    }
+    if (m_uiManager && m_uiManager->m_dependenciesDepthSpin) {
+        m_uiManager->m_dependenciesDepthSpin->setSpecialValueText(LANG("UI/deps_depth_unlimited"));
+        m_uiManager->m_dependenciesDepthSpin->setToolTip(LANG("UI/deps_depth_tooltip"));
     }
 
     if (m_uiManager && m_uiManager->m_stringsTree) {

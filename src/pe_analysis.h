@@ -2,6 +2,7 @@
 #define PE_ANALYSIS_H
 
 #include "pe_structures.h"
+#include "pe_authenticode.h"
 
 class PEDataModel;
 #include <QByteArray>
@@ -60,6 +61,7 @@ struct PEFileMetrics {
     bool authenticodePresent = false;
     QString authenticodePublisher;
     quint32 certTableSize = 0;
+    PEAuthenticodeInfo authenticodeInfo;
     int importFunctionCount = 0;
     int exportFunctionCount = 0;
     quint32 entryPointRva = 0;
@@ -135,11 +137,15 @@ public:
                                            const QList<const IMAGE_SECTION_HEADER *> &sections);
 
     /** Fills overlay, entropy, version resource, manifest, hashes, ratio, and toolchain on @p dataModel. */
-    static void analyzeIntoModel(const QByteArray &fileData, PEDataModel &dataModel);
+    static void analyzeIntoModel(const QByteArray &fileData,
+                                 PEDataModel &dataModel,
+                                 const QString &sourceFilePath = QString());
 
     static QString computeImphash(const PEDataModel &dataModel);
     static quint64 computePeLogicalSize(const PEDataModel &dataModel, qint64 fileSize);
-    static PEFileMetrics computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel);
+    static PEFileMetrics computeFileMetrics(const QByteArray &fileData,
+                                            const PEDataModel &dataModel,
+                                            const QString &sourceFilePath = QString());
 
     static PEContentScan computeContentScan(const QByteArray &fileData, const PEDataModel &dataModel);
 

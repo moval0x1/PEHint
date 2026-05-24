@@ -1,6 +1,7 @@
 #include "pe_analysis.h"
 #include "pe_authenticode.h"
 #include "pe_data_model.h"
+#include "pe_ep_disasm.h"
 
 #include <QCryptographicHash>
 #include <QCoreApplication>
@@ -397,7 +398,9 @@ quint32 rvaToFileOffsetForMetrics(quint32 rva, const QList<const IMAGE_SECTION_H
     return 0;
 }
 
-PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel)
+PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData,
+                                             const PEDataModel &dataModel,
+                                             const QString &sourceFilePath)
 {
     PEFileMetrics metrics;
     if (fileData.isEmpty()) {
@@ -435,8 +438,9 @@ PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const P
         metrics.authenticodePresent = certDir->VirtualAddress != 0 && certDir->Size != 0;
         metrics.certTableSize = certDir->Size;
         if (metrics.authenticodePresent) {
-            metrics.authenticodePublisher =
-                extractAuthenticodePublisher(fileData, certDir->VirtualAddress, certDir->Size);
+            metrics.authenticodeInfo =
+                analyzeAuthenticode(fileData, sourceFilePath, certDir->VirtualAddress, certDir->Size);
+            metrics.authenticodePublisher = metrics.authenticodeInfo.publisher;
         }
     }
 
@@ -460,7 +464,7 @@ PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const P
                                                           opt->SizeOfHeaders, fileSize);
         if (epOff > 0 && epOff < fileSize) {
             metrics.entryPointFileOffset = epOff;
-            const int take = qMin(16, static_cast<int>(fileSize - epOff));
+            const int take = qMin(PEEpDisasm::kDefaultEpByteSample, static_cast<int>(fileSize - epOff));
             metrics.entryPointBytesHex =
                 PEUtils::formatHex(fileData.mid(static_cast<int>(epOff), take));
         }
@@ -471,7 +475,9 @@ PEFileMetrics PEAnalysis::computeFileMetrics(const QByteArray &fileData, const P
     return metrics;
 }
 
-void PEAnalysis::analyzeIntoModel(const QByteArray &fileData, PEDataModel &dataModel)
+void PEAnalysis::analyzeIntoModel(const QByteArray &fileData,
+                                  PEDataModel &dataModel,
+                                  const QString &sourceFilePath)
 {
     const QList<const IMAGE_SECTION_HEADER *> &sections = dataModel.getSections();
     const qint64 effectiveSize = qMax(dataModel.getFileSize(), static_cast<qint64>(fileData.size()));
@@ -493,7 +499,7 @@ void PEAnalysis::analyzeIntoModel(const QByteArray &fileData, PEDataModel &dataM
         metadata.richHeaderPresent = PEUtils::hasRichHeader(fileData, *dos);
     }
     dataModel.setAnalysisMetadata(metadata);
-    dataModel.setFileMetrics(computeFileMetrics(fileData, dataModel));
+    dataModel.setFileMetrics(computeFileMetrics(fileData, dataModel, sourceFilePath));
     dataModel.setContentScan(computeContentScan(fileData, dataModel));
     dataModel.setResourceEntries(enumerateResourceEntries(fileData, dataModel));
 }
