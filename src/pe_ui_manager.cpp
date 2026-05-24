@@ -609,7 +609,10 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_all"), QStringLiteral("all"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ascii"), QStringLiteral("ascii"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_unicode"), QStringLiteral("unicode"));
-    m_stringsTypeCombo->setMaximumWidth(120);
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_url"), QStringLiteral("url"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ip"), QStringLiteral("ip"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_registry"), QStringLiteral("registry"));
+    m_stringsTypeCombo->setMaximumWidth(150);
     m_stringsMinLengthSpin = new QSpinBox();
     m_stringsMinLengthSpin->setRange(2, 64);
     m_stringsMinLengthSpin->setValue(4);

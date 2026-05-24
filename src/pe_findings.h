@@ -55,6 +55,10 @@ public:
     static QString categoryDisplayName(const QString &categoryKey);
     static QString categoryKeyForRule(const PEFindingRule &rule);
     static QVector<PEFindingInstance> evaluateHardeningPasses(const PEDataModel &model);
+
+    /** True when @p functionName matches an entry in config/import_flags.json (optional @p moduleName). */
+    static bool isFlaggedImport(const QString &moduleName, const QString &functionName,
+                                PEFindingSeverity *severityOut = nullptr, QString *noteOut = nullptr);
 };
 
 #endif // PE_FINDINGS_H

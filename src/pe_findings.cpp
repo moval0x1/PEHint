@@ -9,6 +9,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
+#include <functional>
 
 namespace {
 
@@ -106,6 +108,50 @@ bool hasAuthenticodeDirectory(const IMAGE_OPTIONAL_HEADER *opt)
 QVector<PEFindingRule> g_rules;
 bool g_rulesLoaded = false;
 
+struct ImportFlagRule {
+    QString id;
+    QString dll;
+    QString function;
+    PEFindingSeverity severity = PEFindingSeverity::Medium;
+    QString note;
+};
+
+QVector<ImportFlagRule> g_importFlags;
+bool g_importFlagsLoaded = false;
+
+QString normalizeDllToken(const QString &dll)
+{
+    QString d = dll.trimmed().toLower();
+    if (d.endsWith(QStringLiteral(".dll"))) {
+        d.chop(4);
+    }
+    return d;
+}
+
+bool importFlagMatches(const ImportFlagRule &rule, const QString &moduleName, const QString &functionName)
+{
+    if (rule.function.compare(functionName, Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+    if (rule.dll.isEmpty()) {
+        return true;
+    }
+    return normalizeDllToken(rule.dll) == normalizeDllToken(moduleName);
+}
+
+QString formatMatchSample(const QVector<PEHardcodedMatch> &matches, int maxShow = 3)
+{
+    QStringList parts;
+    const int limit = qMin(maxShow, matches.size());
+    for (int i = 0; i < limit; ++i) {
+        parts.append(matches.at(i).value);
+    }
+    if (matches.size() > maxShow) {
+        parts.append(QStringLiteral("…"));
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
 QString findConfigFile(const QString &fileName)
 {
     QStringList paths;
@@ -138,6 +184,98 @@ PEFindingSeverity severityFromString(const QString &value)
         return PEFindingSeverity::High;
     }
     return PEFindingSeverity::Medium;
+}
+
+void loadImportFlags()
+{
+    g_importFlags.clear();
+    g_importFlagsLoaded = true;
+
+    const QString path = findConfigFile(QStringLiteral("import_flags.json"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return;
+    }
+
+    const QJsonArray entries = doc.object().value(QStringLiteral("entries")).toArray();
+    for (const QJsonValue &val : entries) {
+        if (!val.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = val.toObject();
+        if (!obj.value(QStringLiteral("enabled")).toBool(true)) {
+            continue;
+        }
+        ImportFlagRule rule;
+        rule.id = obj.value(QStringLiteral("id")).toString();
+        rule.function = obj.value(QStringLiteral("function")).toString();
+        rule.dll = obj.value(QStringLiteral("dll")).toString();
+        rule.severity = severityFromString(obj.value(QStringLiteral("severity")).toString());
+        rule.note = obj.value(QStringLiteral("note")).toString();
+        if (rule.function.isEmpty()) {
+            continue;
+        }
+        if (rule.id.isEmpty()) {
+            rule.id = rule.function.toLower();
+        }
+        g_importFlags.append(rule);
+    }
+}
+
+const QVector<ImportFlagRule> &importFlags()
+{
+    if (!g_importFlagsLoaded) {
+        loadImportFlags();
+    }
+    return g_importFlags;
+}
+
+void appendFlaggedImports(const PEDataModel &model, const PEFindingRule &metaRule, QVector<PEFindingInstance> &results)
+{
+    const auto scanModules = [&](const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &details) {
+        for (auto modIt = details.constBegin(); modIt != details.constEnd(); ++modIt) {
+            for (const PEDataModel::ImportFunctionEntry &entry : modIt.value()) {
+                if (entry.name.isEmpty() || entry.importedByOrdinal) {
+                    continue;
+                }
+                for (const ImportFlagRule &flag : importFlags()) {
+                    if (!importFlagMatches(flag, modIt.key(), entry.name)) {
+                        continue;
+                    }
+                    QMap<QString, QString> params;
+                    params[QStringLiteral("dll")] = modIt.key();
+                    params[QStringLiteral("function")] = entry.name;
+                    params[QStringLiteral("note")] = flag.note.isEmpty() ? QStringLiteral("-")
+                                                                       : flag.note;
+                    PEFindingInstance inst;
+                    inst.ruleId = metaRule.id + QChar(':') + flag.id;
+                    inst.severity = flag.severity;
+                    inst.title = LANG_PARAMS(QStringLiteral("findings/flagged_import_title"), params);
+                    inst.detail = LANG_PARAMS(QStringLiteral("findings/flagged_import_detail"), params);
+                    inst.category = metaRule.category.isEmpty() ? QStringLiteral("imports") : metaRule.category;
+                    if (entry.thunkOffset > 0) {
+                        inst.hexOffset = entry.thunkOffset;
+                        inst.hexSize = 4;
+                        inst.hasHexNav = true;
+                    }
+                    results.append(inst);
+                }
+            }
+        }
+    };
+
+    scanModules(model.getImportFunctions());
+    scanModules(model.getDelayImportFunctions());
 }
 
 QString sectionNameFromHeader(const IMAGE_SECTION_HEADER *section)
@@ -187,6 +325,9 @@ void appendInstance(QVector<PEFindingInstance> &out, const PEFindingRule &rule, 
     inst.title = LANG(rule.titleKey);
     inst.detail = detail.isEmpty() ? LANG(rule.detailKey) : detail;
     inst.treeField = treeFieldOverride.isEmpty() ? rule.treeField : treeFieldOverride;
+    if (!rule.category.isEmpty()) {
+        inst.category = rule.category;
+    }
     if (hexSize > 0) {
         inst.hexOffset = hexOffset;
         inst.hexSize = hexSize;
@@ -281,7 +422,6 @@ bool PEFindingsEngine::loadRules(QString *errorOut)
         rule.threshold = obj.value(QStringLiteral("threshold")).toDouble(7.0);
         rule.maxImports = obj.value(QStringLiteral("maxImports")).toInt(3);
         rule.minCount = obj.value(QStringLiteral("minCount")).toInt(5);
-        rule.minCount = obj.value(QStringLiteral("minCount")).toInt(5);
         if (rule.titleKey.isEmpty()) {
             rule.titleKey = QStringLiteral("findings/") + rule.id + QStringLiteral("_title");
         }
@@ -339,6 +479,7 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
     const PEPdbInfo pdb = model.getPdbInfo();
     const PEVersionInfo version = model.getVersionInfo();
     const PEAnalysisMetadata metadata = model.getAnalysisMetadata();
+    const PEContentScan contentScan = model.getContentScan();
     const OptionalHeaderView optView = viewOptionalHeader(opt);
 
     for (const PEFindingRule &rule : rules()) {
@@ -755,6 +896,70 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
             }
             continue;
         }
+
+        if (check == QStringLiteral("flagged_import")) {
+            appendFlaggedImports(model, rule, results);
+            continue;
+        }
+
+        if (check == QStringLiteral("hardcoded_url")) {
+            if (!contentScan.urls.isEmpty()) {
+                QMap<QString, QString> params;
+                params[QStringLiteral("count")] = QString::number(contentScan.urls.size());
+                const PEHardcodedMatch &first = contentScan.urls.first();
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params), rule.treeField,
+                               first.fileOffset, qMax(first.length, 1u));
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("hardcoded_ip")) {
+            if (!contentScan.ips.isEmpty()) {
+                QMap<QString, QString> params;
+                params[QStringLiteral("count")] = QString::number(contentScan.ips.size());
+                const PEHardcodedMatch &first = contentScan.ips.first();
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params), QString(),
+                               first.fileOffset, qMax(first.length, 1u));
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("nonstandard_dos_stub")) {
+            if (contentScan.dosStubNonStandard) {
+                QMap<QString, QString> params;
+                params[QStringLiteral("message")] = contentScan.dosStubMessage;
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params),
+                               QStringLiteral("DOS_STUB"), contentScan.dosStubOffset,
+                               qMax(contentScan.dosStubSize, 1u));
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("duplicate_exports")) {
+            QHash<QString, int> nameCounts;
+            QHash<QString, QString> displayNames;
+            for (const PEDataModel::ExportFunctionEntry &entry : model.getExportFunctions()) {
+                if (entry.name.isEmpty() || entry.name == QStringLiteral("[ - ]")) {
+                    continue;
+                }
+                const QString key = entry.name.toLower();
+                nameCounts[key] += 1;
+                if (!displayNames.contains(key)) {
+                    displayNames.insert(key, entry.name);
+                }
+            }
+            for (auto it = nameCounts.constBegin(); it != nameCounts.constEnd(); ++it) {
+                if (it.value() < 2) {
+                    continue;
+                }
+                QMap<QString, QString> params;
+                params[QStringLiteral("name")] = displayNames.value(it.key(), it.key());
+                params[QStringLiteral("count")] = QString::number(it.value());
+                appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params),
+                               QStringLiteral("Data Directories"));
+            }
+            continue;
+        }
     }
 
     return results;
@@ -773,8 +978,13 @@ QString PEFindingsEngine::categoryKeyForRule(const PEFindingRule &rule)
     }
     if (check.contains(QStringLiteral("import")) || check == QStringLiteral("no_imports")
         || check == QStringLiteral("few_imports") || check == QStringLiteral("gui_few_imports")
-        || check == QStringLiteral("high_ordinal_imports") || check == QStringLiteral("dll_no_exports")) {
+        || check == QStringLiteral("high_ordinal_imports") || check == QStringLiteral("dll_no_exports")
+        || check == QStringLiteral("flagged_import")) {
         return QStringLiteral("imports");
+    }
+    if (check.contains(QStringLiteral("url")) || check.contains(QStringLiteral("ip"))
+        || check.contains(QStringLiteral("dos_stub")) || check.contains(QStringLiteral("duplicate_export"))) {
+        return QStringLiteral("content");
     }
     if (check.contains(QStringLiteral("timestamp")) || check.contains(QStringLiteral("checksum"))
         || check.contains(QStringLiteral("rich")) || check.contains(QStringLiteral("pdb"))
@@ -837,4 +1047,25 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluateHardeningPasses(const PEDat
         addPass("cfg_enabled", "findings/cfg_pass_title", "findings/cfg_pass_detail", "DllCharacteristics");
     }
     return passes;
+}
+
+bool PEFindingsEngine::isFlaggedImport(const QString &moduleName, const QString &functionName,
+                                       PEFindingSeverity *severityOut, QString *noteOut)
+{
+    if (functionName.isEmpty()) {
+        return false;
+    }
+    for (const ImportFlagRule &flag : importFlags()) {
+        if (!importFlagMatches(flag, moduleName, functionName)) {
+            continue;
+        }
+        if (severityOut) {
+            *severityOut = flag.severity;
+        }
+        if (noteOut) {
+            *noteOut = flag.note;
+        }
+        return true;
+    }
+    return false;
 }

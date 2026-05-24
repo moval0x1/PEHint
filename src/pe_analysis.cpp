@@ -3,8 +3,10 @@
 
 #include <QCryptographicHash>
 #include <QHash>
+#include <QRegularExpression>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <string>
 
 #include "pe_utils.h"
@@ -382,6 +384,284 @@ void PEAnalysis::analyzeIntoModel(const QByteArray &fileData, PEDataModel &dataM
     }
     dataModel.setAnalysisMetadata(metadata);
     dataModel.setFileMetrics(computeFileMetrics(fileData, dataModel));
+    dataModel.setContentScan(computeContentScan(fileData, dataModel));
+}
+
+bool isPrintableDosStubChar(char ch)
+{
+    const unsigned char c = static_cast<unsigned char>(ch);
+    return (c >= 32 && c <= 126) || c == '\r' || c == '\n' || c == '\t' || c == '$';
+}
+
+QString extractDosStubMessage(const QByteArray &stub)
+{
+    QString best;
+    QString current;
+    for (char ch : stub) {
+        if (isPrintableDosStubChar(ch)) {
+            current.append(QChar::fromLatin1(ch));
+        } else {
+            if (current.size() > best.size()) {
+                best = current;
+            }
+            current.clear();
+        }
+    }
+    if (current.size() > best.size()) {
+        best = current;
+    }
+    best = best.trimmed();
+    if (best.size() > 200) {
+        best = best.left(200) + QStringLiteral("…");
+    }
+    return best;
+}
+
+bool isStandardDosStubMessage(const QString &message)
+{
+    if (message.size() < 8) {
+        return false;
+    }
+    const QString lower = message.toLower();
+    return lower.contains(QStringLiteral("this program cannot be run in dos mode"))
+           || lower.contains(QStringLiteral("this program must be run under win32"))
+           || lower.contains(QStringLiteral("this program requires microsoft windows"))
+           || lower.contains(QStringLiteral("this is a windows nt character-mode"));
+}
+
+bool looksLikeVersionQuadruple(int o1, int o2, int o3, int o4)
+{
+    if (o2 == 0 && o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o1 <= 30 && o2 <= 30 && o3 <= 30 && o4 <= 30) {
+        return true;
+    }
+    return false;
+}
+
+bool isLikelyNetworkIpv4(int o1, int o2, int o3, int o4)
+{
+    if (o1 >= 100 || o2 >= 100 || o3 >= 100 || o4 >= 100) {
+        return true;
+    }
+    if (o1 == o2 && o2 == o3 && o3 == o4 && o1 > 0) {
+        return true;
+    }
+    if (o1 == 10 && (o2 > 0 || o3 > 0 || o4 > 0)) {
+        return true;
+    }
+    if (o1 == 127 && o4 > 0) {
+        return true;
+    }
+    if (o1 == 172 && o2 >= 16 && o2 <= 31) {
+        return true;
+    }
+    if (o1 == 192 && o2 == 168) {
+        return true;
+    }
+    return false;
+}
+
+bool hasMetadataContextAroundMatch(const QString &fullText, int matchStart, int matchLength)
+{
+    const QString before =
+        fullText.mid(qMax(0, matchStart - 48), qMin(48, matchStart)).toLower();
+    const QString after =
+        fullText.mid(matchStart + matchLength, 48).toLower();
+    const QString window = before + after;
+    static const char *const kMarkers[] = {
+        "version", "version=", "version=v", "assemblyidentity", "processorarchitecture",
+        "publickeytoken", "netframework", "frameworkdisplayname", "mscorlib", "mscoree",
+        "corlib", "runtime", "targetframework", "productversion", "fileversion"
+    };
+    for (const char *marker : kMarkers) {
+        if (window.contains(QString::fromLatin1(marker))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isPlausibleIpv4(const QString &ip, const QString &fullText, int matchStart)
+{
+    const QStringList parts = ip.split(QLatin1Char('.'));
+    if (parts.size() != 4) {
+        return false;
+    }
+    int octets[4] = {0, 0, 0, 0};
+    bool ok = false;
+    for (int i = 0; i < 4; ++i) {
+        octets[i] = parts.at(i).toInt(&ok);
+        if (!ok || octets[i] < 0 || octets[i] > 255) {
+            return false;
+        }
+    }
+    if (ip == QStringLiteral("0.0.0.0") || ip == QStringLiteral("255.255.255.255")) {
+        return false;
+    }
+
+    if (looksLikeVersionQuadruple(octets[0], octets[1], octets[2], octets[3])
+        && !isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (!isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (matchStart > 0 && matchStart + ip.size() < fullText.size()) {
+        const QChar before = fullText.at(matchStart - 1);
+        const QChar after = fullText.at(matchStart + ip.size());
+        if ((before == QChar('\'') || before == QChar('"'))
+            && (after == QChar('\'') || after == QChar('"') || after == QChar('\\'))) {
+            return false;
+        }
+        if (before.isDigit() || (after.isDigit() && after != QChar('.'))) {
+            return false;
+        }
+    }
+
+    if (hasMetadataContextAroundMatch(fullText, matchStart, ip.size())) {
+        return false;
+    }
+
+    return true;
+}
+
+QString sanitizeHardcodedUrl(const QString &raw)
+{
+    QString url = raw.trimmed();
+    while (!url.isEmpty()) {
+        const QChar ch = url.back();
+        if (ch == QLatin1Char(')') || ch == QLatin1Char(';') || ch == QLatin1Char(',')
+            || ch == QLatin1Char(']') || ch == QLatin1Char('}') || ch == QLatin1Char('>')
+            || ch == QLatin1Char('\'') || ch == QLatin1Char('"')) {
+            url.chop(1);
+        } else {
+            break;
+        }
+    }
+    return url;
+}
+
+bool isPlausibleHardcodedUrl(const QString &url)
+{
+    if (url.size() < 11) {
+        return false;
+    }
+    const QString lower = url.toLower();
+    if (!lower.startsWith(QStringLiteral("http://")) && !lower.startsWith(QStringLiteral("https://"))
+        && !lower.startsWith(QStringLiteral("www."))) {
+        return false;
+    }
+    if (url.contains(QLatin1Char(' '))) {
+        return false;
+    }
+    const int schemeEnd = lower.indexOf(QStringLiteral("://"));
+    if (schemeEnd >= 0) {
+        const QString hostPart = lower.mid(schemeEnd + 3);
+        const int slash = hostPart.indexOf(QLatin1Char('/'));
+        const QString host = slash >= 0 ? hostPart.left(slash) : hostPart;
+        if (host.size() < 3 || !host.contains(QLatin1Char('.'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void collectRegexMatches(const QByteArray &region,
+                         quint32 regionFileOffset,
+                         const QRegularExpression &re,
+                         QVector<PEHardcodedMatch> &out,
+                         int maxMatches,
+                         std::function<bool(const QString &, const QString &, int)> acceptMatch)
+{
+    if (region.isEmpty() || maxMatches <= 0 || out.size() >= maxMatches) {
+        return;
+    }
+    const QString text = QString::fromLatin1(region);
+    QRegularExpressionMatchIterator it = re.globalMatch(text);
+    while (it.hasNext() && out.size() < maxMatches) {
+        const QRegularExpressionMatch match = it.next();
+        QString value = match.captured(0).trimmed();
+        const int matchStart = match.capturedStart(0);
+        value = sanitizeHardcodedUrl(value);
+        if (value.size() < 7 || !acceptMatch(value, text, matchStart)) {
+            continue;
+        }
+        bool duplicate = false;
+        for (const PEHardcodedMatch &existing : out) {
+            if (existing.value.compare(value, Qt::CaseInsensitive) == 0) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate) {
+            continue;
+        }
+        PEHardcodedMatch entry;
+        entry.value = value;
+        entry.length = static_cast<quint32>(value.size());
+        entry.fileOffset = regionFileOffset + static_cast<quint32>(matchStart);
+        out.append(entry);
+    }
+}
+
+PEContentScan PEAnalysis::computeContentScan(const QByteArray &fileData, const PEDataModel &dataModel)
+{
+    PEContentScan scan;
+    const IMAGE_DOS_HEADER *dos = dataModel.getDOSHeader();
+    if (dos && dos->e_lfanew > 0x40 && fileData.size() > static_cast<int>(0x40)) {
+        const quint32 stubEnd = qMin(static_cast<quint32>(dos->e_lfanew), 0x80u);
+        if (stubEnd > 0x40) {
+            scan.dosStubOffset = 0x40;
+            scan.dosStubSize = stubEnd - 0x40;
+            const QByteArray stub = fileData.mid(0x40, static_cast<int>(scan.dosStubSize));
+            scan.dosStubMessage = extractDosStubMessage(stub);
+            if (!scan.dosStubMessage.isEmpty() && !isStandardDosStubMessage(scan.dosStubMessage)) {
+                scan.dosStubNonStandard = true;
+            }
+        }
+    }
+
+    constexpr int kMaxUrlMatches = 12;
+    constexpr int kMaxIpMatches = 12;
+    const QRegularExpression urlRe(
+        QStringLiteral(R"((?:https?://|www\.)[^\s\x00\"<>)\];]{7,})"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression ipRe(
+        QStringLiteral(R"(\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b)"));
+
+    const QList<const IMAGE_SECTION_HEADER *> sections = dataModel.getSections();
+    for (const IMAGE_SECTION_HEADER *sec : sections) {
+        if (!sec || sec->SizeOfRawData == 0) {
+            continue;
+        }
+        const quint32 rawOff = sec->PointerToRawData;
+        const quint32 rawSize = sec->SizeOfRawData;
+        if (rawOff >= static_cast<quint32>(fileData.size())
+            || rawOff + rawSize > static_cast<quint32>(fileData.size())) {
+            continue;
+        }
+        const QByteArray slice = fileData.mid(static_cast<int>(rawOff), static_cast<int>(rawSize));
+        collectRegexMatches(slice, rawOff, urlRe, scan.urls, kMaxUrlMatches,
+                            [](const QString &url, const QString &, int) {
+                                return isPlausibleHardcodedUrl(url);
+                            });
+        collectRegexMatches(slice, rawOff, ipRe, scan.ips, kMaxIpMatches,
+                            [](const QString &ip, const QString &text, int start) {
+                                return isPlausibleIpv4(ip, text, start);
+                            });
+        if (scan.urls.size() >= kMaxUrlMatches && scan.ips.size() >= kMaxIpMatches) {
+            break;
+        }
+    }
+
+    return scan;
 }
 
 namespace {

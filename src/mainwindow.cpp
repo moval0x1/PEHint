@@ -113,6 +113,64 @@ constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
 constexpr int kImportByOrdinalRole = Qt::UserRole + 31;
 constexpr int kFindingCategoryHeaderRole = Qt::UserRole + 41;
+constexpr int kFindingRuleIdRole = Qt::UserRole + 42;
+
+QColor flaggedImportRowColor(PEFindingSeverity severity)
+{
+    switch (severity) {
+    case PEFindingSeverity::High:
+        return QColor(255, 230, 230);
+    case PEFindingSeverity::Medium:
+        return QColor(255, 248, 220);
+    case PEFindingSeverity::Low:
+        return QColor(240, 248, 255);
+    default:
+        return QColor(245, 245, 245);
+    }
+}
+
+void applyFlaggedImportRowStyle(QTreeWidgetItem *item, const QString &moduleName,
+                                const PEDataModel::ImportFunctionEntry &entry)
+{
+    if (!item || entry.name.isEmpty() || entry.importedByOrdinal) {
+        return;
+    }
+    PEFindingSeverity severity = PEFindingSeverity::Medium;
+    QString note;
+    if (!PEFindingsEngine::isFlaggedImport(moduleName, entry.name, &severity, &note)) {
+        return;
+    }
+    const QColor bg = flaggedImportRowColor(severity);
+    for (int col = 0; col < item->columnCount(); ++col) {
+        item->setBackground(col, bg);
+    }
+    if (!note.isEmpty()) {
+        QMap<QString, QString> params;
+        params[QStringLiteral("note")] = note;
+        item->setToolTip(0, LANG_PARAMS(QStringLiteral("UI/imports_flagged_tooltip"), params));
+    } else {
+        item->setToolTip(0, LANG(QStringLiteral("UI/imports_flagged_tooltip_short")));
+    }
+}
+
+QString formatHardcodedMatchesInsightHtml(const QString &title, const QString &intro,
+                                          const QVector<PEHardcodedMatch> &matches)
+{
+    QString html = QStringLiteral(
+                       "<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;"
+                       "color:#222;line-height:1.55;'>"
+                       "<p style='font-weight:600;font-size:12px;margin:0 0 6px 0;'>%1</p>"
+                       "<p style='color:#555;margin:0 0 8px 0;'>%2</p>"
+                       "<ul style='margin:0;padding-left:18px;'>")
+                       .arg(title.toHtmlEscaped(), intro.toHtmlEscaped());
+    for (const PEHardcodedMatch &m : matches) {
+        html += QStringLiteral("<li style='margin-bottom:4px;'><code>%1</code> "
+                               "<span style='color:#666;'>@ %2</span></li>")
+                    .arg(m.value.toHtmlEscaped(), PEUtils::formatHexWidth(m.fileOffset, 8));
+    }
+    html += QStringLiteral("</ul></div>");
+    return html;
+}
 
 /** File Insights rows that attach explicit offset/size roles for hex sync. */
 bool fileInsightUsesHexRoles(const QString &fieldName)
@@ -2202,6 +2260,9 @@ void MainWindow::applyFindingsFilter()
             row->setData(0, kFieldOffsetRole, finding.hexOffset);
             row->setData(0, kFieldSizeRole, finding.hexSize);
         }
+        if (!finding.ruleId.isEmpty()) {
+            row->setData(0, kFindingRuleIdRole, finding.ruleId);
+        }
         const QColor bg = severityColor(finding);
         for (int col = 0; col < 3; ++col) {
             row->setBackground(col, bg);
@@ -2307,6 +2368,18 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
 
     if (range.canHighlight || range.canGoTo) {
         applyFieldHexNavigation(item, range);
+    }
+
+    const QString ruleId = item->data(0, kFindingRuleIdRole).toString();
+    const QString baseRuleId = ruleId.section(QLatin1Char(':'), 0, 0);
+    if (baseRuleId == QStringLiteral("hardcoded_url") || baseRuleId == QStringLiteral("hardcoded_ip")) {
+        const PEContentScan scan = m_peParser->getDataModel().getContentScan();
+        const QVector<PEHardcodedMatch> &matches =
+            baseRuleId == QStringLiteral("hardcoded_url") ? scan.urls : scan.ips;
+        const QString title = item->text(1);
+        const QString intro = LANG(QStringLiteral("findings/hardcoded_matches_intro"));
+        showFindingsInsightHtml(formatHardcodedMatchesInsightHtml(title, intro, matches));
+        return;
     }
 
     const QString title = item->text(1);
@@ -2475,6 +2548,21 @@ void MainWindow::populateImportsTab()
         QTreeWidgetItem *moduleItem = new QTreeWidgetItem(m_uiManager->m_importModulesTree);
         moduleItem->setText(0, moduleName);
         moduleItem->setText(1, QString::number(functions.size()));
+        int flaggedCount = 0;
+        for (const PEDataModel::ImportFunctionEntry &entry : functions) {
+            if (!entry.importedByOrdinal
+                && PEFindingsEngine::isFlaggedImport(moduleName, entry.name)) {
+                ++flaggedCount;
+            }
+        }
+        if (flaggedCount > 0) {
+            const QColor bg = QColor(255, 248, 220);
+            moduleItem->setBackground(0, bg);
+            moduleItem->setBackground(1, bg);
+            QMap<QString, QString> params;
+            params[QStringLiteral("count")] = QString::number(flaggedCount);
+            moduleItem->setToolTip(0, LANG_PARAMS(QStringLiteral("UI/imports_module_flagged_tooltip"), params));
+        }
     }
 
     if (m_uiManager->m_importModulesTree->topLevelItemCount() > 0) {
@@ -2512,6 +2600,21 @@ void MainWindow::populateDelayImportsTab()
         QTreeWidgetItem *moduleItem = new QTreeWidgetItem(m_uiManager->m_delayImportModulesTree);
         moduleItem->setText(0, moduleName);
         moduleItem->setText(1, QString::number(functions.size()));
+        int flaggedCount = 0;
+        for (const PEDataModel::ImportFunctionEntry &entry : functions) {
+            if (!entry.importedByOrdinal
+                && PEFindingsEngine::isFlaggedImport(moduleName, entry.name)) {
+                ++flaggedCount;
+            }
+        }
+        if (flaggedCount > 0) {
+            const QColor bg = QColor(255, 248, 220);
+            moduleItem->setBackground(0, bg);
+            moduleItem->setBackground(1, bg);
+            QMap<QString, QString> params;
+            params[QStringLiteral("count")] = QString::number(flaggedCount);
+            moduleItem->setToolTip(0, LANG_PARAMS(QStringLiteral("UI/imports_module_flagged_tooltip"), params));
+        }
     }
 
     if (m_uiManager->m_delayImportModulesTree->topLevelItemCount() > 0) {
@@ -2909,6 +3012,11 @@ void MainWindow::applyStringsFilter()
     for (const ExtractedString &s : m_extractedStrings) {
         if (typeFilter == QLatin1String("ascii") && s.isUnicode) continue;
         if (typeFilter == QLatin1String("unicode") && !s.isUnicode) continue;
+        if ((typeFilter == QLatin1String("url") || typeFilter == QLatin1String("ip")
+             || typeFilter == QLatin1String("registry"))
+            && !PEStringExtractor::matchesContentFilter(s.value, typeFilter)) {
+            continue;
+        }
         if (!filterText.isEmpty() && !s.value.contains(filterText, Qt::CaseInsensitive)) continue;
 
         QString displayValue = s.value;
@@ -3507,10 +3615,13 @@ void MainWindow::updateUILanguage()
     if (m_uiManager && m_uiManager->m_stringsFilterEdit) {
         m_uiManager->m_stringsFilterEdit->setPlaceholderText(LANG("UI/strings_filter_placeholder"));
     }
-    if (m_uiManager && m_uiManager->m_stringsTypeCombo && m_uiManager->m_stringsTypeCombo->count() >= 3) {
+    if (m_uiManager && m_uiManager->m_stringsTypeCombo && m_uiManager->m_stringsTypeCombo->count() >= 6) {
         m_uiManager->m_stringsTypeCombo->setItemText(0, LANG("UI/strings_filter_type_all"));
         m_uiManager->m_stringsTypeCombo->setItemText(1, LANG("UI/strings_filter_type_ascii"));
         m_uiManager->m_stringsTypeCombo->setItemText(2, LANG("UI/strings_filter_type_unicode"));
+        m_uiManager->m_stringsTypeCombo->setItemText(3, LANG("UI/strings_filter_type_url"));
+        m_uiManager->m_stringsTypeCombo->setItemText(4, LANG("UI/strings_filter_type_ip"));
+        m_uiManager->m_stringsTypeCombo->setItemText(5, LANG("UI/strings_filter_type_registry"));
     }
     if (m_uiManager && m_uiManager->m_stringsMinLengthSpin) {
         m_uiManager->m_stringsMinLengthSpin->setPrefix(LANG("UI/strings_min_len_prefix"));
@@ -3783,6 +3894,7 @@ void MainWindow::populateImportFunctions(const QString &moduleName)
         } else {
             item->setText(2, QString());
         }
+        applyFlaggedImportRowStyle(item, moduleName, entry);
     }
 
     if (m_uiManager->m_importFunctionsTree->topLevelItemCount() > 0) {
@@ -3911,6 +4023,7 @@ void MainWindow::populateDelayImportFunctions(const QString &moduleName)
         } else {
             item->setText(2, QString());
         }
+        applyFlaggedImportRowStyle(item, moduleName, entry);
     }
 }
 

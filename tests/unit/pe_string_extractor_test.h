@@ -16,6 +16,7 @@ private slots:
     void testUnicodeUtf16Le();
     void testExtractFromFile();
     void testEmptyData();
+    void testContentFilters();
 };
 
 #endif

@@ -148,6 +148,8 @@ public:
     PEAnalysisMetadata getAnalysisMetadata() const;
     void setFileMetrics(const PEFileMetrics &metrics);
     PEFileMetrics getFileMetrics() const;
+    void setContentScan(const PEContentScan &scan);
+    PEContentScan getContentScan() const;
     void setTlsCallbacksPresent(bool present);
 
     void setDelayImports(const QStringList &imports);
@@ -242,6 +244,7 @@ private:
     PEVersionInfo m_versionInfo;
     PEAnalysisMetadata m_analysisMetadata;
     PEFileMetrics m_fileMetrics;
+    PEContentScan m_contentScan;
     QStringList m_delayImports;
     QMap<QString, QList<ImportFunctionEntry>> m_delayImportFunctionDetails;
 };

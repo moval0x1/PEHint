@@ -45,6 +45,7 @@ PEDataModel::PEDataModel()
     m_versionInfo = PEVersionInfo{};
     m_analysisMetadata = PEAnalysisMetadata{};
     m_fileMetrics = PEFileMetrics{};
+    m_contentScan = PEContentScan{};
 }
 
 PEDataModel::~PEDataModel()
@@ -479,6 +480,16 @@ PEFileMetrics PEDataModel::getFileMetrics() const
     return m_fileMetrics;
 }
 
+void PEDataModel::setContentScan(const PEContentScan &scan)
+{
+    m_contentScan = scan;
+}
+
+PEContentScan PEDataModel::getContentScan() const
+{
+    return m_contentScan;
+}
+
 void PEDataModel::setTlsCallbacksPresent(bool present)
 {
     m_analysisMetadata.tlsCallbacksPresent = present;
@@ -574,4 +585,5 @@ void PEDataModel::clear()
     m_versionInfo = PEVersionInfo{};
     m_analysisMetadata = PEAnalysisMetadata{};
     m_fileMetrics = PEFileMetrics{};
+    m_contentScan = PEContentScan{};
 }

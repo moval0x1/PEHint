@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "rules": [
     {
       "id": "missing_aslr",
@@ -278,6 +278,53 @@
       "severity": "low",
       "titleKey": "findings/packer_section_name_title",
       "detailKey": "findings/packer_section_name_detail",
+      "enabled": true
+    },
+    {
+      "id": "flagged_import",
+      "check": "flagged_import",
+      "severity": "medium",
+      "titleKey": "findings/flagged_import_title",
+      "detailKey": "findings/flagged_import_detail",
+      "category": "imports",
+      "enabled": true
+    },
+    {
+      "id": "hardcoded_url",
+      "check": "hardcoded_url",
+      "severity": "medium",
+      "titleKey": "findings/hardcoded_url_title",
+      "detailKey": "findings/hardcoded_url_detail",
+      "category": "content",
+      "enabled": true
+    },
+    {
+      "id": "hardcoded_ip",
+      "check": "hardcoded_ip",
+      "severity": "medium",
+      "titleKey": "findings/hardcoded_ip_title",
+      "detailKey": "findings/hardcoded_ip_detail",
+      "category": "content",
+      "enabled": true
+    },
+    {
+      "id": "nonstandard_dos_stub",
+      "check": "nonstandard_dos_stub",
+      "severity": "low",
+      "titleKey": "findings/nonstandard_dos_stub_title",
+      "detailKey": "findings/nonstandard_dos_stub_detail",
+      "treeField": "DOS_STUB",
+      "category": "content",
+      "enabled": true
+    },
+    {
+      "id": "duplicate_exports",
+      "check": "duplicate_exports",
+      "severity": "low",
+      "titleKey": "findings/duplicate_exports_title",
+      "detailKey": "findings/duplicate_exports_detail",
+      "treeField": "Data Directories",
+      "category": "imports",
       "enabled": true
     }
   ]

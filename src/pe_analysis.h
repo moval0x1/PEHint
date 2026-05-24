@@ -59,6 +59,22 @@ struct PEFileMetrics {
     bool toolchainValid = false;
 };
 
+struct PEHardcodedMatch {
+    QString value;
+    quint32 fileOffset = 0;
+    quint32 length = 0;
+};
+
+/** URLs/IPs in section raw data and DOS stub triage — filled in analyzeIntoModel(). */
+struct PEContentScan {
+    QString dosStubMessage;
+    bool dosStubNonStandard = false;
+    quint32 dosStubOffset = 0;
+    quint32 dosStubSize = 0;
+    QVector<PEHardcodedMatch> urls;
+    QVector<PEHardcodedMatch> ips;
+};
+
 struct PEVersionInfo {
     bool present = false;
     QString fileVersion;
@@ -101,6 +117,8 @@ public:
     static QString computeImphash(const PEDataModel &dataModel);
     static quint64 computePeLogicalSize(const PEDataModel &dataModel, qint64 fileSize);
     static PEFileMetrics computeFileMetrics(const QByteArray &fileData, const PEDataModel &dataModel);
+
+    static PEContentScan computeContentScan(const QByteArray &fileData, const PEDataModel &dataModel);
 
     /** Parses VS_VERSION_INFO strings from the PE resource directory (RT_VERSION). */
     static PEVersionInfo parseVersionResource(const QByteArray &fileData, const PEDataModel &dataModel);

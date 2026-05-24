@@ -83,3 +83,12 @@ void PEStringExtractorTest::testExtractFromFile()
     QVERIFY(found);
 }
 
+void PEStringExtractorTest::testContentFilters()
+{
+    QVERIFY(PEStringExtractor::matchesContentFilter(QStringLiteral("https://example.com/x"), QStringLiteral("url")));
+    QVERIFY(PEStringExtractor::matchesContentFilter(QStringLiteral("server 192.168.1.50"), QStringLiteral("ip")));
+    QVERIFY(!PEStringExtractor::matchesContentFilter(QStringLiteral("6.0.0.0"), QStringLiteral("ip")));
+    QVERIFY(PEStringExtractor::matchesContentFilter(QStringLiteral("HKLM\\Software\\Foo"), QStringLiteral("registry")));
+    QVERIFY(!PEStringExtractor::matchesContentFilter(QStringLiteral("hello"), QStringLiteral("url")));
+}
+
