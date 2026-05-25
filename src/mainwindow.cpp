@@ -41,6 +41,7 @@
 #include "strings_controller.h"
 #include "exports_controller.h"
 #include "structure_tree_controller.h"
+#include "analysis_display_controller.h"
 #include "pe_report_builder.h"
 #include "section_layout_widget.h"
 #include "sdk_api_markdown_reader.h"
@@ -91,8 +92,8 @@
  * 2. Delegates UI setup to UIManager, reducing MainWindow's responsibilities
  * 3. Maintains the same public interface for backward compatibility
  * 
- * The refactoring reduces MainWindow from ~1500 lines to under 500 lines,
- * making it more maintainable and easier to understand.
+ * UI orchestration is split across UIManager, tab controllers, MainWindowChrome,
+ * and AnalysisDisplayController so MainWindow stays focused on file lifecycle.
  */
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -238,6 +239,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_exportsController->setParser(m_peParser);
 
     m_structureTreeController = new StructureTreeController(m_peParser, m_uiManager, this);
+
+    m_analysisDisplay = new AnalysisDisplayController(this,
+                                                      m_uiManager,
+                                                      m_peParser,
+                                                      m_findingsController,
+                                                      m_stringsController,
+                                                      m_structureTreeController,
+                                                      this);
+    m_analysisDisplay->setLanguageRefreshEpoch(&m_languageRefreshEpoch);
+    m_analysisDisplay->setOnAnalysisTabChanged([this](int index) { onAnalysisTabChanged(index); });
 
     m_chrome = new MainWindowChrome(this);
     m_chrome->setUiManager(m_uiManager);
@@ -502,166 +513,11 @@ void MainWindow::dropEvent(QDropEvent *event)
     event->ignore();
 }
 
-namespace {
-/**
- * Resolve About-dialog strings with English fallbacks when the deployed language_config*.ini
- * is older than the app and omits keys (otherwise getString returns the raw key, e.g. "UI/about_description").
- */
-QString aboutLine(const QString &key, const QString &englishFallback)
-{
-    const QString s = LanguageManager::getInstance().getString(key, englishFallback);
-    return (s == key) ? englishFallback : s;
-}
-
-/** Strip leading "- " from feature lines for HTML bullet list display. */
-QString aboutFeatureBody(const QString &line)
-{
-    QString t = line.trimmed();
-    if (t.startsWith(QLatin1Char('-'))) {
-        t = t.mid(1).trimmed();
-    }
-    return t;
-}
-} // namespace
-
-// Menu action handlers
 void MainWindow::on_action_PEHint_triggered()
 {
-    LanguageManager &lm = LanguageManager::getInstance();
-
-    QMap<QString, QString> verParams;
-    verParams[QStringLiteral("version")] = QStringLiteral(PEHINT_VERSION_STRING);
-    const QString versionLine = lm.getString(QStringLiteral("UI/about_version"), verParams,
-                                             QStringLiteral("Version: {version}"));
-
-    const QString titleText = aboutLine(QStringLiteral("UI/about_title"), QStringLiteral("About PEHint"));
-    const QString authorHtml = aboutLine(QStringLiteral("UI/about_author"),
-        QStringLiteral("Author: <a href='https://moval0x1.github.io/'>moval0x1</a>"));
-    const QString descText = aboutLine(QStringLiteral("UI/about_description"),
-        QStringLiteral("A visual PE file analyzer for learning, reverse engineering, and quick structural inspection."));
-    const QString featuresHeading = aboutLine(QStringLiteral("UI/about_features"), QStringLiteral("Features:"));
-    const QString footerText = aboutLine(QStringLiteral("UI/about_perfect"),
-        QStringLiteral("Open source (MIT) â€” learn the PE format without jumping between tools."));
-
-    const QStringList featureLines = {
-        aboutLine(QStringLiteral("UI/about_feature_1"),
-                  QStringLiteral("- Interactive structure tree: DOS headers, NT headers, sections, and all 16 data directories")),
-        aboutLine(QStringLiteral("UI/about_feature_2"),
-                  QStringLiteral("- Field explanations in the dedicated explanation panel")),
-        aboutLine(QStringLiteral("UI/about_feature_3"),
-                  QStringLiteral("- Imports and Exports views; Dependencies tab with DLL resolution; Strings tab with extraction and export")),
-        aboutLine(QStringLiteral("UI/about_feature_4"),
-                  QStringLiteral("- Hex viewer synchronized with tree selections and field ranges")),
-        aboutLine(QStringLiteral("UI/about_feature_5"),
-                  QStringLiteral("- English and Portuguese UI with external JSON explanations")),
-    };
-
-    QDialog about(this);
-    about.setWindowTitle(titleText);
-    about.setModal(true);
-    about.setMinimumWidth(580);
-    about.setMaximumWidth(720);
-
-    auto *root = new QVBoxLayout(&about);
-    root->setSpacing(14);
-    root->setContentsMargins(28, 22, 28, 20);
-
-    auto *headerRow = new QHBoxLayout();
-    headerRow->setSpacing(22);
-
-    constexpr int kAboutIconSize = 96;
-    auto *iconLabel = new QLabel(&about);
-    {
-        const QPixmap pehintIcon(QStringLiteral(":/images/imgs/PEHint.png"));
-        if (!pehintIcon.isNull()) {
-            iconLabel->setPixmap(pehintIcon.scaled(kAboutIconSize, kAboutIconSize, Qt::KeepAspectRatio,
-                                                   Qt::SmoothTransformation));
-        }
-        iconLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-        iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    if (m_chrome) {
+        m_chrome->showAboutDialog(this);
     }
-
-    auto *headCol = new QVBoxLayout();
-    headCol->setSpacing(6);
-
-    auto *titleLbl = new QLabel(titleText, &about);
-    QFont titleFont = titleLbl->font();
-    titleFont.setPointSizeF(titleFont.pointSizeF() + 2.5);
-    titleFont.setBold(true);
-    titleLbl->setFont(titleFont);
-    titleLbl->setWordWrap(true);
-
-    auto *verLbl = new QLabel(versionLine, &about);
-    verLbl->setObjectName(QStringLiteral("aboutVersion"));
-    verLbl->setForegroundRole(QPalette::Mid);
-
-    auto *authorLbl = new QLabel(authorHtml, &about);
-    authorLbl->setTextFormat(Qt::RichText);
-    authorLbl->setOpenExternalLinks(true);
-    authorLbl->setTextInteractionFlags(Qt::TextBrowserInteraction);
-
-    headCol->addWidget(titleLbl);
-    headCol->addWidget(verLbl);
-    headCol->addWidget(authorLbl);
-    headCol->addStretch(0);
-
-    headerRow->addWidget(iconLabel, 0, Qt::AlignTop);
-    headerRow->addLayout(headCol, 1);
-
-    auto *descLbl = new QLabel(descText, &about);
-    descLbl->setWordWrap(true);
-    descLbl->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-
-    auto *sep1 = new QFrame(&about);
-    sep1->setFrameShape(QFrame::HLine);
-    sep1->setFrameShadow(QFrame::Plain);
-    sep1->setForegroundRole(QPalette::Mid);
-
-    auto *featHeadLbl = new QLabel(featuresHeading, &about);
-    QFont featHeadFont = featHeadLbl->font();
-    featHeadFont.setBold(true);
-    featHeadLbl->setFont(featHeadFont);
-
-    QString featHtml = QStringLiteral("<ul style=\"margin-top: 4px; margin-bottom: 0; padding-left: 22px;\">");
-    for (const QString &raw : featureLines) {
-        const QString item = aboutFeatureBody(raw).toHtmlEscaped();
-        featHtml += QStringLiteral("<li style=\"margin-top: 5px;\">%1</li>").arg(item);
-    }
-    featHtml += QStringLiteral("</ul>");
-    auto *featLbl = new QLabel(&about);
-    featLbl->setTextFormat(Qt::RichText);
-    featLbl->setText(featHtml);
-    featLbl->setWordWrap(true);
-    featLbl->setOpenExternalLinks(false);
-
-    auto *sep2 = new QFrame(&about);
-    sep2->setFrameShape(QFrame::HLine);
-    sep2->setFrameShadow(QFrame::Plain);
-    sep2->setForegroundRole(QPalette::Mid);
-
-    auto *footLbl = new QLabel(footerText, &about);
-    footLbl->setWordWrap(true);
-    footLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    QFont footFont = footLbl->font();
-    footFont.setItalic(true);
-    footFont.setPointSizeF(qMax(8.0, footFont.pointSizeF() - 0.5));
-    footLbl->setFont(footFont);
-    footLbl->setForegroundRole(QPalette::Mid);
-
-    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok, &about);
-    buttonBox->setCenterButtons(true);
-    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &about, &QDialog::accept);
-
-    root->addLayout(headerRow);
-    root->addWidget(descLbl);
-    root->addWidget(sep1);
-    root->addWidget(featHeadLbl);
-    root->addWidget(featLbl);
-    root->addWidget(sep2);
-    root->addWidget(footLbl);
-    root->addWidget(buttonBox);
-
-    about.exec();
 }
 
 void MainWindow::on_action_Open_triggered()
@@ -747,7 +603,9 @@ void MainWindow::onParsingComplete(bool success)
             }
 
             // Tree â†’ welcome/hex â†’ strings/tab on separate event-loop passes (keeps UI responsive).
-            scheduleStagedAnalysisDisplay(completedPath, [this, completedPath]() {
+            m_analysisDisplay->setFileLoaded(true);
+            m_analysisDisplay->setCurrentFilePath(m_currentFilePath);
+            m_analysisDisplay->scheduleDisplay(completedPath, [this, completedPath]() {
                 if (completedPath != m_currentFilePath) {
                     return;
                 }
@@ -824,15 +682,6 @@ void MainWindow::onHexViewerByteClicked(qint64 offset, int length)
     Q_UNUSED(length);
 }
 
-void MainWindow::onLanguageChanged(const QString &language)
-{
-    Q_UNUSED(language);
-    // Legacy hook: defer like LanguageManager::languageChanged so we never refresh menus synchronously.
-    QTimer::singleShot(0, this, [this]() {
-        onApplicationLanguageChanged(LanguageManager::getInstance().getCurrentLanguage());
-    });
-}
-
 void MainWindow::onApplicationLanguageChanged(const QString &languageCode)
 {
     Q_UNUSED(languageCode);
@@ -906,7 +755,9 @@ void MainWindow::refreshOpenFileAfterLanguageChange(quint64 languageRefreshEpoch
         m_exportsController->invalidate();
     }
 
-    scheduleStagedAnalysisDisplay(QString(), [this]() {
+    m_analysisDisplay->setFileLoaded(m_fileLoaded);
+    m_analysisDisplay->setCurrentFilePath(m_currentFilePath);
+    m_analysisDisplay->scheduleDisplay(QString(), [this]() {
         if (m_dependenciesController) {
             m_dependenciesController->updateExpandCollapseButtonState();
         }
@@ -1057,6 +908,10 @@ void MainWindow::loadPEFile(const QString &filePath)
 
 void MainWindow::clearDisplay()
 {
+    if (m_analysisDisplay) {
+        m_analysisDisplay->setFileLoaded(false);
+        m_analysisDisplay->setCurrentFilePath(QString());
+    }
     if (m_structureTreeController) {
         m_structureTreeController->resetSessionState();
     }
@@ -1146,141 +1001,6 @@ void MainWindow::updateFileInfo()
     m_uiManager->m_saveButton->setEnabled(true);
 }
 
-void MainWindow::scheduleStagedAnalysisDisplay(const QString &pathGuard, std::function<void()> onComplete,
-                                               quint64 languageRefreshEpoch)
-{
-    auto guard = [this, pathGuard, languageRefreshEpoch]() -> bool {
-        if (!m_fileLoaded || !m_uiManager || !m_peParser) {
-            return false;
-        }
-        if (!pathGuard.isEmpty() && m_currentFilePath != pathGuard) {
-            return false;
-        }
-        if (languageRefreshEpoch != 0 && m_languageRefreshEpoch != languageRefreshEpoch) {
-            return false;
-        }
-        return true;
-    };
-
-    QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
-                                 onComplete = std::move(onComplete)]() mutable {
-        if (!guard()) {
-            if (onComplete) {
-                onComplete();
-            }
-            return;
-        }
-        analysisDisplayPhaseTree();
-        QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
-                                     onComplete = std::move(onComplete)]() mutable {
-            if (!guard()) {
-                if (onComplete) {
-                    onComplete();
-                }
-                return;
-            }
-            analysisDisplayPhaseWelcomeOnly();
-            QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
-                                         onComplete = std::move(onComplete)]() mutable {
-                if (!guard()) {
-                    if (onComplete) {
-                        onComplete();
-                    }
-                    return;
-                }
-                analysisDisplayPhaseHexSetData();
-                QTimer::singleShot(0, this, [this, guard, pathGuard, languageRefreshEpoch,
-                                             onComplete = std::move(onComplete)]() mutable {
-                    if (!guard()) {
-                        if (onComplete) {
-                            onComplete();
-                        }
-                        return;
-                    }
-                    analysisDisplayPhaseStringsTab();
-
-                    HexViewer *hexViewer = m_uiManager ? m_uiManager->m_hexViewer : nullptr;
-                    if (hexViewer && hexViewer->isHexDocumentBuildInProgress()) {
-                        // Large files: hex text is built on a worker thread; do not claim "fully loaded" yet.
-                        if (m_uiManager->m_progressBar) {
-                            m_uiManager->m_progressBar->setVisible(true);
-                            m_uiManager->m_progressBar->setRange(0, 0); // busy / indeterminate
-                        }
-                        if (m_uiManager->m_progressLabel) {
-                            m_uiManager->m_progressLabel->setText(
-                                LANG(QStringLiteral("UI/status_preparing_hex_view")));
-                        }
-                        statusBar()->showMessage(LANG(QStringLiteral("UI/status_preparing_hex_view")));
-                        connect(hexViewer, &HexViewer::hexContentReady, this,
-                                [this, pathGuard, languageRefreshEpoch,
-                                 oc = std::move(onComplete)]() mutable {
-                                    if (!m_fileLoaded || !m_uiManager) {
-                                        return;
-                                    }
-                                    if (languageRefreshEpoch != 0
-                                        && m_languageRefreshEpoch != languageRefreshEpoch) {
-                                        return;
-                                    }
-                                    if (!pathGuard.isEmpty() && m_currentFilePath != pathGuard) {
-                                        return;
-                                    }
-                                    if (m_uiManager->m_progressBar) {
-                                        m_uiManager->m_progressBar->setRange(0, 100);
-                                    }
-                                    if (oc) {
-                                        oc();
-                                    }
-                                },
-                                Qt::SingleShotConnection);
-                    } else {
-                        if (onComplete) {
-                            onComplete();
-                        }
-                    }
-                });
-            });
-        });
-    });
-}
-
-void MainWindow::updateAnalysisDisplay()
-{
-    scheduleStagedAnalysisDisplay(QString());
-}
-
-void MainWindow::analysisDisplayPhaseTree()
-{
-    if (!m_fileLoaded || !m_uiManager || !m_peParser) {
-        return;
-    }
-
-    m_uiManager->m_peTree->setUpdatesEnabled(false);
-    m_uiManager->m_peTree->blockSignals(true);
-    m_uiManager->m_peTree->setCurrentItem(nullptr);
-    m_uiManager->m_peTree->clear();
-    QList<QTreeWidgetItem *> items = m_peParser->getPEStructureTree();
-    for (QTreeWidgetItem *item : items) {
-        m_uiManager->m_peTree->addTopLevelItem(item);
-    }
-    m_uiManager->m_peTree->blockSignals(false);
-    m_uiManager->m_peTree->setUpdatesEnabled(true);
-
-    const bool hasItems = !items.isEmpty();
-    if (m_uiManager->m_expandAllButton) {
-        m_uiManager->m_expandAllButton->setEnabled(hasItems);
-    }
-    if (m_uiManager->m_collapseAllButton) {
-        m_uiManager->m_collapseAllButton->setEnabled(hasItems);
-    }
-
-    if (m_findingsController) {
-        m_findingsController->refresh();
-    }
-}
-
-
-
-
 
 
 
@@ -1304,82 +1024,6 @@ void MainWindow::onFindingsItemClicked(QTreeWidgetItem *item, int column)
     Q_UNUSED(column);
     if (m_findingsController) {
         m_findingsController->handleFindingItemClicked(item);
-    }
-}
-
-void MainWindow::analysisDisplayPhaseWelcomeOnly()
-{
-    if (!m_fileLoaded || !m_uiManager || !m_peParser) {
-        return;
-    }
-
-    QMap<QString, QString> params;
-    params[QStringLiteral("version")] = PEHINT_VERSION_STRING_FULL;
-    const QString welcomeMessage = QString(
-                                           QStringLiteral("<div style='text-align: center; color: #666; padding: 20px;'>"
-                                                          "<h3>%1</h3>"
-                                                          "<p><b>%2</b></p>"
-                                                          "<p><b>%3</b></p>"
-                                                          "<p>%4</p>"
-                                                          "</div>"))
-                                       .arg(LANG(QStringLiteral("UI/welcome_title")),
-                                            LANG_PARAMS(QStringLiteral("UI/placeholder_welcome"), params),
-                                            LANG(QStringLiteral("UI/click_field_explanation")),
-                                            LANG(QStringLiteral("UI/welcome_description")));
-
-    QString extraWelcomeHtml;
-    if (m_peParser->isValid() && m_peParser->isLargeFile()) {
-        QMap<QString, QString> lf;
-        lf[QStringLiteral("size")] = QString::number(m_peParser->getFileSize() / (1024.0 * 1024.0), 'f', 1);
-        extraWelcomeHtml = QStringLiteral("<div style='color: orange; font-weight: bold; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;'>%1</div>")
-                               .arg(LANG_PARAMS(QStringLiteral("UI/large_file_memory_note"), lf));
-    }
-    if (!extraWelcomeHtml.isEmpty()) {
-        m_uiManager->m_fieldExplanationText->setHtml(welcomeMessage + extraWelcomeHtml);
-    } else {
-        m_uiManager->m_fieldExplanationText->setHtml(welcomeMessage);
-    }
-}
-
-void MainWindow::analysisDisplayPhaseHexSetData()
-{
-    if (!m_fileLoaded || !m_uiManager || !m_peParser) {
-        return;
-    }
-    if (!m_peParser->isValid() || !m_uiManager->m_hexViewer) {
-        return;
-    }
-
-    const QByteArray &fileData = m_peParser->getFileData();
-    QByteArray diskData;
-    const QByteArray *useData = nullptr;
-    if (!fileData.isEmpty()) {
-        useData = &fileData;
-    } else {
-        QFile file(m_currentFilePath);
-        if (file.open(QIODevice::ReadOnly)) {
-            diskData = file.readAll();
-            file.close();
-            useData = &diskData;
-        }
-    }
-    if (useData && !useData->isEmpty()) {
-        m_uiManager->m_hexViewer->setData(*useData, useData->size());
-    }
-}
-
-void MainWindow::analysisDisplayPhaseStringsTab()
-{
-    if (!m_fileLoaded || !m_uiManager || !m_peParser) {
-        return;
-    }
-
-    if (m_stringsController) {
-        m_stringsController->populateSectionCombo();
-    }
-
-    if (m_uiManager->m_analysisTabWidget) {
-        onAnalysisTabChanged(m_uiManager->m_analysisTabWidget->currentIndex());
     }
 }
 
@@ -1486,11 +1130,6 @@ void MainWindow::onAnalysisTabChanged(int index)
 void MainWindow::showError(const QString &title, const QString &message)
 {
     QMessageBox::critical(this, title, message);
-}
-
-void MainWindow::showInfo(const QString &title, const QString &message)
-{
-    QMessageBox::information(this, title, message);
 }
 
 QString MainWindow::getFileSizeString(qint64 size) const

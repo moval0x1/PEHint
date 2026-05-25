@@ -25,6 +25,10 @@ add_executable(PEHintTests
     unit/pe_cli_scan_test.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_parser_new.h
+    ${CMAKE_SOURCE_DIR}/src/pe_tree_insight_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_tree_insight_helpers.h
+    ${CMAKE_SOURCE_DIR}/src/pe_file_insights.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_file_insights.h
     ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.h
     ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp

@@ -52,6 +52,7 @@ public:
     void refreshTranslatedUi(bool fileLoaded);
 
     bool saveReportToFile(const PEDataModel &model, bool fileLoaded, QWidget *parent);
+    void showAboutDialog(QWidget *parent);
 
     QMenu *contextMenu() const { return m_contextMenu; }
 

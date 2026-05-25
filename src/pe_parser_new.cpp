@@ -1,9 +1,11 @@
-#include "pe_parser_new.h"
+﻿#include "pe_parser_new.h"
 #include "pe_authenticode.h"
 #include "pe_ui_presenter.h"
 #include "pe_ep_disasm.h"
 #include "pe_utils.h"
 #include "pe_analysis.h"
+#include "pe_file_insights.h"
+#include "pe_tree_insight_helpers.h"
 #include "language_manager.h"
 #include <QDebug>
 #include <QFileInfo>
@@ -23,54 +25,14 @@
 #include <cstddef>
 #include <cstring>
 
+using PeTreeInsight::dataDirectoryFieldKeys;
+using PeTreeInsight::insightExplanationHtml;
+using PeTreeInsight::insightMeaningText;
+using PeTreeInsight::isFileInsightJsonKey;
+
 namespace {
 constexpr int kFieldOffsetRole = Qt::UserRole + 20;
 constexpr int kFieldSizeRole = Qt::UserRole + 21;
-
-QString uiStringWithFallback(const QString &key, const QString &fallback)
-{
-    const QString fromIni = LanguageManager::getInstance().getIniString(key);
-    if (!fromIni.isEmpty()) {
-        return fromIni;
-    }
-    return LanguageManager::getInstance().getString(key, fallback);
-}
-
-QString formatHexPreview(const QByteArray &data, int maxBytes = 72)
-{
-    if (data.isEmpty()) {
-        return QString();
-    }
-    const int cap = qMin(data.size(), maxBytes);
-    QString s;
-    s.reserve(static_cast<int>(static_cast<size_t>(cap) * 3u));
-    for (int i = 0; i < cap; ++i) {
-        if (i > 0) {
-            s += QLatin1Char(' ');
-        }
-        s += QStringLiteral("%1").arg(static_cast<quint8>(data[i]), 2, 16, QLatin1Char('0')).toUpper();
-    }
-    if (data.size() > maxBytes) {
-        s += QStringLiteral(" …");
-    }
-    return s;
-}
-
-/** PE structure tree uses English only (field names / units), regardless of UI language. */
-QString peTreeSizeBytesText(const QString &sizeHexToken)
-{
-    return QStringLiteral("%1 bytes").arg(sizeHexToken);
-}
-
-QString formatCodeViewRawTreeValue(const PEPdbInfo &pdb)
-{
-    return pdb.format.isEmpty() ? QStringLiteral("CodeView") : pdb.format;
-}
-
-QString peTreeEntriesText(const QString &countToken)
-{
-    return QStringLiteral("%1 entries").arg(countToken);
-}
 
 struct FieldExplanationCaches {
     QHash<QString, QString> explanationHtmlCache;
@@ -129,509 +91,35 @@ bool isFieldExplanationPlaceholder(const QString &fieldName, const QString &html
         return true;
     }
     if (plain.contains(QStringLiteral("Field explanation for"), Qt::CaseInsensitive)
-        || plain.contains(QStringLiteral("Explicação do campo"), Qt::CaseInsensitive)
+        || plain.contains(QStringLiteral("ExplicaÃ§Ã£o do campo"), Qt::CaseInsensitive)
         || plain.contains(QStringLiteral("No detailed explanation"), Qt::CaseInsensitive)
-        || plain.contains(QStringLiteral("Nenhuma explicação detalhada"), Qt::CaseInsensitive)) {
+        || plain.contains(QStringLiteral("Nenhuma explicaÃ§Ã£o detalhada"), Qt::CaseInsensitive)) {
         return true;
     }
     return plain.contains(QStringLiteral("Coming soon"), Qt::CaseInsensitive)
            || plain.contains(QStringLiteral("Em breve"), Qt::CaseInsensitive);
 }
 
-bool isFileInsightJsonKey(const QString &jsonFieldKey)
-{
-    static const QSet<QString> kKeys = {
-        QStringLiteral("File Insights"),
-        QStringLiteral("Overlay"),
-        QStringLiteral("File Entropy"),
-        QStringLiteral("MD5"),
-        QStringLiteral("SHA256"),
-        QStringLiteral("ImpHash"),
-        QStringLiteral("File Ratio"),
-        QStringLiteral("Toolchain"),
-        QStringLiteral("Signed"),
-        QStringLiteral("Entry Point"),
-        QStringLiteral("PDB Path"),
-        QStringLiteral("PDB Raw"),
-        QStringLiteral("PDB GUID"),
-        QStringLiteral("PDB Age"),
-        QStringLiteral("File Version"),
-        QStringLiteral("Product Version"),
-        QStringLiteral("Company Name"),
-        QStringLiteral("Product Name"),
-        QStringLiteral("Manifest UAC"),
-    };
-    return kKeys.contains(jsonFieldKey);
-}
-
-QString insightMeaningText(const QString &jsonFieldKey)
-{
-    struct Row {
-        const char *fieldKey;
-        const char *iniKey;
-        const char *enFallback;
-    };
-    static const Row kRows[] = {
-        { "Overlay", "UI/overlay_meaning",
-          "Data appended after the last section on disk; common in installers, self-extractors, and some packers." },
-        { "File Entropy", "UI/entropy_meaning_normal",
-          "Shannon entropy of the whole file (0-8 bits per byte); high values often indicate packing or encryption." },
-        { "MD5", "UI/md5_meaning",
-          "MD5 digest of the entire file on disk (useful for quick identification and IOC sharing)." },
-        { "SHA256", "UI/sha256_meaning",
-          "SHA-256 digest of the entire file on disk (common for malware feeds and Authenticode-adjacent workflows)." },
-        { "ImpHash", "UI/imphash_meaning",
-          "Mandiant import hash — MD5 of ordered import DLL/function pairs; stable across packers that preserve the IAT." },
-        { "File Ratio", "UI/file_ratio_meaning",
-          "Ratio of PE logical size (headers + section raw data) to total file size; lower values suggest overlay or appended data." },
-        { "Toolchain", "UI/toolchain_meaning",
-          "Compiler/linker fingerprint inferred from the Rich Header (when present)." },
-        { "Signed", "UI/signed_meaning",
-          "Whether the file carries a digital signature (Authenticode). Signed files include a certificate table; unsigned files do not." },
-        { "Entry Point", "UI/entry_point_meaning",
-          "Where Windows starts running this program — the memory address (RVA) and the section that contains the first instructions." },
-        { "PDB Path", "UI/pdb_path_meaning",
-          "Program database path from the CodeView debug directory (RSDS or NB10)." },
-        { "PDB Raw", "UI/pdb_raw_meaning",
-          "Raw RSDS/NB10 record at the CodeView offset; use the hex view for byte-level detail." },
-        { "PDB GUID", "UI/pdb_guid_meaning",
-          "Unique PDB identifier used with age to locate symbols on a symbol server." },
-        { "PDB Age", "UI/pdb_age_meaning",
-          "Incremental build counter paired with the GUID to match the correct PDB file." },
-        { "File Version", "UI/version_file_meaning",
-          "FileVersion string from the VS_VERSION_INFO resource block." },
-        { "Product Version", "UI/version_product_meaning",
-          "ProductVersion string from the VS_VERSION_INFO resource block." },
-        { "Company Name", "UI/version_company_meaning",
-          "CompanyName string from the VS_VERSION_INFO resource block." },
-        { "Product Name", "UI/version_product_name_meaning",
-          "ProductName string from the VS_VERSION_INFO resource block." },
-        { "Manifest UAC", "UI/version_manifest_uac_meaning",
-          "requestedExecutionLevel from the embedded application manifest (RT_MANIFEST)." },
-        { "File Insights", "UI/tree_file_insights_hint",
-          "Quick triage: appended overlay, Shannon entropy, and PDB path from CodeView." },
-    };
-    for (const Row &row : kRows) {
-        if (jsonFieldKey != QLatin1String(row.fieldKey)) {
-            continue;
-        }
-        const QString fromIni = LanguageManager::getInstance().getIniString(QString::fromLatin1(row.iniKey));
-        if (!fromIni.isEmpty()) {
-            return fromIni;
-        }
-        return QString::fromUtf8(row.enFallback);
-    }
-    return QString();
-}
-
-QString insightExplanationHtml(const QString &jsonFieldKey)
-{
-    const QString text = insightMeaningText(jsonFieldKey);
-    if (text.isEmpty()) {
-        return QString();
-    }
-    return QStringLiteral("<div style='margin-bottom: 8px; line-height: 1.6; color: #1f2937;'>%1</div>")
-        .arg(text.toHtmlEscaped());
-}
-
-QString fileInsightFieldLabel(const QString &fieldKey)
-{
-    static const QHash<QString, const char *> kLabels = {
-        { QStringLiteral("Overlay"), "UI/field_overlay" },
-        { QStringLiteral("File Entropy"), "UI/field_file_entropy" },
-        { QStringLiteral("MD5"), "UI/field_md5" },
-        { QStringLiteral("SHA256"), "UI/field_sha256" },
-        { QStringLiteral("ImpHash"), "UI/field_imphash" },
-        { QStringLiteral("File Ratio"), "UI/field_file_ratio" },
-        { QStringLiteral("Toolchain"), "UI/field_toolchain" },
-        { QStringLiteral("Signed"), "UI/field_signed" },
-        { QStringLiteral("Entry Point"), "UI/field_entry_point" },
-        { QStringLiteral("PDB Path"), "UI/field_pdb_path" },
-        { QStringLiteral("PDB Raw"), "UI/field_pdb_raw" },
-        { QStringLiteral("PDB GUID"), "UI/field_pdb_guid" },
-        { QStringLiteral("PDB Age"), "UI/field_pdb_age" },
-        { QStringLiteral("File Version"), "UI/field_file_version" },
-        { QStringLiteral("Product Version"), "UI/field_product_version" },
-        { QStringLiteral("Company Name"), "UI/field_company_name" },
-        { QStringLiteral("Product Name"), "UI/field_product_name" },
-        { QStringLiteral("Manifest UAC"), "UI/field_manifest_uac" },
-    };
-    const char *iniKey = kLabels.value(fieldKey);
-    return iniKey ? LANG(iniKey) : fieldKey;
-}
-
 } // namespace
 
 QString PEParserNew::relatedStructureFieldForInsight(const QString &fieldKey)
 {
-    if (fieldKey == QLatin1String("File Version") || fieldKey == QLatin1String("Product Version")
-        || fieldKey == QLatin1String("Company Name") || fieldKey == QLatin1String("Product Name")
-        || fieldKey == QLatin1String("Manifest UAC")) {
-        return QStringLiteral("Resource Directory");
-    }
-    if (fieldKey == QLatin1String("PDB Path") || fieldKey == QLatin1String("PDB Raw")
-        || fieldKey == QLatin1String("PDB GUID") || fieldKey == QLatin1String("PDB Age")) {
-        return QStringLiteral("Debug Directory");
-    }
-    if (fieldKey == QLatin1String("Toolchain")) {
-        return QStringLiteral("Rich Header");
-    }
-    return QString();
+    return PEFileInsights::relatedStructureFieldForInsight(fieldKey);
 }
 
 bool PEParserNew::fileInsightHasHexTarget(const QString &fieldKey) const
 {
-    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
-    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
-    const PEVersionInfo version = m_dataModel.getVersionInfo();
-
-    if (fieldKey == QLatin1String("Overlay")) {
-        return overlay.present && overlay.fileOffset > 0;
-    }
-    if (fieldKey == QLatin1String("File Entropy")) {
-        return false;
-    }
-    if (fieldKey == QLatin1String("PDB Path")) {
-        return pdb.present && pdb.pathByteSize > 0;
-    }
-    if (fieldKey == QLatin1String("PDB Raw")) {
-        return pdb.present && pdb.codeViewSize > 0;
-    }
-    if (fieldKey == QLatin1String("PDB GUID")) {
-        return pdb.present && !pdb.guid.isEmpty();
-    }
-    if (fieldKey == QLatin1String("PDB Age")) {
-        return pdb.present && pdb.age > 0;
-    }
-    if (fieldKey == QLatin1String("File Version") || fieldKey == QLatin1String("Product Version")
-        || fieldKey == QLatin1String("Company Name") || fieldKey == QLatin1String("Product Name")) {
-        return version.present && version.versionResourceSize > 0;
-    }
-    if (fieldKey == QLatin1String("Manifest UAC")) {
-        return version.manifestPresent;
-    }
-    return false;
-}
-
-QString formatEntryPointSummary(const PEFileMetrics &metrics)
-{
-    if (metrics.entryPointRva == 0) {
-        return LANG(QStringLiteral("UI/entry_point_none"));
-    }
-    QMap<QString, QString> params;
-    params.insert(QStringLiteral("rva"), PEUtils::formatHexWidth(metrics.entryPointRva, 8));
-    params.insert(QStringLiteral("section"),
-                  metrics.entryPointSection.isEmpty() ? QStringLiteral("?") : metrics.entryPointSection);
-    return LANG_PARAMS(QStringLiteral("UI/entry_point_summary"), params);
+    return PEFileInsights::fileInsightHasHexTarget(fieldKey, m_dataModel);
 }
 
 QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
 {
-    if (!isFileInsightJsonKey(fieldKey) || fieldKey == QLatin1String("File Insights")) {
-        return QString();
-    }
-
-    const PEOverlayInfo overlay = m_dataModel.getOverlayInfo();
-    const PEEntropySummary entropy = m_dataModel.getEntropySummary();
-    const PEPdbInfo pdb = m_dataModel.getPdbInfo();
-    const PEVersionInfo version = m_dataModel.getVersionInfo();
-    const PEFileMetrics metrics = m_dataModel.getFileMetrics();
-
-    QString currentValue;
-    bool absent = false;
-    QString tipKey;
-
-    if (fieldKey == QLatin1String("Overlay")) {
-        tipKey = QStringLiteral("UI/insight_tip_overlay");
-        if (overlay.present && overlay.fileOffset > 0) {
-            quint64 overlayBytes = overlay.size;
-            if (overlayBytes == 0) {
-                const qint64 tail = qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_file.size()))
-                                    - static_cast<qint64>(overlay.fileOffset);
-                if (tail > 0) {
-                    overlayBytes = static_cast<quint64>(tail);
-                }
-            }
-            const quint32 overlaySize =
-                static_cast<quint32>(qMin(overlayBytes, static_cast<quint64>(UINT32_MAX)));
-            currentValue = QStringLiteral("%1 (%2)")
-                               .arg(PEUtils::formatHexWidth(overlay.fileOffset, 8),
-                                    PEUtils::formatHexWidth(overlaySize, 0));
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/overlay_none"));
-        }
-    } else if (fieldKey == QLatin1String("File Entropy")) {
-        tipKey = QStringLiteral("UI/insight_tip_entropy");
-        if (entropy.fileEntropyValid) {
-            currentValue =
-                QStringLiteral("%1 %2").arg(QString::number(entropy.fileEntropy, 'f', 2), LANG(QStringLiteral("UI/entropy_unit")));
-        }
-    } else if (fieldKey == QLatin1String("MD5")) {
-        if (metrics.hashesValid) {
-            currentValue = metrics.md5Hex;
-        }
-    } else if (fieldKey == QLatin1String("SHA256")) {
-        if (metrics.hashesValid) {
-            currentValue = metrics.sha256Hex;
-        }
-    } else if (fieldKey == QLatin1String("ImpHash")) {
-        if (metrics.hashesValid && !metrics.imphashHex.isEmpty()) {
-            currentValue = metrics.imphashHex;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/imphash_none"));
-        }
-    } else if (fieldKey == QLatin1String("File Ratio")) {
-        if (metrics.fileRatioValid) {
-            QMap<QString, QString> ratioParams;
-            ratioParams.insert(QStringLiteral("ratio"), QString::number(metrics.fileRatio * 100.0, 'f', 1));
-            ratioParams.insert(QStringLiteral("pe_size"),
-                               PEUtils::formatFileSize(static_cast<quint64>(metrics.peLogicalSize)));
-            ratioParams.insert(QStringLiteral("file_size"),
-                               PEUtils::formatFileSize(static_cast<quint64>(
-                                   qMax(m_dataModel.getFileSize(), static_cast<qint64>(m_fileData.size())))));
-            currentValue = LANG_PARAMS(QStringLiteral("UI/file_ratio_value"), ratioParams);
-        }
-    } else if (fieldKey == QLatin1String("Toolchain")) {
-        tipKey = QStringLiteral("UI/insight_tip_toolchain");
-        if (metrics.toolchainValid) {
-            currentValue = metrics.toolchainSummary;
-        } else if (m_dataModel.getAnalysisMetadata().richHeaderPresent) {
-            currentValue = LANG(QStringLiteral("UI/toolchain_rich_unknown"));
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/toolchain_none"));
-        }
-    } else if (fieldKey == QLatin1String("Signed")) {
-        if (metrics.authenticodePresent) {
-            QMap<QString, QString> params;
-            params.insert(QStringLiteral("size"), PEUtils::formatFileSize(metrics.certTableSize));
-            if (metrics.authenticodeInfo.trustStatus == AuthenticodeTrustStatus::Valid) {
-                currentValue = LANG_PARAMS(QStringLiteral("UI/signed_yes"), params);
-                if (!metrics.authenticodePublisher.isEmpty()) {
-                    QMap<QString, QString> publisherParams;
-                    publisherParams.insert(QStringLiteral("publisher"), metrics.authenticodePublisher);
-                    currentValue = LanguageManager::getInstance().getString(
-                        QStringLiteral("UI/signed_publisher_format"),
-                        publisherParams,
-                        currentValue);
-                }
-            } else {
-                currentValue = LANG_PARAMS(QStringLiteral("UI/signed_cert_data"), params);
-            }
-        } else {
-            currentValue = LANG(QStringLiteral("UI/signed_no"));
-        }
-    } else if (fieldKey == QLatin1String("Entry Point")) {
-        if (metrics.entryPointRva != 0) {
-            currentValue = formatEntryPointSummary(metrics);
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/entry_point_none"));
-        }
-    } else if (fieldKey == QLatin1String("PDB Path")) {
-        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
-        if (pdb.present && !pdb.path.isEmpty()) {
-            currentValue = pdb.path;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/pdb_none"));
-        }
-    } else if (fieldKey == QLatin1String("PDB Raw")) {
-        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
-        if (pdb.present && pdb.codeViewSize > 0) {
-            currentValue = formatCodeViewRawTreeValue(pdb);
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/pdb_none"));
-        }
-    } else if (fieldKey == QLatin1String("PDB GUID")) {
-        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
-        if (pdb.present && !pdb.guid.isEmpty()) {
-            currentValue = pdb.guid;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/pdb_none"));
-        }
-    } else if (fieldKey == QLatin1String("PDB Age")) {
-        tipKey = QStringLiteral("UI/insight_tip_debug_dir");
-        if (pdb.present && pdb.age > 0) {
-            currentValue = QString::number(pdb.age);
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/pdb_none"));
-        }
-    } else if (fieldKey == QLatin1String("File Version")) {
-        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
-        if (version.present && !version.fileVersion.isEmpty()) {
-            currentValue = version.fileVersion;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/version_none"));
-        }
-    } else if (fieldKey == QLatin1String("Product Version")) {
-        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
-        if (version.present && !version.productVersion.isEmpty()) {
-            currentValue = version.productVersion;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/version_none"));
-        }
-    } else if (fieldKey == QLatin1String("Company Name")) {
-        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
-        if (version.present && !version.companyName.isEmpty()) {
-            currentValue = version.companyName;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/version_none"));
-        }
-    } else if (fieldKey == QLatin1String("Product Name")) {
-        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
-        if (version.present && !version.productName.isEmpty()) {
-            currentValue = version.productName;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/version_none"));
-        }
-    } else if (fieldKey == QLatin1String("Manifest UAC")) {
-        tipKey = QStringLiteral("UI/insight_tip_resource_dir");
-        if (version.manifestPresent) {
-            currentValue = version.manifestExecutionLevel.isEmpty()
-                               ? LANG(QStringLiteral("UI/version_manifest_present"))
-                               : version.manifestExecutionLevel;
-        } else {
-            absent = true;
-            currentValue = LANG(QStringLiteral("UI/version_none"));
-        }
-    }
-
-    QString html;
-    html += QStringLiteral("<div style='font-family:\"Segoe UI\",Arial,sans-serif;font-size:11px;color:#222;line-height:1.55;'>");
-    html += QStringLiteral("<div style='font-weight:600;font-size:12px;margin-bottom:10px;color:#111;'>%1</div>")
-                .arg(fileInsightFieldLabel(fieldKey).toHtmlEscaped());
-
-    if (absent) {
-        html += QStringLiteral(
-                    "<div style='margin:0 0 12px 0;padding:8px 10px;background:#fff8e6;border-left:3px solid "
-                    "#f59e0b;border-radius:4px;color:#92400e;'>%1<br/><span style='color:#78716c;'>%2</span></div>")
-                    .arg(currentValue.toHtmlEscaped(), LANG(QStringLiteral("UI/insight_absent_note")).toHtmlEscaped());
-    } else if (!currentValue.isEmpty()) {
-        if (fieldKey == QLatin1String("Signed")) {
-            const PEAuthenticodeInfo &auth = metrics.authenticodeInfo;
-            const bool trustValid = auth.trustStatus == AuthenticodeTrustStatus::Valid;
-            const QString bg = trustValid ? QStringLiteral("#ecfdf5")
-                                          : (metrics.authenticodePresent ? QStringLiteral("#fff1f2")
-                                                                         : QStringLiteral("#fff8e6"));
-            const QString border = trustValid ? QStringLiteral("#22c55e")
-                                              : (metrics.authenticodePresent ? QStringLiteral("#ef4444")
-                                                                             : QStringLiteral("#f59e0b"));
-            const QString fg = trustValid ? QStringLiteral("#166534")
-                                          : (metrics.authenticodePresent ? QStringLiteral("#991b1b")
-                                                                         : QStringLiteral("#92400e"));
-            html += QStringLiteral(
-                        "<div style='margin:0 0 12px 0;padding:8px 10px;background:%1;border-left:3px solid "
-                        "%2;border-radius:4px;color:%3;font-weight:600;'>%4</div>")
-                        .arg(bg, border, fg, currentValue.toHtmlEscaped());
-            html += QStringLiteral("<div style='margin:0 0 8px 0;color:#374151;'><b>%1:</b> %2</div>")
-                        .arg(LANG(QStringLiteral("UI/signed_trust_label")).toHtmlEscaped(),
-                             authenticodeTrustStatusLabel(auth.trustStatus).toHtmlEscaped());
-            if (!auth.statusMessage.isEmpty()) {
-                html += QStringLiteral("<div style='margin:0 0 8px 0;color:#555;'>%1</div>")
-                            .arg(auth.statusMessage.toHtmlEscaped());
-            }
-            if (!auth.thumbprintSha256.isEmpty()) {
-                html += QStringLiteral(
-                            "<div style='margin:0 0 8px 0;font-family:Consolas,monospace;font-size:10px;"
-                            "color:#374151;'><b>SHA256:</b> %1</div>")
-                            .arg(auth.thumbprintSha256.toHtmlEscaped());
-            }
-            if (auth.notBefore.isValid() || auth.notAfter.isValid()) {
-                html += QStringLiteral("<div style='margin:0 0 8px 0;color:#555;'>%1 — %2</div>")
-                            .arg(auth.notBefore.isValid() ? auth.notBefore.toString(Qt::ISODate) : QStringLiteral("?"),
-                                 auth.notAfter.isValid() ? auth.notAfter.toString(Qt::ISODate) : QStringLiteral("?"));
-            }
-            if (!auth.certificateSubjects.isEmpty()) {
-                html += QStringLiteral("<div style='margin:8px 0 4px 0;font-weight:600;'>%1</div>")
-                            .arg(LANG(QStringLiteral("UI/signed_chain_label")).toHtmlEscaped());
-                html += QStringLiteral("<ul style='margin:0 0 12px 18px;padding:0;color:#444;'>");
-                for (const QString &subject : auth.certificateSubjects) {
-                    html += QStringLiteral("<li style='margin-bottom:3px;'>%1</li>")
-                                .arg(subject.toHtmlEscaped());
-                }
-                html += QStringLiteral("</ul>");
-            }
-        } else if (fieldKey == QLatin1String("Entry Point") && !metrics.entryPointBytesHex.isEmpty()) {
-            html += QStringLiteral("<div style='margin:0 0 8px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
-                        .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
-                             currentValue.toHtmlEscaped());
-            QMap<QString, QString> byteParams;
-            byteParams.insert(QStringLiteral("bytes"), metrics.entryPointBytesHex);
-            html += QStringLiteral(
-                        "<div style='margin:0 0 12px 0;font-family:Consolas,monospace;font-size:10px;"
-                        "color:#374151;'>%1</div>")
-                        .arg(LANG_PARAMS(QStringLiteral("UI/entry_point_bytes_line"), byteParams).toHtmlEscaped());
-            QByteArray epBytes;
-            for (const QString &part : metrics.entryPointBytesHex.split(QLatin1Char(' '), Qt::SkipEmptyParts)) {
-                bool ok = false;
-                const uint byte = part.toUInt(&ok, 16);
-                if (ok) {
-                    epBytes.append(static_cast<char>(byte));
-                }
-            }
-            bool is64 = false;
-            if (const IMAGE_OPTIONAL_HEADER *opt = m_dataModel.getOptionalHeader()) {
-                is64 = opt->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
-            }
-            const QStringList asmLines =
-                PEEpDisasm::disassembleEntryPoint(is64, epBytes, PEEpDisasm::kDefaultMaxInstructions,
-                                                  metrics.entryPointRva);
-            if (!asmLines.isEmpty()) {
-                QStringList escapedAsm;
-                escapedAsm.reserve(asmLines.size());
-                for (const QString &line : asmLines) {
-                    escapedAsm.append(line.toHtmlEscaped());
-                }
-                html += QStringLiteral(
-                            "<div style='margin:0 0 12px 0;font-family:Consolas,monospace;font-size:10px;"
-                            "color:#1e40af;'>%1<br/>%2</div>"
-                            "<div style='font-size:10px;color:#64748b;margin-top:4px;'>%3</div>")
-                            .arg(uiStringWithFallback(QStringLiteral("UI/entry_point_disasm_title"),
-                                                      QStringLiteral("Likely disassembly (best effort, not a full decoder):"))
-                                    .toHtmlEscaped(),
-                                 escapedAsm.join(QStringLiteral("<br/>")),
-                                 uiStringWithFallback(QStringLiteral("UI/entry_point_disasm_note"),
-                                                      QStringLiteral("These are hints for the first bytes only — use a "
-                                                                     "disassembler for complete code."))
-                                     .toHtmlEscaped());
-            }
-        } else {
-            html += QStringLiteral("<div style='margin:0 0 12px 0;'><span style='color:#666;'>%1:</span> <b>%2</b></div>")
-                        .arg(LANG(QStringLiteral("UI/insight_current_value")).toHtmlEscaped(),
-                             currentValue.toHtmlEscaped());
-        }
-    }
-
-    const QString body = insightMeaningText(fieldKey);
-    if (!body.isEmpty()) {
-        html += QStringLiteral("<div style='margin-bottom:12px;color:#333;'>%1</div>").arg(body.toHtmlEscaped());
-    }
-
-    if (!tipKey.isEmpty()) {
-        const QString tip = LANG(tipKey);
-        if (!tip.isEmpty()) {
-            html += QStringLiteral(
-                        "<div style='margin-top:8px;padding-top:8px;border-top:1px solid #eee;color:#555;"
-                        "font-size:10px;'>%1</div>")
-                        .arg(tip);
-        }
-    }
-
-    html += QStringLiteral("</div>");
-    return html;
+    return PEFileInsights::buildInsightExplanationHtml(fieldKey, m_dataModel, m_fileData,
+                                                       m_file.size());
 }
-
 namespace {
+
+using namespace PeTreeInsight;
 
 /** Last-resort English when INI has no entry (must match config/language_config.ini). */
 QString defaultEnglishSectionTypeInfo(const QString &sectionTypeKey)
@@ -659,144 +147,6 @@ QString defaultEnglishSectionTypeInfo(const QString &sectionTypeKey)
     return kEn.value(sectionTypeKey);
 }
 
-/** English labels for data-directory rows (display == explanations.json keys). */
-const QStringList &dataDirectoryFieldKeys()
-{
-    static const QStringList keys = {
-        QStringLiteral("Export Directory"),
-        QStringLiteral("Import Directory"),
-        QStringLiteral("Resource Directory"),
-        QStringLiteral("Exception Directory"),
-        QStringLiteral("Certificate Directory"),
-        QStringLiteral("Base Relocation Directory"),
-        QStringLiteral("Debug Directory"),
-        QStringLiteral("Architecture Directory"),
-        QStringLiteral("Global Pointer Directory"),
-        QStringLiteral("TLS Directory"),
-        QStringLiteral("Load Configuration Directory"),
-        QStringLiteral("Bound Import Directory"),
-        QStringLiteral("Import Address Table Directory"),
-        QStringLiteral("Delay Import Directory"),
-        QStringLiteral("COM+ Runtime Header Directory"),
-        QStringLiteral("Reserved")
-    };
-    return keys;
-}
-
-quint32 readLe32(const uchar *p)
-{
-    return quint32(p[0]) | (quint32(p[1]) << 8) | (quint32(p[2]) << 16) | (quint32(p[3]) << 24);
-}
-
-quint16 readLe16(const uchar *p)
-{
-    return quint16(p[0]) | (quint16(p[1]) << 8);
-}
-
-quint64 readLe64(const uchar *p)
-{
-    quint64 lo = readLe32(p);
-    quint64 hi = readLe32(p + 4);
-    return lo | (hi << 32);
-}
-
-QString resourceTypeIdLabel(quint32 id)
-{
-    switch (id) {
-    case 1: return QStringLiteral("RT_CURSOR");
-    case 2: return QStringLiteral("RT_BITMAP");
-    case 3: return QStringLiteral("RT_ICON");
-    case 4: return QStringLiteral("RT_MENU");
-    case 5: return QStringLiteral("RT_DIALOG");
-    case 6: return QStringLiteral("RT_STRING");
-    case 7: return QStringLiteral("RT_FONTDIR");
-    case 8: return QStringLiteral("RT_FONT");
-    case 9: return QStringLiteral("RT_ACCELERATOR");
-    case 10: return QStringLiteral("RT_RCDATA");
-    case 11: return QStringLiteral("RT_MESSAGETABLE");
-    case 12: return QStringLiteral("RT_GROUP_CURSOR");
-    case 14: return QStringLiteral("RT_GROUP_ICON");
-    case 16: return QStringLiteral("RT_VERSION");
-    case 24: return QStringLiteral("RT_MANIFEST");
-    default: return QString();
-    }
-}
-
-bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 absEnd, quint32 *outRva, quint32 *outSize)
-{
-    *outRva = 0;
-    *outSize = 0;
-
-    struct Frame {
-        quint32 dirFo;
-        int depth;
-        bool inManifestBranch;
-    };
-
-    const quint32 fileSize = static_cast<quint32>(data.size());
-    const quint32 regionEnd = qMin(absEnd, fileSize);
-    QVector<Frame> stack;
-    stack.append({rootFo, 0, false});
-    QSet<quint32> visited;
-
-    while (!stack.isEmpty()) {
-        const Frame frame = stack.takeLast();
-        if (frame.depth > 8 || visited.contains(frame.dirFo)) {
-            continue;
-        }
-        visited.insert(frame.dirFo);
-
-        const quint32 dirFo = frame.dirFo;
-        if (dirFo + 16 > regionEnd) {
-            continue;
-        }
-
-        const uchar *b = reinterpret_cast<const uchar *>(data.constData() + dirFo);
-        const quint16 nNamed = readLe16(b + 12);
-        const quint16 nId = readLe16(b + 14);
-        const quint32 maxEntriesInDir =
-            (dirFo + 16 < regionEnd) ? (regionEnd - dirFo - 16) / 8 : 0;
-        const quint32 nEntries = qMin(static_cast<quint32>(nNamed) + static_cast<quint32>(nId),
-                                      maxEntriesInDir);
-
-        quint32 entryOff = 16;
-        for (quint32 i = 0; i < nEntries; ++i) {
-            if (dirFo + entryOff + 8 > regionEnd) {
-                break;
-            }
-            const quint32 name = readLe32(b + entryOff);
-            const quint32 otd = readLe32(b + entryOff + 4);
-            entryOff += 8;
-            const bool isNamed = (name & 0x80000000u) != 0;
-            const quint32 id = isNamed ? 0u : name;
-
-            if (otd & 0x80000000u) {
-                const quint32 subFo = rootFo + (otd & 0x7FFFFFFFu);
-                bool branch = frame.inManifestBranch;
-                if (frame.depth == 0) {
-                    if (isNamed || id != 24u) {
-                        continue;
-                    }
-                    branch = true;
-                }
-                stack.append({subFo, frame.depth + 1, branch});
-            } else {
-                if (!frame.inManifestBranch || frame.depth < 2) {
-                    continue;
-                }
-                const quint32 dataFo = rootFo + otd;
-                if (dataFo + 16 > fileSize) {
-                    continue;
-                }
-                const uchar *de = reinterpret_cast<const uchar *>(data.constData() + dataFo);
-                *outRva = readLe32(de);
-                *outSize = readLe32(de + 4);
-                return true;
-            }
-        }
-    }
-    return false;
-}
 
 QString decodeClrImageFlags(quint32 flags)
 {
@@ -1224,11 +574,6 @@ void PEParserNew::cancelParsing()
     }
 }
 
-void PEParserNew::onAsyncParsingComplete()
-{
-    // This slot is called when async parsing completes
-}
-
 // Core parsing methods (Microsoft PE Format compliant)
 bool PEParserNew::parseDOSHeader()
 {
@@ -1337,7 +682,7 @@ bool PEParserNew::parseSections()
         return false;
     }
     
-    // Copy section headers: QList stores pointers — must not point into m_fileData (QByteArray may detach
+    // Copy section headers: QList stores pointers â€” must not point into m_fileData (QByteArray may detach
     // when shared, e.g. with HexViewer), which would invalidate those pointers.
     m_cachedSections.clear();
     const quint16 sectionCount = fileHeader->NumberOfSections;
@@ -1541,7 +886,7 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
                         
                         if (!sectionTypeKey.isEmpty()) {
                             LanguageManager &lm = LanguageManager::getInstance();
-                            // getString(key, "") returns the key when missing — never use that for body text.
+                            // getString(key, "") returns the key when missing â€” never use that for body text.
                             sectionTypeInfo = lm.getIniString(sectionTypeKey);
                             if (sectionTypeInfo.isEmpty()) {
                                 sectionTypeInfo = lm.getIniString(QStringLiteral("UI/") + sectionTypeKey);
@@ -1662,7 +1007,7 @@ QString PEParserNew::getFieldExplanation(const QString &fieldName)
         }
     }
 
-    // Do not cache misses — a later config deploy or language switch should recover without reload.
+    // Do not cache misses â€” a later config deploy or language switch should recover without reload.
     QString explanation =
         QStringLiteral("<div style='margin-bottom: 8px; line-height: 1.6; color: #4b5563;'>%1</div>")
             .arg(LANG_PARAM(QStringLiteral("UI/field_explanation_unavailable"),
@@ -1725,14 +1070,6 @@ QList<QTreeWidgetItem*> PEParserNew::getPEStructureTree()
 {
     return PEUIPresenter(this).buildStructureTree();
 }
-
-QTreeWidgetItem *PEParserNew::buildFileInsightsItem()
-{
-    return PEUIPresenter(this).buildFileInsightsOverview();
-}
-
-
-
 
 QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &value)
 {
@@ -1798,7 +1135,7 @@ QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &va
         bool ok;
         quint32 n = value.toULong(&ok, 10);
         if (ok && n > 0) {
-            return QStringLiteral("%1 × RUNTIME_FUNCTION (12 bytes each on x64)").arg(n);
+            return QStringLiteral("%1 Ã— RUNTIME_FUNCTION (12 bytes each on x64)").arg(n);
         }
     }
     

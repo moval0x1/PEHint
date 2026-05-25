@@ -1,6 +1,6 @@
 # PEHint - PE Header Learning Tool
 
-[![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/moval0x1/PEHint)
+[![Version](https://img.shields.io/badge/version-0.4.6-blue.svg)](https://github.com/moval0x1/PEHint)
 [![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
@@ -14,7 +14,14 @@ Planned work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md) (overlay/entropy/P
 
 ## Overview
 
-PEHint is a visual PE file analyzer for analysts, reverse engineers, and students who need quick insight into Windows executables. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports**, **Exports**, **Dependencies**, and **Strings** (filters, async extraction, export to file). Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the app still lists modules and symbols normally.
+PEHint is a visual PE file analyzer for analysts, reverse engineers, and students who need quick insight into Windows executables. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports**, **Exports**, **Delay Imports**, **Dependencies**, **Resources** (manifest, version info, icons, string tables, hex + decoded text preview), and **Strings** (filters, async extraction, export to file). The **Findings** tab runs config-driven heuristics (overlay, entropy, hardening, suspicious imports/strings, checksum, signatures, and more) with one-click navigation to the relevant tree field or hex range. Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the app still lists modules and symbols normally.
+
+## What's new in v0.4.6
+
+- **Stability:** Fixed stack overflow when opening large PE files with big resource sections (structure tree no longer loads full field explanations on every row at open time).
+- **Resources preview:** Correct icon size labels; `RT_STRING` decoding; embedded UTF-16/ASCII text under hex dumps; improved `VS_VERSION_INFO` string parsing.
+- **Findings / File summary:** Clearer **Signed** vs **certificate data only** labels when a cert table exists but Authenticode trust is not valid.
+- **Crash handler:** Safer handling of stack-overflow exceptions on Windows.
 
 ## Screenshots
 
@@ -52,6 +59,17 @@ The **Imports** tab can show curated API summaries (signature, parameters, links
 
 PEHint discovers `third_party/sdk-api` and `third_party/console-docs` next to the executable - same folder as `PEHint.exe`. Without these clones, the Imports panel still lists DLLs and symbols, but the API summary area shows a short “no summary” message instead of topic text.
 
+## CLI
+
+Batch triage without the GUI:
+
+```text
+PEHint --scan [--format text|json] [--min-severity high|medium|low|info] [--include-passes] [--lang en|pt] <file.exe> ...
+PEHint --scan --dir <folder> [--recursive] [--watch] [--debounce-ms 500]
+```
+
+Same parse, metrics, and findings engine as the desktop app. See `PEHint --help` for all options.
+
 ## References (PE format & Windows)
 
 - [Microsoft PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) — official PE/COFF specification (goes well with what PEHint shows in the tree)
@@ -60,6 +78,11 @@ PEHint discovers `third_party/sdk-api` and `third_party/console-docs` next to th
 - [DbgHelp API](https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/) — related debugging/symbol APIs
 
 Optional deeper reading: *"An In-Depth Look into the Win32 Portable Executable File Format"* (MSJ articles, often mirrored).
+
+## Developer docs
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, data flow, config
+- [docs/FINDINGS_RULES.md](docs/FINDINGS_RULES.md) — findings rule reference
 
 ## Greetz
 
@@ -74,4 +97,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**PEHint v0.4.5** — Making PE header analysis accessible and educational with modern C++ and Qt 6.
+**PEHint v0.4.6** — Making PE header analysis accessible and educational with modern C++ and Qt 6.

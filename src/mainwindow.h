@@ -44,6 +44,7 @@ class ImportsController;
 class StringsController;
 class ExportsController;
 class StructureTreeController;
+class AnalysisDisplayController;
 class MainWindowChrome;
 class PEDataModel;
 
@@ -76,7 +77,6 @@ public slots:
 
     void onTreeItemClicked(QTreeWidgetItem *item, int column);
     void onHexViewerByteClicked(qint64 offset, int length);
-    void onLanguageChanged(const QString &language);
     void onCopyToClipboard();
     void onExpandAll();
     void onCollapseAll();
@@ -114,6 +114,7 @@ private:
     StringsController *m_stringsController = nullptr;
     ExportsController *m_exportsController = nullptr;
     StructureTreeController *m_structureTreeController = nullptr;
+    AnalysisDisplayController *m_analysisDisplay = nullptr;
 
     quint64 m_languageRefreshEpoch = 0;
 
@@ -123,19 +124,9 @@ private:
     void loadPEFile(const QString &filePath);
     void clearDisplay();
     void updateFileInfo();
-    void updateAnalysisDisplay();
-
-    void analysisDisplayPhaseTree();
     void showFindingsInsightHtml(const QString &html);
-    void analysisDisplayPhaseWelcomeOnly();
-    void analysisDisplayPhaseHexSetData();
-    void analysisDisplayPhaseStringsTab();
-    void scheduleStagedAnalysisDisplay(const QString &pathGuard,
-                                       std::function<void()> onComplete = nullptr,
-                                       quint64 languageRefreshEpoch = 0);
 
     void showError(const QString &title, const QString &message);
-    void showInfo(const QString &title, const QString &message);
     QString getFileSizeString(qint64 size) const;
 
     void onApplicationLanguageChanged(const QString &languageCode);

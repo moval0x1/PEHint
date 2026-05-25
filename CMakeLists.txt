@@ -141,6 +141,12 @@ set(PROJECT_SOURCES
     src/mainwindow.h
     src/mainwindow_chrome.cpp
     src/mainwindow_chrome.h
+    src/analysis_display_controller.cpp
+    src/analysis_display_controller.h
+    src/pe_tree_insight_helpers.cpp
+    src/pe_tree_insight_helpers.h
+    src/pe_file_insights.cpp
+    src/pe_file_insights.h
     src/hexviewer.cpp
     src/hexviewer.h
     src/virtual_hex_widget.cpp

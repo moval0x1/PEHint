@@ -164,15 +164,6 @@ public:
     QString getFilePath() const;
     
     /**
-     * @brief Gets a human-readable representation of the file size
-     * @return Formatted file size string (e.g., "1.5 MB")
-     * 
-     * This method converts the raw file size to a user-friendly format
-     * for display in the UI.
-     */
-    QString getFileSizeString() const;
-    
-    /**
      * @brief Gets the raw file size in bytes
      * @return File size in bytes
      */
@@ -253,8 +244,6 @@ public:
      * @return List of tree items representing the PE structure
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
-    /** Triage summary (overlay, entropy, PDB, version) — not part of the PE layout tree. */
-    QTreeWidgetItem *buildFileInsightsItem();
     /** Rich HTML for the Findings file-summary panel (value + tips when absent). */
     QString getFileInsightExplanation(const QString &fieldKey) const;
     /** Whether clicking this insight row should highlight bytes in the hex view. */
@@ -329,8 +318,6 @@ private slots:
      * This slot is called when background parsing completes, ensuring
      * proper signal emission and state management.
      */
-    void onAsyncParsingComplete();
-    
     // Private methods - Core parsing logic implementation
     
 private:

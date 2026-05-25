@@ -36,8 +36,31 @@
 #include <QStringConverter>
 #include <QTimer>
 #include <QTreeWidget>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFrame>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFont>
+#include <QPixmap>
 
 namespace {
+
+QString aboutLine(const QString &key, const QString &englishFallback)
+{
+    const QString s = LanguageManager::getInstance().getString(key, englishFallback);
+    return (s == key) ? englishFallback : s;
+}
+
+QString aboutFeatureBody(const QString &line)
+{
+    QString t = line.trimmed();
+    if (t.startsWith(QLatin1Char('-'))) {
+        t = t.mid(1).trimmed();
+    }
+    return t;
+}
 
 QString recentFilesIniPath()
 {
@@ -628,4 +651,143 @@ bool MainWindowChrome::saveReportToFile(const PEDataModel &model, bool fileLoade
     file.close();
     QMessageBox::information(parent, LANG("UI/menu_save_report"), LANG("UI/info_save_success"));
     return true;
+}
+
+void MainWindowChrome::showAboutDialog(QWidget *parent)
+{
+    LanguageManager &lm = LanguageManager::getInstance();
+
+    QMap<QString, QString> verParams;
+    verParams[QStringLiteral("version")] = QStringLiteral(PEHINT_VERSION_STRING);
+    const QString versionLine = lm.getString(QStringLiteral("UI/about_version"), verParams,
+                                             QStringLiteral("Version: {version}"));
+
+    const QString titleText = aboutLine(QStringLiteral("UI/about_title"), QStringLiteral("About PEHint"));
+    const QString authorHtml = aboutLine(QStringLiteral("UI/about_author"),
+                                         QStringLiteral("Author: <a href='https://moval0x1.github.io/'>moval0x1</a>"));
+    const QString descText = aboutLine(QStringLiteral("UI/about_description"),
+                                       QStringLiteral("A visual PE file analyzer for learning, reverse engineering, and quick structural inspection."));
+    const QString featuresHeading = aboutLine(QStringLiteral("UI/about_features"), QStringLiteral("Features:"));
+    const QString footerText = aboutLine(QStringLiteral("UI/about_perfect"),
+                                         QStringLiteral("Open source (MIT) — learn the PE format without jumping between tools."));
+
+    const QStringList featureLines = {
+        aboutLine(QStringLiteral("UI/about_feature_1"),
+                  QStringLiteral("- Interactive structure tree: DOS headers, NT headers, sections, and all 16 data directories")),
+        aboutLine(QStringLiteral("UI/about_feature_2"),
+                  QStringLiteral("- Field explanations in the dedicated explanation panel")),
+        aboutLine(QStringLiteral("UI/about_feature_3"),
+                  QStringLiteral("- Imports and Exports views; Dependencies tab with DLL resolution; Strings tab with extraction and export")),
+        aboutLine(QStringLiteral("UI/about_feature_4"),
+                  QStringLiteral("- Hex viewer synchronized with tree selections and field ranges")),
+        aboutLine(QStringLiteral("UI/about_feature_5"),
+                  QStringLiteral("- English and Portuguese UI with external JSON explanations")),
+    };
+
+    QDialog about(parent);
+    about.setWindowTitle(titleText);
+    about.setModal(true);
+    about.setMinimumWidth(580);
+    about.setMaximumWidth(720);
+
+    auto *root = new QVBoxLayout(&about);
+    root->setSpacing(14);
+    root->setContentsMargins(28, 22, 28, 20);
+
+    auto *headerRow = new QHBoxLayout();
+    headerRow->setSpacing(22);
+
+    constexpr int kAboutIconSize = 96;
+    auto *iconLabel = new QLabel(&about);
+    {
+        const QPixmap pehintIcon(QStringLiteral(":/images/imgs/PEHint.png"));
+        if (!pehintIcon.isNull()) {
+            iconLabel->setPixmap(pehintIcon.scaled(kAboutIconSize, kAboutIconSize, Qt::KeepAspectRatio,
+                                                   Qt::SmoothTransformation));
+        }
+        iconLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+        iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+
+    auto *headCol = new QVBoxLayout();
+    headCol->setSpacing(6);
+
+    auto *titleLbl = new QLabel(titleText, &about);
+    QFont titleFont = titleLbl->font();
+    titleFont.setPointSizeF(titleFont.pointSizeF() + 2.5);
+    titleFont.setBold(true);
+    titleLbl->setFont(titleFont);
+    titleLbl->setWordWrap(true);
+
+    auto *verLbl = new QLabel(versionLine, &about);
+    verLbl->setObjectName(QStringLiteral("aboutVersion"));
+    verLbl->setForegroundRole(QPalette::Mid);
+
+    auto *authorLbl = new QLabel(authorHtml, &about);
+    authorLbl->setTextFormat(Qt::RichText);
+    authorLbl->setOpenExternalLinks(true);
+    authorLbl->setTextInteractionFlags(Qt::TextBrowserInteraction);
+
+    headCol->addWidget(titleLbl);
+    headCol->addWidget(verLbl);
+    headCol->addWidget(authorLbl);
+    headCol->addStretch(0);
+
+    headerRow->addWidget(iconLabel, 0, Qt::AlignTop);
+    headerRow->addLayout(headCol, 1);
+
+    auto *descLbl = new QLabel(descText, &about);
+    descLbl->setWordWrap(true);
+    descLbl->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+
+    auto *sep1 = new QFrame(&about);
+    sep1->setFrameShape(QFrame::HLine);
+    sep1->setFrameShadow(QFrame::Plain);
+    sep1->setForegroundRole(QPalette::Mid);
+
+    auto *featHeadLbl = new QLabel(featuresHeading, &about);
+    QFont featHeadFont = featHeadLbl->font();
+    featHeadFont.setBold(true);
+    featHeadLbl->setFont(featHeadFont);
+
+    QString featHtml = QStringLiteral("<ul style=\"margin-top: 4px; margin-bottom: 0; padding-left: 22px;\">");
+    for (const QString &raw : featureLines) {
+        const QString item = aboutFeatureBody(raw).toHtmlEscaped();
+        featHtml += QStringLiteral("<li style=\"margin-top: 5px;\">%1</li>").arg(item);
+    }
+    featHtml += QStringLiteral("</ul>");
+    auto *featLbl = new QLabel(&about);
+    featLbl->setTextFormat(Qt::RichText);
+    featLbl->setText(featHtml);
+    featLbl->setWordWrap(true);
+    featLbl->setOpenExternalLinks(false);
+
+    auto *sep2 = new QFrame(&about);
+    sep2->setFrameShape(QFrame::HLine);
+    sep2->setFrameShadow(QFrame::Plain);
+    sep2->setForegroundRole(QPalette::Mid);
+
+    auto *footLbl = new QLabel(footerText, &about);
+    footLbl->setWordWrap(true);
+    footLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QFont footFont = footLbl->font();
+    footFont.setItalic(true);
+    footFont.setPointSizeF(qMax(8.0, footFont.pointSizeF() - 0.5));
+    footLbl->setFont(footFont);
+    footLbl->setForegroundRole(QPalette::Mid);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok, &about);
+    buttonBox->setCenterButtons(true);
+    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &about, &QDialog::accept);
+
+    root->addLayout(headerRow);
+    root->addWidget(descLbl);
+    root->addWidget(sep1);
+    root->addWidget(featHeadLbl);
+    root->addWidget(featLbl);
+    root->addWidget(sep2);
+    root->addWidget(footLbl);
+    root->addWidget(buttonBox);
+
+    about.exec();
 }
