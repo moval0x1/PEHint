@@ -340,6 +340,12 @@ AuthenticodeTrustStatus verifyAuthenticodeTrust(const QString &sourceFilePath, Q
         }
         return AuthenticodeTrustStatus::InvalidSignature;
     }
+    if (status == CERT_E_REVOKED) {
+        if (detailOut) {
+            *detailOut = LANG("UI/authenticode_cert_revoked");
+        }
+        return AuthenticodeTrustStatus::Revoked;
+    }
     if (detailOut) {
         QMap<QString, QString> params;
         params[QStringLiteral("code")] = QString::number(static_cast<quint32>(status), 16);

@@ -83,6 +83,7 @@ public slots:
     void onExpandAllDependencies();
     void onCollapseAllDependencies();
     void onHexViewerOptions();
+    void onCompareFiles();
     void onImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onImportFunctionSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onDelayImportModuleSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);

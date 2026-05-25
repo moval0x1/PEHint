@@ -50,6 +50,16 @@ add_executable(PEHintTests
     ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.cpp
     ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.h
     unit/pe_findings_self_test.cpp
+    unit/pe_ep_disasm_self_test.cpp
+    unit/pe_authenticode_self_test.cpp
+    unit/pe_resource_preview_self_test.cpp
+    unit/pe_import_api_hint_store_self_test.cpp
+    unit/pe_cli_batch_test.cpp
+    unit/pe_cli_watch_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_resource_preview.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_resource_preview.h
+    ${CMAKE_SOURCE_DIR}/src/sdk_api_markdown_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/sdk_api_markdown_reader.h
 )
 
 set_target_properties(PEHintTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFINES ON)

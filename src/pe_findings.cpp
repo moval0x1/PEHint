@@ -992,7 +992,20 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
 
         if (check == QStringLiteral("tls_callbacks_present")) {
             if (metadata.tlsCallbacksPresent) {
-                appendInstance(results, rule, QString(), QStringLiteral("TLS Directory"));
+                const PETlsDirectoryInfo &tlsInfo = model.tlsDirectoryInfo();
+                const int cbCount = tlsInfo.callbackAddresses.size();
+                QString detail;
+                if (cbCount > 0) {
+                    QMap<QString, QString> params;
+                    params[QStringLiteral("count")] = QString::number(cbCount);
+                    QStringList rvaList;
+                    for (int i = 0; i < cbCount; ++i) {
+                        rvaList.append(PEUtils::formatHexWidth(tlsInfo.callbackAddresses[i], 8));
+                    }
+                    params[QStringLiteral("rvas")] = rvaList.join(QStringLiteral(", "));
+                    detail = LANG_PARAMS(rule.detailKey, params);
+                }
+                appendInstance(results, rule, detail, QStringLiteral("TLS Directory"));
             }
             continue;
         }
@@ -1138,6 +1151,35 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
             continue;
         }
 
+        if (check == QStringLiteral("invalid_signature")) {
+            // Fires when a certificate table is present but trust verification failed.
+            // NotSigned and VerificationUnavailable are excluded: the former means no cert
+            // at all, the latter means we couldn't call WinVerifyTrust (e.g. non-Windows).
+            const PEFileMetrics metrics = model.getFileMetrics();
+            if (metrics.authenticodePresent) {
+                const AuthenticodeTrustStatus status = metrics.authenticodeInfo.trustStatus;
+                if (status != AuthenticodeTrustStatus::NotSigned
+                        && status != AuthenticodeTrustStatus::Valid
+                        && status != AuthenticodeTrustStatus::VerificationUnavailable) {
+                    QMap<QString, QString> params;
+                    params[QStringLiteral("reason")] = metrics.authenticodeInfo.statusMessage.isEmpty()
+                        ? authenticodeTrustStatusLabel(status)
+                        : metrics.authenticodeInfo.statusMessage;
+                    appendInstance(results, rule, LANG_PARAMS(rule.detailKey, params),
+                                   QStringLiteral("Certificate Directory"));
+                }
+            }
+            continue;
+        }
+
+        if (check == QStringLiteral("clr_assembly")) {
+            const IMAGE_DATA_DIRECTORY *clrDir = optionalDataDirectory(opt, 14);
+            if (clrDir && clrDir->VirtualAddress != 0 && clrDir->Size != 0) {
+                appendInstance(results, rule, QString(), QStringLiteral("CLR Runtime Header"));
+            }
+            continue;
+        }
+
         if (check == QStringLiteral("duplicate_exports")) {
             QHash<QString, int> nameCounts;
             QHash<QString, QString> displayNames;
@@ -1170,34 +1212,7 @@ QVector<PEFindingInstance> PEFindingsEngine::evaluate(
 
 QString PEFindingsEngine::categoryKeyForRule(const PEFindingRule &rule)
 {
-    if (!rule.category.isEmpty()) {
-        return rule.category;
-    }
-    const QString check = rule.check;
-    if (check == QStringLiteral("missing_aslr") || check == QStringLiteral("missing_dep")
-        || check == QStringLiteral("missing_cfg")
-        || check == QStringLiteral("relocations_stripped_aslr")) {
-        return QStringLiteral("hardening");
-    }
-    if (check.contains(QStringLiteral("import")) || check == QStringLiteral("no_imports")
-        || check == QStringLiteral("few_imports") || check == QStringLiteral("gui_few_imports")
-        || check == QStringLiteral("high_ordinal_imports") || check == QStringLiteral("dll_no_exports")
-        || check == QStringLiteral("flagged_import") || check == QStringLiteral("import_combo")) {
-        return QStringLiteral("imports");
-    }
-    if (check.contains(QStringLiteral("url")) || check.contains(QStringLiteral("ip"))
-        || check.contains(QStringLiteral("registry")) || check.contains(QStringLiteral("command"))
-        || check.contains(QStringLiteral("dos_stub")) || check.contains(QStringLiteral("duplicate_export"))) {
-        return QStringLiteral("content");
-    }
-    if (check.contains(QStringLiteral("timestamp")) || check.contains(QStringLiteral("checksum"))
-        || check.contains(QStringLiteral("rich")) || check.contains(QStringLiteral("pdb"))
-        || check.contains(QStringLiteral("debug")) || check.contains(QStringLiteral("version"))
-        || check.contains(QStringLiteral("manifest")) || check.contains(QStringLiteral("unsigned"))
-        || check == QStringLiteral("certificate_present")) {
-        return QStringLiteral("metadata");
-    }
-  return QStringLiteral("content");
+    return rule.category.isEmpty() ? QStringLiteral("content") : rule.category;
 }
 
 QString PEFindingsEngine::categoryDisplayName(const QString &categoryKey)

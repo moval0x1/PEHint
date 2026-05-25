@@ -73,6 +73,7 @@ UIManager::UIManager(MainWindow *parent)
     , m_findingsInsightText(nullptr)
     , m_findingsSeverityCombo(nullptr)
     , m_findingsShowPassesCheck(nullptr)
+    , m_findingsCategoryGroup(nullptr)
     , m_sectionLayoutWidget(nullptr)
     , m_stringsFilterEdit(nullptr)
     , m_stringsTypeCombo(nullptr)
@@ -793,8 +794,46 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_sectionLayoutWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     findingsLayout->addWidget(m_sectionLayoutWidget, 0);
 
+    // Category pill buttons
+    {
+        static const struct { const char *langKey; const char *catKey; } kCats[] = {
+            {"findings/filter_category_all", "all"},
+            {"findings/category_hardening",  "hardening"},
+            {"findings/category_content",    "content"},
+            {"findings/category_metadata",   "metadata"},
+            {"findings/category_imports",    "imports"},
+        };
+        static const char *const kPillStyle =
+            "QPushButton { border: 1px solid #bbb; border-radius: 10px; padding: 2px 10px; "
+            "font-size: 11px; background: #f5f5f5; } "
+            "QPushButton:checked { background: #2563eb; color: white; border-color: #1d4ed8; } "
+            "QPushButton:hover:!checked { background: #e5e5e5; }";
+
+        QHBoxLayout *catLayout = new QHBoxLayout();
+        catLayout->setContentsMargins(0, 4, 0, 2);
+        catLayout->setSpacing(5);
+
+        m_findingsCategoryGroup = new QButtonGroup(findingsTab);
+        m_findingsCategoryGroup->setExclusive(true);
+
+        for (auto &cat : kCats) {
+            QPushButton *btn = new QPushButton(LANG(cat.langKey));
+            btn->setCheckable(true);
+            btn->setProperty("category", QString::fromLatin1(cat.catKey));
+            btn->setStyleSheet(QLatin1String(kPillStyle));
+            btn->setCursor(Qt::PointingHandCursor);
+            if (QLatin1String(cat.catKey) == QLatin1String("all")) {
+                btn->setChecked(true);
+            }
+            m_findingsCategoryGroup->addButton(btn);
+            catLayout->addWidget(btn);
+        }
+        catLayout->addStretch();
+        findingsLayout->addLayout(catLayout);
+    }
+
     QHBoxLayout *findingsFilterLayout = new QHBoxLayout();
-    findingsFilterLayout->setContentsMargins(0, 4, 0, 4);
+    findingsFilterLayout->setContentsMargins(0, 2, 0, 4);
     m_findingsSeverityCombo = new QComboBox();
     m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_all"), QStringLiteral("all"));
     m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_high"), QStringLiteral("high"));
@@ -976,6 +1015,10 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
     if (m_findingsShowPassesCheck) {
         connect(m_findingsShowPassesCheck, &QCheckBox::toggled, mainWindow, &MainWindow::onFindingsFilterChanged);
+    }
+    if (m_findingsCategoryGroup) {
+        connect(m_findingsCategoryGroup, &QButtonGroup::idClicked, mainWindow,
+                [mainWindow](int) { mainWindow->onFindingsFilterChanged(); });
     }
     if (m_resourcesTree) {
         connect(m_resourcesTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onResourcesItemClicked);

@@ -158,6 +158,10 @@ set(PROJECT_SOURCES
     src/pe_analysis.h
     src/pe_authenticode.cpp
     src/pe_authenticode.h
+    src/pe_compare.cpp
+    src/pe_compare.h
+    src/pe_compare_dialog.cpp
+    src/pe_compare_dialog.h
     src/pe_resource_preview.cpp
     src/pe_resource_preview.h
     src/import_api_hint_store.cpp

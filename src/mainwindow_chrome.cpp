@@ -154,6 +154,10 @@ void MainWindowChrome::setupMenus()
     hexViewerAction->setIcon(QIcon(QStringLiteral(":/images/imgs/settings.png")));
     toolsMenu->addAction(hexViewerAction);
 
+    QAction *compareAction = new QAction(LANG("UI/menu_compare"), m_window);
+    compareAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    toolsMenu->addAction(compareAction);
+
     QMenu *aboutMenu = m_window->menuBar()->addMenu(LANG("UI/menu_about"));
     QAction *aboutAction = new QAction(LANG("UI/menu_about"), m_window);
     aboutAction->setIcon(QIcon(QStringLiteral(":/images/imgs/about.png")));
@@ -165,6 +169,7 @@ void MainWindowChrome::setupMenus()
     connect(exitAction, &QAction::triggered, m_window, &MainWindow::on_action_Exit_triggered);
     connect(refreshAction, &QAction::triggered, m_window, &MainWindow::on_action_Refresh_triggered);
     connect(hexViewerAction, &QAction::triggered, m_window, &MainWindow::onHexViewerOptions);
+    connect(compareAction, &QAction::triggered, m_window, &MainWindow::onCompareFiles);
     connect(aboutAction, &QAction::triggered, m_window, &MainWindow::on_action_PEHint_triggered);
 
     m_window->addAction(openAction);

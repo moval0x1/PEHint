@@ -45,6 +45,7 @@
 #include "pe_report_builder.h"
 #include "section_layout_widget.h"
 #include "sdk_api_markdown_reader.h"
+#include "pe_compare_dialog.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -870,6 +871,17 @@ void MainWindow::onHexViewerOptions()
         
         dialog.exec();
     }
+}
+
+void MainWindow::onCompareFiles()
+{
+    if (!m_fileLoaded || !m_peParser || !m_peParser->isValid()) {
+        QMessageBox::information(this, QStringLiteral("PE Compare"),
+                                 QStringLiteral("Open a PE file first, then use Compare to diff it with a second file."));
+        return;
+    }
+    PECompareDialog dlg(m_peParser->getDataModel(), m_currentFilePath, this);
+    dlg.exec();
 }
 
 // Private helper methods

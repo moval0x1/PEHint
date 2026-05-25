@@ -13,6 +13,8 @@
 #include <QColor>
 #include <QRegularExpression>
 #include <QMap>
+#include <QButtonGroup>
+#include <QAbstractButton>
 
 namespace {
 
@@ -198,6 +200,25 @@ void FindingsController::updateLanguageStrings()
     if (m_ui->m_findingsInsightText) {
         m_ui->m_findingsInsightText->setPlaceholderText(
             LANG(QStringLiteral("findings/insight_placeholder")));
+    }
+
+    if (m_ui->m_findingsCategoryGroup) {
+        static const struct { const char *cat; const char *key; } kCatKeys[] = {
+            {"all",       "findings/filter_category_all"},
+            {"hardening", "findings/category_hardening"},
+            {"content",   "findings/category_content"},
+            {"metadata",  "findings/category_metadata"},
+            {"imports",   "findings/category_imports"},
+        };
+        for (QAbstractButton *btn : m_ui->m_findingsCategoryGroup->buttons()) {
+            const QString cat = btn->property("category").toString();
+            for (auto &kv : kCatKeys) {
+                if (cat == QLatin1String(kv.cat)) {
+                    btn->setText(LANG(kv.key));
+                    break;
+                }
+            }
+        }
     }
 
     if (m_ui->m_findingsSeverityCombo) {
@@ -434,6 +455,13 @@ void FindingsController::populateFindingsList()
     const bool showPasses =
         m_ui->m_findingsShowPassesCheck && m_ui->m_findingsShowPassesCheck->isChecked();
 
+    QString categoryFilter = QStringLiteral("all");
+    if (m_ui->m_findingsCategoryGroup) {
+        if (QAbstractButton *checked = m_ui->m_findingsCategoryGroup->checkedButton()) {
+            categoryFilter = checked->property("category").toString();
+        }
+    }
+
     QVector<PEFindingInstance> visible = m_cachedFindings;
     if (showPasses) {
         visible += m_cachedPassFindings;
@@ -458,13 +486,33 @@ void FindingsController::populateFindingsList()
         }
     };
 
+    const QVector<PEFindingRule> &rulesForFilter = PEFindingsEngine::rules();
+    const auto categoryForFilter = [&](const PEFindingInstance &finding) -> QString {
+        if (!finding.category.isEmpty()) {
+            return finding.category;
+        }
+        for (const PEFindingRule &rule : rulesForFilter) {
+            if (rule.id == finding.ruleId) {
+                return PEFindingsEngine::categoryKeyForRule(rule);
+            }
+        }
+        return finding.isPass ? QStringLiteral("hardening") : QStringLiteral("other");
+    };
+
+    const auto categoryMatches = [&](const PEFindingInstance &finding) -> bool {
+        if (categoryFilter == QStringLiteral("all")) {
+            return true;
+        }
+        return categoryForFilter(finding) == categoryFilter;
+    };
+
     QVector<PEFindingInstance> filtered;
     filtered.reserve(visible.size());
     for (const PEFindingInstance &finding : visible) {
         if (finding.isPass && !showPasses) {
             continue;
         }
-        if (severityMatches(finding)) {
+        if (severityMatches(finding) && categoryMatches(finding)) {
             filtered.append(finding);
         }
     }
@@ -496,20 +544,8 @@ void FindingsController::populateFindingsList()
         }
     };
 
-    const QVector<PEFindingRule> &rules = PEFindingsEngine::rules();
+    const QVector<PEFindingRule> &rules = rulesForFilter;
     static const char *const kCategoryOrder[] = {"hardening", "content", "metadata", "imports", "other"};
-
-    const auto categoryForFinding = [&](const PEFindingInstance &finding) -> QString {
-        if (!finding.category.isEmpty()) {
-            return finding.category;
-        }
-        for (const PEFindingRule &rule : rules) {
-            if (rule.id == finding.ruleId) {
-                return PEFindingsEngine::categoryKeyForRule(rule);
-            }
-        }
-        return finding.isPass ? QStringLiteral("hardening") : QStringLiteral("other");
-    };
 
     QMap<QString, QTreeWidgetItem *> categoryNodes;
     for (const char *catKey : kCategoryOrder) {
@@ -540,7 +576,7 @@ void FindingsController::populateFindingsList()
             }
         }
 
-        const QString catKey = categoryForFinding(finding);
+        const QString catKey = categoryForFilter(finding);
         QTreeWidgetItem *parent = categoryNodes.value(catKey, categoryNodes.value(QStringLiteral("other")));
         if (!parent) {
             parent = categoryNodes.value(QStringLiteral("other"));

@@ -11,6 +11,12 @@
 bool runPeAnalysisSelfTests();
 bool runPeFindingsSelfTests();
 bool runPeCliScanSelfTests();
+bool runPeCliBatchTests();
+bool runPeCliWatchTests();
+bool runPeEpDisasmSelfTests();
+bool runPeAuthenticodeSelfTests();
+bool runPeResourcePreviewSelfTests();
+bool runImportApiHintStoreSelfTests();
 
 int main(int argc, char *argv[])
 {
@@ -44,6 +50,36 @@ int main(int argc, char *argv[])
 
     if (!runPeCliScanSelfTests()) {
         std::cerr << "PE CLI self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliBatchTests()) {
+        std::cerr << "PE CLI batch tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliWatchTests()) {
+        std::cerr << "PE CLI watch tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeEpDisasmSelfTests()) {
+        std::cerr << "PE EP disasm self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeAuthenticodeSelfTests()) {
+        std::cerr << "PE Authenticode self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeResourcePreviewSelfTests()) {
+        std::cerr << "PE resource preview self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runImportApiHintStoreSelfTests()) {
+        std::cerr << "ImportApiHintStore self-tests failed\n";
         ++failures;
     }
 

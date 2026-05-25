@@ -2453,6 +2453,13 @@
     },
     {
       "dll": "urlmon.dll",
+      "function": "URLDownloadToFileA",
+      "summary": "Downloads bits from the internet and saves them to a file (ANSI variant).",
+      "malapiUrl": "https://malapi.io/winapi/URLDownloadToFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "urlmon.dll",
       "function": "URLDownloadToFileW",
       "summary": "Downloads bits from the internet and saves them to a file.",
       "learnUrl": "https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/ms775123(v=vs.85)"

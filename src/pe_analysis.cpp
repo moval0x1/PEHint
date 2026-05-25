@@ -1019,27 +1019,45 @@ QString versionStringForKey(const QByteArray &blob, const QString &key)
     const std::u16string u16 = key.toStdU16String();
     const QByteArray keyUtf16(reinterpret_cast<const char *>(u16.data()),
                               static_cast<int>(u16.size() * sizeof(char16_t)));
-    const int idx = blob.indexOf(keyUtf16);
-    if (idx < 0) {
-        return QString();
-    }
-    int pos = idx + keyUtf16.size();
-    while (pos + 1 < blob.size() && blob.at(pos) == '\0' && blob.at(pos + 1) == '\0') {
-        pos += 2;
-    }
-    pos = (pos + 3) & ~3;
 
-    if (idx >= 6) {
-        const quint16 valueLen = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 4)))
-                                 | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 3))) << 8);
-        const quint16 type = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 2)))
-                             | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 1))) << 8);
-        if (type == 0 && valueLen > 0 && pos + static_cast<int>(valueLen) * 2 <= blob.size()) {
-            return QString::fromUtf16(reinterpret_cast<const char16_t *>(blob.constData() + pos), valueLen);
+    // Walk all occurrences of the key (one per language StringTable) and return
+    // the first non-empty value. This handles multi-language VS_VERSION_INFO where
+    // the first StringTable may have an empty wValueLength for some fields.
+    int searchFrom = 0;
+    while (true) {
+        const int idx = blob.indexOf(keyUtf16, searchFrom);
+        if (idx < 0) {
+            break;
+        }
+        searchFrom = idx + static_cast<int>(keyUtf16.size());
+
+        int pos = idx + static_cast<int>(keyUtf16.size());
+        while (pos + 1 < blob.size() && blob.at(pos) == '\0' && blob.at(pos + 1) == '\0') {
+            pos += 2;
+        }
+        pos = (pos + 3) & ~3;
+
+        if (idx >= 6) {
+            const quint16 valueLen = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 4)))
+                                     | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 3))) << 8);
+            const quint16 type = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 2)))
+                                 | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 1))) << 8);
+            if (type == 0 && valueLen > 0 && pos + static_cast<int>(valueLen) * 2 <= blob.size()) {
+                const QString val = QString::fromUtf16(
+                    reinterpret_cast<const char16_t *>(blob.constData() + pos), valueLen);
+                if (!val.trimmed().isEmpty()) {
+                    return val;
+                }
+                continue;
+            }
+        }
+
+        const QString val = readUtf16CString(blob, pos);
+        if (!val.trimmed().isEmpty()) {
+            return val;
         }
     }
-
-    return readUtf16CString(blob, pos);
+    return QString();
 }
 
 QString formatFixedVersion(quint32 ms, quint32 ls)

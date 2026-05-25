@@ -787,6 +787,46 @@ void PEUIPresenter::appendTLSDirectoryDetailTree(QTreeWidgetItem *dirItem, quint
         addTreeField(body, QStringLiteral("TLS Characteristics"), PEUtils::formatHexWidth(tls->Characteristics, 8),
                      static_cast<quint32>(offsetof(IMAGE_TLS_DIRECTORY64, Characteristics)), sizeof(quint32));
     }
+
+    // Enumerate TLS callback addresses using the already-resolved list from the data model
+    const PETlsDirectoryInfo &tlsInfo = m_parser->m_dataModel.tlsDirectoryInfo();
+    if (tlsInfo.callbacksPresent) {
+        const int ptrSize = pe32 ? 4 : 8;
+
+        quint64 imageBase = 0;
+        if (pe32) {
+            imageBase = opt->ImageBase;
+        } else {
+            imageBase = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64 *>(opt)->ImageBase;
+        }
+
+        quint32 cbFO = 0;
+        if (imageBase != 0 && tlsInfo.addressOfCallbacks >= imageBase) {
+            const quint32 cbRVA = static_cast<quint32>(tlsInfo.addressOfCallbacks - imageBase);
+            cbFO = m_parser->rvaToFileOffset(cbRVA);
+        }
+
+        QTreeWidgetItem *cbNode = new QTreeWidgetItem(body);
+        cbNode->setText(0, QStringLiteral("Callback Array"));
+        cbNode->setText(1, cbFO != 0
+            ? QStringLiteral("%1 callback(s)").arg(tlsInfo.callbackAddresses.size())
+            : QStringLiteral("pointer present — unresolvable from disk image"));
+        cbNode->setText(2, cbFO != 0 ? PEUtils::formatHexWidth(cbFO, 8) : QString());
+        cbNode->setText(3, QString());
+        cbNode->setText(4, QStringLiteral("TLS callbacks run before the entry point — common anti-debug / loader trick"));
+
+        for (int i = 0; i < tlsInfo.callbackAddresses.size(); ++i) {
+            const quint64 va    = tlsInfo.callbackAddresses[i];
+            const quint64 rvaVal = (imageBase != 0 && va >= imageBase) ? va - imageBase : va;
+            addTreeField(cbNode,
+                         QStringLiteral("Callback[%1]").arg(i),
+                         QStringLiteral("VA: %1   RVA: %2")
+                             .arg(PEUtils::formatHexWidth(va, pe32 ? 8 : 16))
+                             .arg(PEUtils::formatHexWidth(rvaVal, 8)),
+                         static_cast<quint32>(i) * static_cast<quint32>(ptrSize),
+                         static_cast<quint32>(ptrSize));
+        }
+    }
 }
 
 void PEUIPresenter::appendLoadConfigDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize)

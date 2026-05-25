@@ -26,6 +26,7 @@ struct PETlsDirectoryInfo {
     quint32 sizeOfZeroFill = 0;
     quint32 characteristics = 0;
     bool callbacksPresent = false;
+    QVector<quint64> callbackAddresses; ///< Resolved VA of each non-null TLS callback
 };
 
 /** Parsed IMAGE_LOAD_CONFIG_DIRECTORY32/64 (data directory index 10). */
