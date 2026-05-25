@@ -337,6 +337,19 @@ void FindingsController::handleFindingItemClicked(QTreeWidgetItem *item)
                     "#38bdf8;border-radius:4px;color:#0c4a6e;'>%1</div>")
                     .arg(helpText.toHtmlEscaped());
     }
+
+    if (baseRuleId == QStringLiteral("invalid_signature")) {
+        const QString noteKey = QStringLiteral("findings/invalid_signature_revoc_note");
+        const QString note = LANG(noteKey);
+        if (!note.isEmpty() && note != noteKey) {
+            html += QStringLiteral(
+                        "<div style='margin-top:8px;padding:6px 10px;background:#fffbeb;"
+                        "border-left:3px solid #f59e0b;border-radius:4px;"
+                        "color:#78350f;font-size:10px;'>%1</div>")
+                        .arg(note.toHtmlEscaped());
+        }
+    }
+
     html += QStringLiteral("</div>");
     emit insightHtmlChanged(html);
 }
