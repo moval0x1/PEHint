@@ -155,6 +155,7 @@ void MainWindowChrome::setupMenus()
     toolsMenu->addAction(hexViewerAction);
 
     QAction *compareAction = new QAction(LANG("UI/menu_compare"), m_window);
+    compareAction->setIcon(QIcon(QStringLiteral(":/images/imgs/compare.png")));
     compareAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     toolsMenu->addAction(compareAction);
 
@@ -304,9 +305,16 @@ void MainWindowChrome::setupContextMenu()
     collapseAction->setIcon(QIcon(QStringLiteral(":/images/imgs/collapse.png")));
     m_contextMenu->addAction(collapseAction);
 
+    m_contextMenu->addSeparator();
+
+    QAction *compareContextAction = new QAction(LANG("UI/menu_compare"), m_contextMenu);
+    compareContextAction->setIcon(QIcon(QStringLiteral(":/images/imgs/compare.png")));
+    m_contextMenu->addAction(compareContextAction);
+
     connect(copyAction, &QAction::triggered, m_window, &MainWindow::onCopyToClipboard);
     connect(expandAction, &QAction::triggered, m_window, &MainWindow::onExpandAll);
     connect(collapseAction, &QAction::triggered, m_window, &MainWindow::onCollapseAll);
+    connect(compareContextAction, &QAction::triggered, m_window, &MainWindow::onCompareFiles);
 
     m_window->addAction(copyAction);
     m_window->addAction(expandAction);
@@ -678,15 +686,19 @@ void MainWindowChrome::showAboutDialog(QWidget *parent)
 
     const QStringList featureLines = {
         aboutLine(QStringLiteral("UI/about_feature_1"),
-                  QStringLiteral("- Interactive structure tree: DOS headers, NT headers, sections, and all 16 data directories")),
+                  QStringLiteral("- Interactive structure tree: all 16 data directories, field explanations, synchronized hex view")),
         aboutLine(QStringLiteral("UI/about_feature_2"),
-                  QStringLiteral("- Field explanations in the dedicated explanation panel")),
+                  QStringLiteral("- Heuristic Findings panel: 41 rules across hardening, content, metadata, and imports; category filter; one-click navigation")),
         aboutLine(QStringLiteral("UI/about_feature_3"),
-                  QStringLiteral("- Imports and Exports views; Dependencies tab with DLL resolution; Strings tab with extraction and export")),
+                  QStringLiteral("- Imports / Exports / Delay Imports / Dependencies / Resources / Strings tabs")),
         aboutLine(QStringLiteral("UI/about_feature_4"),
-                  QStringLiteral("- Hex viewer synchronized with tree selections and field ranges")),
+                  QStringLiteral("- Authenticode trust verification with publisher, certificate chain, and revocation status (Windows)")),
         aboutLine(QStringLiteral("UI/about_feature_5"),
-                  QStringLiteral("- English and Portuguese UI with external JSON explanations")),
+                  QStringLiteral("- CLI batch triage: --scan, --dir, --recursive, --watch; text and JSON output")),
+        aboutLine(QStringLiteral("UI/about_feature_6"),
+                  QStringLiteral("- PE Compare: structural diff between two PE files (headers, sections, imports, findings)")),
+        aboutLine(QStringLiteral("UI/about_feature_7"),
+                  QStringLiteral("- English and Portuguese UI; config-driven rules, explanations, and import API hints")),
     };
 
     QDialog about(parent);

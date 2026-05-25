@@ -1,6 +1,6 @@
 # PEHint - PE Header Learning Tool
 
-[![Version](https://img.shields.io/badge/version-0.4.6-blue.svg)](https://github.com/moval0x1/PEHint)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/moval0x1/PEHint)
 [![CI](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/moval0x1/PEHint/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://www.microsoft.com/windows)
@@ -14,7 +14,16 @@ Planned work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md) (overlay/entropy/P
 
 ## Overview
 
-PEHint is a visual PE file analyzer for analysts, reverse engineers, and students who need quick insight into Windows executables. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports**, **Exports**, **Delay Imports**, **Dependencies**, **Resources** (manifest, version info, icons, string tables, hex + decoded text preview), and **Strings** (filters, async extraction, export to file). The **Findings** tab runs config-driven heuristics (overlay, entropy, hardening, suspicious imports/strings, checksum, signatures, and more) with one-click navigation to the relevant tree field or hex range. Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the app still lists modules and symbols normally.
+PEHint is a visual PE file analyzer for malware triage, reverse engineering, and learning the Windows PE format. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports** (flagged APIs, MalAPI hints), **Exports**, **Delay Imports**, **Dependencies**, **Resources** (manifest, version info, icons, string tables, hex + decoded text preview), and **Strings** (filters, async extraction, export to file). The **Findings** tab runs 41 config-driven heuristic rules across hardening, content, metadata, and imports — with category filter pills, hardening pass indicators, and one-click navigation to the relevant tree field or hex range. **PE Compare** diffs two PE files side-by-side. The **CLI** (`--scan`) supports batch triage, directory scanning, recursive walk, and file-watch mode with text or JSON output. Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the bundled MalAPI hints (~380 entries) are used as fallback.
+
+## What's new in v0.5.0
+
+- **Findings panel:** Category filter pill buttons (All / Hardening / Content / Metadata / Imports) above the findings list. Hardening pass indicators (ASLR, DEP, CFG) now always visible — no checkbox required.
+- **New findings:** `invalid_signature` (high) fires when Authenticode trust fails (expired, tampered, untrusted root, revoked); `clr_assembly` (info) detects .NET/CLR binaries. Both include insight-panel help text and a revocation caveat for air-gapped systems.
+- **TLS callbacks:** Full walk of the `AddressOfCallBacks` array (VA→RVA→file offset); `tls_callbacks_present` finding now reports callback count and VAs; callback entries are clickable in the Structure tree.
+- **Base relocations:** Full block walk over all `IMAGE_BASE_RELOCATION` blocks (not just the first); padding entries (type 0) excluded from the entry count.
+- **`findings.json` v6:** All 41 rules now carry an explicit `"category"` field; the string-matching category fallback is removed.
+- **PE Compare:** Structural diff between two PE files across headers, sections, imports, and findings (referenced in earlier releases, now implemented).
 
 ## What's new in v0.4.6
 
@@ -97,4 +106,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**PEHint v0.4.6** — Making PE header analysis accessible and educational with modern C++ and Qt 6.
+**PEHint v0.5.0** — Making PE file analysis accessible and educational with modern C++ and Qt 6.

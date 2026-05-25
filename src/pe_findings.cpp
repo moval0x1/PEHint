@@ -1,4 +1,5 @@
 #include "pe_findings.h"
+#include "import_api_hint_store.h"
 #include "language_manager.h"
 #include "pe_utils.h"
 
@@ -418,33 +419,54 @@ void appendImportCombos(const PEDataModel &model, const PEFindingRule &metaRule,
 
 void appendFlaggedImports(const PEDataModel &model, const PEFindingRule &metaRule, QVector<PEFindingInstance> &results)
 {
+    const auto addInstance = [&](const QString &dll, const QString &func, PEFindingSeverity sev,
+                                  const QString &note, const QString &flagId, quint32 thunkOffset) {
+        QMap<QString, QString> params;
+        params[QStringLiteral("dll")] = dll;
+        params[QStringLiteral("function")] = func;
+        params[QStringLiteral("note")] = note.isEmpty() ? QStringLiteral("-") : note;
+        PEFindingInstance inst;
+        inst.ruleId = metaRule.id + QChar(':') + flagId;
+        inst.severity = sev;
+        inst.title = LANG_PARAMS(QStringLiteral("findings/flagged_import_title"), params);
+        inst.detail = LANG_PARAMS(QStringLiteral("findings/flagged_import_detail"), params);
+        inst.category = metaRule.category.isEmpty() ? QStringLiteral("imports") : metaRule.category;
+        if (thunkOffset > 0) {
+            inst.hexOffset = thunkOffset;
+            inst.hexSize = 4;
+            inst.hasHexNav = true;
+        }
+        results.append(inst);
+    };
+
     const auto scanModules = [&](const QMap<QString, QList<PEDataModel::ImportFunctionEntry>> &details) {
         for (auto modIt = details.constBegin(); modIt != details.constEnd(); ++modIt) {
             for (const PEDataModel::ImportFunctionEntry &entry : modIt.value()) {
                 if (entry.name.isEmpty() || entry.importedByOrdinal) {
                     continue;
                 }
+
+                // import_flags.json — hand-curated, highest precision.
+                bool handledByFlags = false;
                 for (const ImportFlagRule &flag : importFlags()) {
                     if (!importFlagMatches(flag, modIt.key(), entry.name)) {
                         continue;
                     }
-                    QMap<QString, QString> params;
-                    params[QStringLiteral("dll")] = modIt.key();
-                    params[QStringLiteral("function")] = entry.name;
-                    params[QStringLiteral("note")] = flag.note.isEmpty() ? QStringLiteral("-")
-                                                                       : flag.note;
-                    PEFindingInstance inst;
-                    inst.ruleId = metaRule.id + QChar(':') + flag.id;
-                    inst.severity = flag.severity;
-                    inst.title = LANG_PARAMS(QStringLiteral("findings/flagged_import_title"), params);
-                    inst.detail = LANG_PARAMS(QStringLiteral("findings/flagged_import_detail"), params);
-                    inst.category = metaRule.category.isEmpty() ? QStringLiteral("imports") : metaRule.category;
-                    if (entry.thunkOffset > 0) {
-                        inst.hexOffset = entry.thunkOffset;
-                        inst.hexSize = 4;
-                        inst.hasHexNav = true;
-                    }
-                    results.append(inst);
+                    addInstance(modIt.key(), entry.name, flag.severity, flag.note, flag.id,
+                                entry.thunkOffset);
+                    handledByFlags = true;
+                    break;
+                }
+                if (handledByFlags) {
+                    continue;
+                }
+
+                // MalAPI categories — automatic coverage from bundled hints.
+                PEFindingSeverity sev = PEFindingSeverity::Medium;
+                QString note;
+                if (PEFindingsEngine::isFlaggedImport(modIt.key(), entry.name, &sev, &note)) {
+                    const QString flagId = QStringLiteral("malapi:") + entry.name.toLower();
+                    addInstance(modIt.key(), entry.name, sev, note, flagId, entry.thunkOffset);
                 }
             }
         }
@@ -1274,6 +1296,8 @@ bool PEFindingsEngine::isFlaggedImport(const QString &moduleName, const QString 
     if (functionName.isEmpty()) {
         return false;
     }
+
+    // Hand-curated import_flags.json takes priority.
     for (const ImportFlagRule &flag : importFlags()) {
         if (!importFlagMatches(flag, moduleName, functionName)) {
             continue;
@@ -1286,5 +1310,46 @@ bool PEFindingsEngine::isFlaggedImport(const QString &moduleName, const QString 
         }
         return true;
     }
+
+    // Fall back to MalAPI categories from the bundled hints store.
+    // "Helper" is excluded — it covers generic APIs used by almost every program.
+    static const struct { const char *category; PEFindingSeverity severity; } kCatMap[] = {
+        {"Injection",      PEFindingSeverity::High},
+        {"Evasion",        PEFindingSeverity::High},
+        {"Ransomware",     PEFindingSeverity::High},
+        {"Anti-Debugging", PEFindingSeverity::Medium},
+        {"Spying",         PEFindingSeverity::Medium},
+        {"Internet",       PEFindingSeverity::Medium},
+        {"Enumeration",    PEFindingSeverity::Low},
+    };
+
+    const ImportApiHint hint = ImportApiHintStore::instance().hintForImport(moduleName, functionName);
+    if (!hint.malapiCategories.isEmpty()) {
+        PEFindingSeverity best = PEFindingSeverity::Info;
+        bool matched = false;
+        for (const QString &cat : hint.malapiCategories) {
+            for (const auto &entry : kCatMap) {
+                if (cat.compare(QLatin1String(entry.category), Qt::CaseInsensitive) == 0) {
+                    if (!matched || static_cast<int>(entry.severity) > static_cast<int>(best)) {
+                        best = entry.severity;
+                    }
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if (matched) {
+            if (severityOut) {
+                *severityOut = best;
+            }
+            if (noteOut) {
+                *noteOut = hint.summary.isEmpty()
+                    ? QStringLiteral("MalAPI: %1").arg(hint.malapiCategories.join(QStringLiteral(", ")))
+                    : hint.summary;
+            }
+            return true;
+        }
+    }
+
     return false;
 }

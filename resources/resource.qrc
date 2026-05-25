@@ -16,5 +16,6 @@
         <file>imgs/PEHint.png</file>
         <file>imgs/logout.png</file>
         <file>imgs/clear.png</file>
+        <file>imgs/compare.png</file>
     </qresource>
 </RCC>

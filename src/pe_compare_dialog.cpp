@@ -5,6 +5,7 @@
 #include "pe_analysis.h"
 #include "language_manager.h"
 
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -70,9 +71,9 @@ void PECompareDialog::browseSecondFile()
         this,
         QStringLiteral("Select PE file to compare"),
         QFileInfo(m_baseFilePath).absolutePath(),
-        QStringLiteral("PE Files (*.exe *.dll *.sys);;All Files (*)"));
+        QStringLiteral("PE Files (*.exe *.dll *.sys *.scr *.drv *.bin);;All Files (*)"));
     if (!path.isEmpty()) {
-        m_secondPathEdit->setText(path);
+        m_secondPathEdit->setText(QDir::toNativeSeparators(path));
     }
 }
 

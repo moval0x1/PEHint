@@ -72,7 +72,6 @@ UIManager::UIManager(MainWindow *parent)
     , m_findingsInsightTitleLabel(nullptr)
     , m_findingsInsightText(nullptr)
     , m_findingsSeverityCombo(nullptr)
-    , m_findingsShowPassesCheck(nullptr)
     , m_findingsCategoryGroup(nullptr)
     , m_sectionLayoutWidget(nullptr)
     , m_stringsFilterEdit(nullptr)
@@ -841,9 +840,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_low"), QStringLiteral("low"));
     m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_info"), QStringLiteral("info"));
     m_findingsSeverityCombo->setMaximumWidth(140);
-    m_findingsShowPassesCheck = new QCheckBox(LANG("findings/show_passes"));
     findingsFilterLayout->addWidget(m_findingsSeverityCombo);
-    findingsFilterLayout->addWidget(m_findingsShowPassesCheck);
     findingsFilterLayout->addStretch();
     findingsLayout->addLayout(findingsFilterLayout);
 
@@ -1012,9 +1009,6 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     if (m_findingsSeverityCombo) {
         connect(m_findingsSeverityCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), mainWindow,
                 &MainWindow::onFindingsFilterChanged);
-    }
-    if (m_findingsShowPassesCheck) {
-        connect(m_findingsShowPassesCheck, &QCheckBox::toggled, mainWindow, &MainWindow::onFindingsFilterChanged);
     }
     if (m_findingsCategoryGroup) {
         connect(m_findingsCategoryGroup, &QButtonGroup::idClicked, mainWindow,

@@ -189,10 +189,6 @@ void FindingsController::updateLanguageStrings()
             {LANG(QStringLiteral("UI/tree_header_field")), LANG(QStringLiteral("UI/tree_header_value"))});
     }
 
-    if (m_ui->m_findingsShowPassesCheck) {
-        m_ui->m_findingsShowPassesCheck->setText(LANG(QStringLiteral("findings/show_passes")));
-    }
-
     if (m_ui->m_findingsInsightTitleLabel) {
         m_ui->m_findingsInsightTitleLabel->setText(LANG(QStringLiteral("findings/insight_title")));
     }
@@ -465,9 +461,6 @@ void FindingsController::populateFindingsList()
     const QString severityFilter =
         m_ui->m_findingsSeverityCombo ? m_ui->m_findingsSeverityCombo->currentData().toString()
                                       : QStringLiteral("all");
-    const bool showPasses =
-        m_ui->m_findingsShowPassesCheck && m_ui->m_findingsShowPassesCheck->isChecked();
-
     QString categoryFilter = QStringLiteral("all");
     if (m_ui->m_findingsCategoryGroup) {
         if (QAbstractButton *checked = m_ui->m_findingsCategoryGroup->checkedButton()) {
@@ -476,16 +469,11 @@ void FindingsController::populateFindingsList()
     }
 
     QVector<PEFindingInstance> visible = m_cachedFindings;
-    if (showPasses) {
-        visible += m_cachedPassFindings;
-    }
+    visible += m_cachedPassFindings;
 
     const auto severityMatches = [&](const PEFindingInstance &finding) -> bool {
-        if (severityFilter == QStringLiteral("all")) {
+        if (finding.isPass || severityFilter == QStringLiteral("all")) {
             return true;
-        }
-        if (finding.isPass) {
-            return severityFilter == QStringLiteral("info");
         }
         switch (finding.severity) {
         case PEFindingSeverity::High:
@@ -522,9 +510,6 @@ void FindingsController::populateFindingsList()
     QVector<PEFindingInstance> filtered;
     filtered.reserve(visible.size());
     for (const PEFindingInstance &finding : visible) {
-        if (finding.isPass && !showPasses) {
-            continue;
-        }
         if (severityMatches(finding) && categoryMatches(finding)) {
             filtered.append(finding);
         }

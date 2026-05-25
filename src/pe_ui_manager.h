@@ -46,7 +46,6 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QSpinBox>
-#include <QCheckBox>
 #include <QSplitter>
 #include <QLabel>
 #include <QButtonGroup>
@@ -120,7 +119,6 @@ public:
     QLabel *m_findingsInsightTitleLabel; ///< Heading above Findings detail panel
     QTextBrowser *m_findingsInsightText;   ///< File summary / finding detail (stays on Findings tab)
     QComboBox *m_findingsSeverityCombo;  ///< Filter findings by severity
-    QCheckBox *m_findingsShowPassesCheck; ///< Show hardening pass rows
     QButtonGroup *m_findingsCategoryGroup; ///< Exclusive category filter pill buttons
     SectionLayoutWidget *m_sectionLayoutWidget; ///< Compact RVA section map (Findings tab)
     QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring

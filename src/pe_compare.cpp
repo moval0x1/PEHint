@@ -4,6 +4,7 @@
 #include "pe_utils.h"
 
 #include <QSet>
+#include <cstring>
 
 namespace PECompare {
 
@@ -83,13 +84,13 @@ void compareSections(const PEDataModel &a, const PEDataModel &b, QList<SectionDi
     QMap<QString, const IMAGE_SECTION_HEADER *> byNameB;
 
     for (const IMAGE_SECTION_HEADER *s : a.getSections()) {
-        const QString name = QString::fromLatin1(
-            reinterpret_cast<const char *>(s->Name), 8).trimmed();
+        const int len = static_cast<int>(strnlen(reinterpret_cast<const char *>(s->Name), 8));
+        const QString name = QString::fromLatin1(reinterpret_cast<const char *>(s->Name), len).trimmed();
         byNameA.insert(name, s);
     }
     for (const IMAGE_SECTION_HEADER *s : b.getSections()) {
-        const QString name = QString::fromLatin1(
-            reinterpret_cast<const char *>(s->Name), 8).trimmed();
+        const int len = static_cast<int>(strnlen(reinterpret_cast<const char *>(s->Name), 8));
+        const QString name = QString::fromLatin1(reinterpret_cast<const char *>(s->Name), len).trimmed();
         byNameB.insert(name, s);
     }
 
@@ -218,6 +219,40 @@ QString esc(const QString &s)
     return r;
 }
 
+QString formatFindingId(const QString &id)
+{
+    QString label;
+    QString badge;
+    if (id.startsWith(QStringLiteral("flagged_import:malapi:"))) {
+        label = id.mid(22);
+        badge = QStringLiteral("malapi");
+    } else if (id.startsWith(QStringLiteral("flagged_import:"))) {
+        label = id.mid(15);
+        badge = QStringLiteral("import");
+    } else {
+        label = id;
+        label.replace(QLatin1Char('_'), QLatin1Char(' '));
+    }
+    if (!label.isEmpty())
+        label[0] = label[0].toUpper();
+    QString r = esc(label);
+    if (!badge.isEmpty())
+        r += QStringLiteral("&nbsp;<span class='badge'>(%1)</span>").arg(badge);
+    return r;
+}
+
+QString itemList(const QStringList &items, const QString &cssClass,
+                 bool formatAsId = false)
+{
+    QString h = QStringLiteral("<ul>");
+    for (const QString &s : items) {
+        const QString cell = formatAsId ? formatFindingId(s) : esc(s);
+        h += QStringLiteral("<li class='%1'>%2</li>").arg(cssClass, cell);
+    }
+    h += QStringLiteral("</ul>");
+    return h;
+}
+
 } // namespace
 
 int Result::totalDifferences() const
@@ -257,8 +292,11 @@ QString toHtml(const Result &result)
                         "table{border-collapse:collapse;width:100%;margin-bottom:8px}"
                         "td,th{padding:2px 6px;border:1px solid #ccc;vertical-align:top}"
                         "th{background:#eee;font-weight:bold}"
+                        "ul{margin:2px 0 6px 18px;padding:0}"
+                        "li{margin:1px 0}"
                         ".a{color:%1}.b{color:%2}.same{color:%3}"
                         ".only{font-style:italic}"
+                        ".badge{font-size:10px;color:#888;font-style:italic}"
                         "</style></head><body>").arg(colA, colB, colSame);
 
     // Summary
@@ -310,12 +348,12 @@ QString toHtml(const Result &result)
         for (const ModuleDiff &m : result.imports) {
             h += QStringLiteral("<p><b>%1</b></p>").arg(esc(m.moduleName));
             if (!m.onlyInA.isEmpty()) {
-                h += QStringLiteral("<p class='a only'>&nbsp;&nbsp;Only in %1: %2</p>")
-                         .arg(esc(nameA), esc(m.onlyInA.join(QStringLiteral(", "))));
+                h += QStringLiteral("<p class='a only'>Only in %1:</p>").arg(esc(nameA));
+                h += itemList(m.onlyInA, QStringLiteral("a"));
             }
             if (!m.onlyInB.isEmpty()) {
-                h += QStringLiteral("<p class='b only'>&nbsp;&nbsp;Only in %1: %2</p>")
-                         .arg(esc(nameB), esc(m.onlyInB.join(QStringLiteral(", "))));
+                h += QStringLiteral("<p class='b only'>Only in %1:</p>").arg(esc(nameB));
+                h += itemList(m.onlyInB, QStringLiteral("b"));
             }
         }
     }
@@ -324,12 +362,12 @@ QString toHtml(const Result &result)
     if (!result.exportsOnlyInA.isEmpty() || !result.exportsOnlyInB.isEmpty()) {
         h += QStringLiteral("<h2>Exports</h2>");
         if (!result.exportsOnlyInA.isEmpty()) {
-            h += QStringLiteral("<p class='a only'>Only in %1: %2</p>")
-                     .arg(esc(nameA), esc(result.exportsOnlyInA.join(QStringLiteral(", "))));
+            h += QStringLiteral("<p class='a only'>Only in %1:</p>").arg(esc(nameA));
+            h += itemList(result.exportsOnlyInA, QStringLiteral("a"));
         }
         if (!result.exportsOnlyInB.isEmpty()) {
-            h += QStringLiteral("<p class='b only'>Only in %1: %2</p>")
-                     .arg(esc(nameB), esc(result.exportsOnlyInB.join(QStringLiteral(", "))));
+            h += QStringLiteral("<p class='b only'>Only in %1:</p>").arg(esc(nameB));
+            h += itemList(result.exportsOnlyInB, QStringLiteral("b"));
         }
     }
 
@@ -337,12 +375,12 @@ QString toHtml(const Result &result)
     if (!result.findingsOnlyInA.isEmpty() || !result.findingsOnlyInB.isEmpty()) {
         h += QStringLiteral("<h2>Findings</h2>");
         if (!result.findingsOnlyInA.isEmpty()) {
-            h += QStringLiteral("<p class='a only'>Only in %1: %2</p>")
-                     .arg(esc(nameA), esc(result.findingsOnlyInA.join(QStringLiteral(", "))));
+            h += QStringLiteral("<p class='a only'>Only in %1:</p>").arg(esc(nameA));
+            h += itemList(result.findingsOnlyInA, QStringLiteral("a"), true);
         }
         if (!result.findingsOnlyInB.isEmpty()) {
-            h += QStringLiteral("<p class='b only'>Only in %1: %2</p>")
-                     .arg(esc(nameB), esc(result.findingsOnlyInB.join(QStringLiteral(", "))));
+            h += QStringLiteral("<p class='b only'>Only in %1:</p>").arg(esc(nameB));
+            h += itemList(result.findingsOnlyInB, QStringLiteral("b"), true);
         }
     }
 

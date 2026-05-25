@@ -17,6 +17,7 @@ struct ImportApiHint {
     QString remarks;
     QString learnUrl;
     QString malapiUrl;
+    QStringList malapiCategories; ///< e.g. {"Injection", "Evasion"} — populated from bundled hints only
 
     bool hasContent() const
     {

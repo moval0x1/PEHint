@@ -76,6 +76,12 @@ void ImportApiHintStore::loadFromConfig() const
             } else if (!hint.remarks.contains(QStringLiteral("MalAPI categories"))) {
                 hint.remarks += QStringLiteral("<br/>") + catLine;
             }
+            for (const QString &cat : categories.split(QLatin1Char(','))) {
+                const QString trimmed = cat.trimmed();
+                if (!trimmed.isEmpty()) {
+                    hint.malapiCategories.append(trimmed);
+                }
+            }
         }
         const QString dll = obj.value(QStringLiteral("dll")).toString();
         const QString function = obj.value(QStringLiteral("function")).toString();
