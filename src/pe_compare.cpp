@@ -1,9 +1,11 @@
 #include "pe_compare.h"
+#include "pe_authenticode.h"
 #include "pe_data_model.h"
 #include "pe_findings.h"
 #include "pe_utils.h"
 
 #include <QSet>
+#include <cmath>
 #include <cstring>
 
 namespace PECompare {
@@ -117,6 +119,16 @@ void compareSections(const PEDataModel &a, const PEDataModel &b, QList<SectionDi
                       PEUtils::formatHex(sA->SizeOfRawData), PEUtils::formatHex(sB->SizeOfRawData));
             diffField(sd.fields, QStringLiteral("Characteristics"),
                       PEUtils::formatHex(sA->Characteristics), PEUtils::formatHex(sB->Characteristics));
+
+            // Entropy
+            const double eA = a.sectionEntropy(name);
+            const double eB = b.sectionEntropy(name);
+            sd.entropyA = eA;
+            sd.entropyB = eB;
+            if (eA >= 0 && eB >= 0 && std::abs(eA - eB) > 0.1) {
+                diffField(sd.fields, QStringLiteral("Entropy"),
+                          QString::number(eA, 'f', 2), QString::number(eB, 'f', 2));
+            }
         }
 
         if (sd.onlyInA || sd.onlyInB || !sd.fields.isEmpty()) {
@@ -135,7 +147,6 @@ void compareImports(const PEDataModel &a, const PEDataModel &b, QList<ModuleDiff
     for (const QString &k : impsB.keys()) allMods.insert(k.toLower());
 
     for (const QString &modLower : qAsConst(allMods)) {
-        // Find matching key (case-insensitive)
         QString keyA, keyB;
         for (const QString &k : impsA.keys()) {
             if (k.toLower() == modLower) { keyA = k; break; }
@@ -190,15 +201,26 @@ void compareExports(const PEDataModel &a, const PEDataModel &b,
 }
 
 void compareFindings(const PEDataModel &a, const PEDataModel &b,
-                     QStringList &onlyA, QStringList &onlyB)
+                     QStringList &onlyA, QStringList &onlyB,
+                     QMap<QString, QString> &titles)
 {
     PEFindingsEngine::loadRules();
     const auto findingsA = PEFindingsEngine::evaluate(a, [](quint32) { return 0u; });
     const auto findingsB = PEFindingsEngine::evaluate(b, [](quint32) { return 0u; });
 
+    // Collect titles from both sets
+    for (const auto &f : findingsA) {
+        if (!f.isPass && !titles.contains(f.ruleId))
+            titles.insert(f.ruleId, f.title);
+    }
+    for (const auto &f : findingsB) {
+        if (!f.isPass && !titles.contains(f.ruleId))
+            titles.insert(f.ruleId, f.title);
+    }
+
     QSet<QString> idsA, idsB;
-    for (const auto &f : findingsA) idsA.insert(f.ruleId);
-    for (const auto &f : findingsB) idsB.insert(f.ruleId);
+    for (const auto &f : findingsA) { if (!f.isPass) idsA.insert(f.ruleId); }
+    for (const auto &f : findingsB) { if (!f.isPass) idsB.insert(f.ruleId); }
 
     for (const QString &id : qAsConst(idsA)) {
         if (!idsB.contains(id)) onlyA.append(id);
@@ -210,6 +232,126 @@ void compareFindings(const PEDataModel &a, const PEDataModel &b,
     onlyB.sort();
 }
 
+void compareVersion(const PEDataModel &a, const PEDataModel &b, QList<FieldDiff> &out)
+{
+    const PEVersionInfo vA = a.getVersionInfo();
+    const PEVersionInfo vB = b.getVersionInfo();
+    if (!vA.present && !vB.present)
+        return;
+    const QString presA = vA.present ? QStringLiteral("present") : QStringLiteral("absent");
+    const QString presB = vB.present ? QStringLiteral("present") : QStringLiteral("absent");
+    diffField(out, QStringLiteral("Version resource"), presA, presB);
+    if (vA.present && vB.present) {
+        diffField(out, QStringLiteral("FileVersion"),       vA.fileVersion,       vB.fileVersion);
+        diffField(out, QStringLiteral("ProductVersion"),    vA.productVersion,    vB.productVersion);
+        diffField(out, QStringLiteral("CompanyName"),       vA.companyName,       vB.companyName);
+        diffField(out, QStringLiteral("ProductName"),       vA.productName,       vB.productName);
+        diffField(out, QStringLiteral("FileDescription"),   vA.fileDescription,   vB.fileDescription);
+        diffField(out, QStringLiteral("OriginalFilename"),  vA.originalFilename,  vB.originalFilename);
+        diffField(out, QStringLiteral("InternalName"),      vA.internalName,      vB.internalName);
+    }
+}
+
+void comparePdb(const PEDataModel &a, const PEDataModel &b, QList<FieldDiff> &out)
+{
+    const PEPdbInfo pA = a.getPdbInfo();
+    const PEPdbInfo pB = b.getPdbInfo();
+    if (!pA.present && !pB.present)
+        return;
+    diffField(out, QStringLiteral("Debug info"),
+              pA.present ? QStringLiteral("present") : QStringLiteral("absent"),
+              pB.present ? QStringLiteral("present") : QStringLiteral("absent"));
+    if (pA.present && pB.present) {
+        diffField(out, QStringLiteral("PDB path"), pA.path, pB.path);
+        diffField(out, QStringLiteral("PDB GUID"), pA.guid, pB.guid);
+        diffField(out, QStringLiteral("Age"),
+                  QString::number(pA.age), QString::number(pB.age));
+    }
+}
+
+void compareTls(const PEDataModel &a, const PEDataModel &b, QList<FieldDiff> &out)
+{
+    const PETlsDirectoryInfo tA = a.tlsDirectoryInfo();
+    const PETlsDirectoryInfo tB = b.tlsDirectoryInfo();
+    if (!tA.present && !tB.present)
+        return;
+    diffField(out, QStringLiteral("TLS directory"),
+              tA.present ? QStringLiteral("present") : QStringLiteral("absent"),
+              tB.present ? QStringLiteral("present") : QStringLiteral("absent"));
+    if (tA.present && tB.present) {
+        diffField(out, QStringLiteral("Callback count"),
+                  QString::number(tA.callbackAddresses.size()),
+                  QString::number(tB.callbackAddresses.size()));
+    }
+}
+
+void compareResources(const PEDataModel &a, const PEDataModel &b, QList<FieldDiff> &out)
+{
+    const QVector<PEResourceItem> &resA = a.getResourceEntries();
+    const QVector<PEResourceItem> &resB = b.getResourceEntries();
+    if (resA.isEmpty() && resB.isEmpty())
+        return;
+
+    diffField(out, QStringLiteral("Total resources"),
+              QString::number(resA.size()), QString::number(resB.size()));
+
+    const auto countByType = [](const QVector<PEResourceItem> &items) {
+        QMap<QString, int> counts;
+        for (const auto &r : items) {
+            const QString key = r.typeName.isEmpty()
+                ? QStringLiteral("Type %1").arg(r.typeId)
+                : r.typeName;
+            counts[key]++;
+        }
+        return counts;
+    };
+
+    const QMap<QString, int> cA = countByType(resA);
+    const QMap<QString, int> cB = countByType(resB);
+    QSet<QString> allTypes;
+    for (const QString &k : cA.keys()) allTypes.insert(k);
+    for (const QString &k : cB.keys()) allTypes.insert(k);
+
+    for (const QString &type : qAsConst(allTypes)) {
+        const int nA = cA.value(type, 0);
+        const int nB = cB.value(type, 0);
+        if (nA != nB) {
+            diffField(out, type, QString::number(nA), QString::number(nB));
+        }
+    }
+}
+
+void compareSignature(const PEDataModel &a, const PEDataModel &b, QList<FieldDiff> &out)
+{
+    const PEFileMetrics mA = a.getFileMetrics();
+    const PEFileMetrics mB = b.getFileMetrics();
+
+    const auto sigLabel = [](const PEFileMetrics &m) -> QString {
+        if (!m.authenticodePresent)
+            return QStringLiteral("Not signed");
+        const bool trusted = (m.authenticodeInfo.trustStatus
+                              == AuthenticodeTrustStatus::Valid);
+        const QString pub = m.authenticodeInfo.publisher.isEmpty()
+            ? m.authenticodePublisher
+            : m.authenticodeInfo.publisher;
+        return trusted
+            ? QStringLiteral("Signed — %1").arg(pub)
+            : QStringLiteral("Cert present (untrusted) — %1").arg(pub);
+    };
+
+    diffField(out, QStringLiteral("Authenticode"), sigLabel(mA), sigLabel(mB));
+
+    if (mA.authenticodePresent && mB.authenticodePresent) {
+        diffField(out, QStringLiteral("Cert thumbprint (SHA-1)"),
+                  mA.authenticodeInfo.thumbprintSha1,
+                  mB.authenticodeInfo.thumbprintSha1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTML helpers
+// ---------------------------------------------------------------------------
+
 QString esc(const QString &s)
 {
     QString r = s;
@@ -219,8 +361,20 @@ QString esc(const QString &s)
     return r;
 }
 
-QString formatFindingId(const QString &id)
+QString formatFindingId(const QString &id, const QMap<QString, QString> &titles)
 {
+    // Use human-readable title when available
+    if (titles.contains(id)) {
+        const QString title = titles.value(id);
+        // Append a small badge for flagged import IDs so origin is clear
+        if (id.startsWith(QStringLiteral("flagged_import:"))) {
+            return esc(title)
+                + QStringLiteral("&nbsp;<span class='badge'>(import)</span>");
+        }
+        return esc(title);
+    }
+
+    // Fallback: format the raw ID
     QString label;
     QString badge;
     if (id.startsWith(QStringLiteral("flagged_import:malapi:"))) {
@@ -241,19 +395,47 @@ QString formatFindingId(const QString &id)
     return r;
 }
 
-QString itemList(const QStringList &items, const QString &cssClass,
-                 bool formatAsId = false)
+QString itemList(const QStringList &items, const QString &cssClass)
 {
     QString h = QStringLiteral("<ul>");
     for (const QString &s : items) {
-        const QString cell = formatAsId ? formatFindingId(s) : esc(s);
-        h += QStringLiteral("<li class='%1'>%2</li>").arg(cssClass, cell);
+        h += QStringLiteral("<li class='%1'>%2</li>").arg(cssClass, esc(s));
     }
     h += QStringLiteral("</ul>");
     return h;
 }
 
+QString findingList(const QStringList &ids, const QString &cssClass,
+                    const QMap<QString, QString> &titles)
+{
+    QString h = QStringLiteral("<ul>");
+    for (const QString &id : ids) {
+        h += QStringLiteral("<li class='%1'>%2</li>")
+                 .arg(cssClass, formatFindingId(id, titles));
+    }
+    h += QStringLiteral("</ul>");
+    return h;
+}
+
+QString fieldTable(const QList<FieldDiff> &fields,
+                   const QString &nameA, const QString &nameB,
+                   const QString &colA, const QString &colB)
+{
+    QString h = QStringLiteral(
+        "<table><tr><th>Field</th><th class='a'>%1</th><th class='b'>%2</th></tr>")
+        .arg(esc(nameA), esc(nameB));
+    for (const FieldDiff &f : fields) {
+        h += QStringLiteral("<tr><td>%1</td><td class='a'>%2</td><td class='b'>%3</td></tr>")
+                 .arg(esc(f.name), esc(f.valueA), esc(f.valueB));
+    }
+    h += QStringLiteral("</table>");
+    Q_UNUSED(colA); Q_UNUSED(colB);
+    return h;
+}
+
 } // namespace
+
+// ---------------------------------------------------------------------------
 
 int Result::totalDifferences() const
 {
@@ -262,6 +444,8 @@ int Result::totalDifferences() const
     for (const auto &m : imports) n += m.onlyInA.size() + m.onlyInB.size();
     n += exportsOnlyInA.size() + exportsOnlyInB.size();
     n += findingsOnlyInA.size() + findingsOnlyInB.size();
+    n += versionFields.size() + pdbFields.size() + tlsFields.size()
+         + resourceFields.size() + signatureFields.size();
     return n;
 }
 
@@ -275,20 +459,25 @@ Result compare(const PEDataModel &a, const PEDataModel &b,
     compareSections(a, b, r.sections);
     compareImports(a, b, r.imports);
     compareExports(a, b, r.exportsOnlyInA, r.exportsOnlyInB);
-    compareFindings(a, b, r.findingsOnlyInA, r.findingsOnlyInB);
+    compareFindings(a, b, r.findingsOnlyInA, r.findingsOnlyInB, r.findingTitles);
+    compareVersion(a, b, r.versionFields);
+    comparePdb(a, b, r.pdbFields);
+    compareTls(a, b, r.tlsFields);
+    compareResources(a, b, r.resourceFields);
+    compareSignature(a, b, r.signatureFields);
     return r;
 }
 
 QString toHtml(const Result &result)
 {
-    const QString colA = QStringLiteral("#d32f2f"); // red-ish for A
-    const QString colB = QStringLiteral("#1976d2"); // blue-ish for B
+    const QString colA = QStringLiteral("#d32f2f");
+    const QString colB = QStringLiteral("#1976d2");
     const QString colSame = QStringLiteral("#555");
 
     QString h;
     h += QStringLiteral("<html><head><style>"
                         "body{font-family:monospace;font-size:12px;margin:8px}"
-                        "h2{font-size:13px;margin:12px 0 4px}"
+                        "h2{font-size:13px;margin:12px 0 4px;border-bottom:1px solid #ddd;padding-bottom:2px}"
                         "table{border-collapse:collapse;width:100%;margin-bottom:8px}"
                         "td,th{padding:2px 6px;border:1px solid #ccc;vertical-align:top}"
                         "th{background:#eee;font-weight:bold}"
@@ -297,27 +486,25 @@ QString toHtml(const Result &result)
                         ".a{color:%1}.b{color:%2}.same{color:%3}"
                         ".only{font-style:italic}"
                         ".badge{font-size:10px;color:#888;font-style:italic}"
+                        ".mod{font-weight:bold;margin:6px 0 2px}"
                         "</style></head><body>").arg(colA, colB, colSame);
 
-    // Summary
     const QString nameA = result.filePathA.isEmpty()
-        ? QStringLiteral("File A") : result.filePathA.section(QLatin1Char('/'), -1).section(QLatin1Char('\\'), -1);
+        ? QStringLiteral("File A")
+        : result.filePathA.section(QLatin1Char('/'), -1).section(QLatin1Char('\\'), -1);
     const QString nameB = result.filePathB.isEmpty()
-        ? QStringLiteral("File B") : result.filePathB.section(QLatin1Char('/'), -1).section(QLatin1Char('\\'), -1);
+        ? QStringLiteral("File B")
+        : result.filePathB.section(QLatin1Char('/'), -1).section(QLatin1Char('\\'), -1);
     const int total = result.totalDifferences();
+
     h += QStringLiteral("<p><b>%1 difference(s)</b> between "
                         "<span class='a'>%2</span> and <span class='b'>%3</span></p>")
              .arg(total).arg(esc(nameA), esc(nameB));
 
-    // Header fields
+    // Headers
     if (!result.headerFields.isEmpty()) {
-        h += QStringLiteral("<h2>Headers</h2><table><tr><th>Field</th><th class='a'>%1</th><th class='b'>%2</th></tr>")
-                 .arg(esc(nameA), esc(nameB));
-        for (const FieldDiff &f : result.headerFields) {
-            h += QStringLiteral("<tr><td>%1</td><td class='a'>%2</td><td class='b'>%3</td></tr>")
-                     .arg(esc(f.name), esc(f.valueA), esc(f.valueB));
-        }
-        h += QStringLiteral("</table>");
+        h += QStringLiteral("<h2>Headers</h2>");
+        h += fieldTable(result.headerFields, nameA, nameB, colA, colB);
     }
 
     // Sections
@@ -331,22 +518,47 @@ QString toHtml(const Result &result)
                 h += QStringLiteral("<p class='b only'>Section <b>%1</b> only in %2</p>")
                          .arg(esc(s.name), esc(nameB));
             } else if (!s.fields.isEmpty()) {
-                h += QStringLiteral("<p><b>%1</b></p><table><tr><th>Field</th><th class='a'>%2</th><th class='b'>%3</th></tr>")
-                         .arg(esc(s.name), esc(nameA), esc(nameB));
-                for (const FieldDiff &f : s.fields) {
-                    h += QStringLiteral("<tr><td>%1</td><td class='a'>%2</td><td class='b'>%3</td></tr>")
-                             .arg(esc(f.name), esc(f.valueA), esc(f.valueB));
-                }
-                h += QStringLiteral("</table>");
+                h += QStringLiteral("<p class='mod'>%1</p>").arg(esc(s.name));
+                h += fieldTable(s.fields, nameA, nameB, colA, colB);
             }
         }
+    }
+
+    // Version info
+    if (!result.versionFields.isEmpty()) {
+        h += QStringLiteral("<h2>Version Info</h2>");
+        h += fieldTable(result.versionFields, nameA, nameB, colA, colB);
+    }
+
+    // Debug / PDB
+    if (!result.pdbFields.isEmpty()) {
+        h += QStringLiteral("<h2>Debug / PDB</h2>");
+        h += fieldTable(result.pdbFields, nameA, nameB, colA, colB);
+    }
+
+    // TLS
+    if (!result.tlsFields.isEmpty()) {
+        h += QStringLiteral("<h2>TLS Callbacks</h2>");
+        h += fieldTable(result.tlsFields, nameA, nameB, colA, colB);
+    }
+
+    // Resources
+    if (!result.resourceFields.isEmpty()) {
+        h += QStringLiteral("<h2>Resources</h2>");
+        h += fieldTable(result.resourceFields, nameA, nameB, colA, colB);
+    }
+
+    // Signature
+    if (!result.signatureFields.isEmpty()) {
+        h += QStringLiteral("<h2>Authenticode</h2>");
+        h += fieldTable(result.signatureFields, nameA, nameB, colA, colB);
     }
 
     // Imports
     if (!result.imports.isEmpty()) {
         h += QStringLiteral("<h2>Imports</h2>");
         for (const ModuleDiff &m : result.imports) {
-            h += QStringLiteral("<p><b>%1</b></p>").arg(esc(m.moduleName));
+            h += QStringLiteral("<p class='mod'>%1</p>").arg(esc(m.moduleName));
             if (!m.onlyInA.isEmpty()) {
                 h += QStringLiteral("<p class='a only'>Only in %1:</p>").arg(esc(nameA));
                 h += itemList(m.onlyInA, QStringLiteral("a"));
@@ -376,11 +588,11 @@ QString toHtml(const Result &result)
         h += QStringLiteral("<h2>Findings</h2>");
         if (!result.findingsOnlyInA.isEmpty()) {
             h += QStringLiteral("<p class='a only'>Only in %1:</p>").arg(esc(nameA));
-            h += itemList(result.findingsOnlyInA, QStringLiteral("a"), true);
+            h += findingList(result.findingsOnlyInA, QStringLiteral("a"), result.findingTitles);
         }
         if (!result.findingsOnlyInB.isEmpty()) {
             h += QStringLiteral("<p class='b only'>Only in %1:</p>").arg(esc(nameB));
-            h += itemList(result.findingsOnlyInB, QStringLiteral("b"), true);
+            h += findingList(result.findingsOnlyInB, QStringLiteral("b"), result.findingTitles);
         }
     }
 

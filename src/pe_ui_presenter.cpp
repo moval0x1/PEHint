@@ -74,7 +74,7 @@ QList<QTreeWidgetItem*> PEUIPresenter::buildStructureTree()
             quint32 richSize = PEUtils::calculateRichHeaderSize(m_parser->m_fileData, richOffset);
             
             QTreeWidgetItem *richHeaderItem = new QTreeWidgetItem();
-            richHeaderItem->setText(0, "Rich Header");
+            richHeaderItem->setText(0, QStringLiteral("Rich Header"));
             richHeaderItem->setData(0, PEParserNew::kTreeFieldKeyRole, QStringLiteral("Rich Header"));
             richHeaderItem->setText(1, "");
             richHeaderItem->setText(2, PEUtils::formatHexWidth(richOffset, 8));
@@ -89,7 +89,7 @@ QList<QTreeWidgetItem*> PEUIPresenter::buildStructureTree()
     // Create NT Headers section (parent container for File Header, Optional Header, and Section Headers)
     quint32 ntHeadersOffset = dosHeader ? dosHeader->e_lfanew : 0;
     QTreeWidgetItem *ntHeadersItem = new QTreeWidgetItem();
-    ntHeadersItem->setText(0, "NT Headers");
+    ntHeadersItem->setText(0, QStringLiteral("NT Headers"));
     ntHeadersItem->setData(0, PEParserNew::kTreeFieldKeyRole, QStringLiteral("NT Headers"));
     ntHeadersItem->setText(1, "");
     ntHeadersItem->setText(2, PEUtils::formatHexWidth(ntHeadersOffset, 8));
@@ -108,7 +108,7 @@ QList<QTreeWidgetItem*> PEUIPresenter::buildStructureTree()
     
     // Create File Header as child of NT Headers
     QTreeWidgetItem *fileHeaderItem = new QTreeWidgetItem(ntHeadersItem);
-    fileHeaderItem->setText(0, "File Header");
+    fileHeaderItem->setText(0, QStringLiteral("File Header"));
     fileHeaderItem->setData(0, PEParserNew::kTreeFieldKeyRole, QStringLiteral("File Header"));
     fileHeaderItem->setText(1, "");
     // File Header starts 4 bytes after NT Headers (after PE signature)
@@ -162,7 +162,7 @@ QList<QTreeWidgetItem*> PEUIPresenter::buildStructureTree()
     
     // Create Section Headers as child of NT Headers
     QTreeWidgetItem *sectionsItem = new QTreeWidgetItem(ntHeadersItem);
-    sectionsItem->setText(0, "Section Headers");
+    sectionsItem->setText(0, QStringLiteral("Section Headers"));
     sectionsItem->setData(0, PEParserNew::kTreeFieldKeyRole, QStringLiteral("Section Headers"));
     sectionsItem->setText(1, "");
     // Section Headers start after PE signature (4) + File Header (20) + Optional Header

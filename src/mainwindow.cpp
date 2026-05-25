@@ -876,8 +876,8 @@ void MainWindow::onHexViewerOptions()
 void MainWindow::onCompareFiles()
 {
     if (!m_fileLoaded || !m_peParser || !m_peParser->isValid()) {
-        QMessageBox::information(this, QStringLiteral("PE Compare"),
-                                 QStringLiteral("Open a PE file first, then use Compare to diff it with a second file."));
+        QMessageBox::information(this, LANG("UI/compare_window_title"),
+                                 LANG("UI/compare_open_first"));
         return;
     }
     PECompareDialog dlg(m_peParser->getDataModel(), m_currentFilePath, this);

@@ -1,9 +1,10 @@
 #ifndef PE_COMPARE_H
 #define PE_COMPARE_H
 
+#include <QList>
+#include <QMap>
 #include <QString>
 #include <QStringList>
-#include <QList>
 
 class PEDataModel;
 
@@ -20,6 +21,8 @@ struct SectionDiff {
     bool onlyInA = false;
     bool onlyInB = false;
     QList<FieldDiff> fields;
+    double entropyA = -1.0; ///< -1 if not computed
+    double entropyB = -1.0;
 };
 
 struct ModuleDiff {
@@ -32,13 +35,20 @@ struct Result {
     QString filePathA;
     QString filePathB;
 
-    QList<FieldDiff> headerFields;   // DOS + File + Optional header
+    QList<FieldDiff> headerFields;
     QList<SectionDiff> sections;
     QList<ModuleDiff> imports;
-    QStringList findingsOnlyInA;
-    QStringList findingsOnlyInB;
     QStringList exportsOnlyInA;
     QStringList exportsOnlyInB;
+    QStringList findingsOnlyInA;
+    QStringList findingsOnlyInB;
+    QMap<QString, QString> findingTitles; ///< ruleId → human-readable title
+
+    QList<FieldDiff> versionFields;
+    QList<FieldDiff> pdbFields;
+    QList<FieldDiff> tlsFields;
+    QList<FieldDiff> resourceFields;
+    QList<FieldDiff> signatureFields;
 
     int totalDifferences() const;
 };

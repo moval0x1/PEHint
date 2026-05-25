@@ -8,102 +8,27 @@
 [![GitHub stars](https://img.shields.io/github/stars/moval0x1/PEHint?label=Stars&logo=github)](https://github.com/moval0x1/PEHint/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/moval0x1/PEHint?label=Forks&logo=github)](https://github.com/moval0x1/PEHint/network/members)
 
-## Roadmap
+PEHint is a Windows PE file analyzer for malware triage, reverse engineering, and learning the Portable Executable format — built with C++ and Qt 6. It combines an interactive structure tree, heuristic findings, import analysis, and a CLI for batch scanning, all without leaving a single tool.
 
-Planned work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md) (overlay/entropy/PDB, Findings panel, delay imports, PE compare, CLI).
-
-## Overview
-
-PEHint is a visual PE file analyzer for malware triage, reverse engineering, and learning the Windows PE format. The **Structure** tab combines an interactive PE tree, JSON-driven field explanations, and a synchronized hex view. Additional tabs cover **Imports** (flagged APIs, MalAPI hints), **Exports**, **Delay Imports**, **Dependencies**, **Resources** (manifest, version info, icons, string tables, hex + decoded text preview), and **Strings** (filters, async extraction, export to file). The **Findings** tab runs 41 config-driven heuristic rules across hardening, content, metadata, and imports — with category filter pills, hardening pass indicators, and one-click navigation to the relevant tree field or hex range. **PE Compare** diffs two PE files side-by-side. The **CLI** (`--scan`) supports batch triage, directory scanning, recursive walk, and file-watch mode with text or JSON output. Optional local clones of Microsoft documentation under `third_party/` power richer **Imports** API summaries; without them, the bundled MalAPI hints (~380 entries) are used as fallback.
-
-## What's new in v0.5.0
-
-- **Findings panel:** Category filter pill buttons (All / Hardening / Content / Metadata / Imports) above the findings list. Hardening pass indicators (ASLR, DEP, CFG) now always visible — no checkbox required.
-- **New findings:** `invalid_signature` (high) fires when Authenticode trust fails (expired, tampered, untrusted root, revoked); `clr_assembly` (info) detects .NET/CLR binaries. Both include insight-panel help text and a revocation caveat for air-gapped systems.
-- **TLS callbacks:** Full walk of the `AddressOfCallBacks` array (VA→RVA→file offset); `tls_callbacks_present` finding now reports callback count and VAs; callback entries are clickable in the Structure tree.
-- **Base relocations:** Full block walk over all `IMAGE_BASE_RELOCATION` blocks (not just the first); padding entries (type 0) excluded from the entry count.
-- **`findings.json` v6:** All 41 rules now carry an explicit `"category"` field; the string-matching category fallback is removed.
-- **PE Compare:** Structural diff between two PE files across headers, sections, imports, and findings (referenced in earlier releases, now implemented).
-
-## What's new in v0.4.6
-
-- **Stability:** Fixed stack overflow when opening large PE files with big resource sections (structure tree no longer loads full field explanations on every row at open time).
-- **Resources preview:** Correct icon size labels; `RT_STRING` decoding; embedded UTF-16/ASCII text under hex dumps; improved `VS_VERSION_INFO` string parsing.
-- **Findings / File summary:** Clearer **Signed** vs **certificate data only** labels when a cert table exists but Authenticode trust is not valid.
-- **Crash handler:** Safer handling of stack-overflow exceptions on Windows.
+> **Full documentation is on the [Wiki](https://github.com/moval0x1/PEHint/wiki).**
 
 ## Screenshots
 
 ### Main Interface
 ![PEHint Main Interface](/resources/imgs/screenshots/start_opened_file.png)
 
-### Field Explanations
-![DOS Header Field Explanation](/resources/imgs/screenshots/dos_header_explanation.png)
-
 ### Imports View
 ![Imports Tab](/resources/imgs/screenshots/imports.png)
 
-### Exports View
-![Exports Tab](/resources/imgs/screenshots/exports.png)
-
-### Dependencies View
-![Dependencies Tab](/resources/imgs/screenshots/dependencies.png)
-
-### Strings View
-![Strings Tab](/resources/imgs/screenshots/strings.png)
-
-## Languages
-
-- **English** - Default language
-- **Portuguese (Brazil)** - Complete Brazilian Portuguese support
-
-## Import API hints (`third_party`)
-
-The **Imports** tab can show curated API summaries (signature, parameters, links to Microsoft Learn) **only when** PEHint can read local Markdown from cloned Microsoft documentation repos. Nothing is bundled in the release binary—you must supply the content yourself.
-
-**Requirement (for full import hints):** clone the repos under `third_party/` and use the folder layout and optional environment variables described in **[third_party/README.txt](third_party/README.txt)**:
-
-- **MicrosoftDocs/sdk-api** — Win32 API reference (`nf-*.md` under the repo `content` tree); override with `PEHINT_SDK_API_CONTENT` if needed.
-- **MicrosoftDocs/Console-Docs** (optional) — console APIs not covered by sdk-api; override with `PEHINT_WINDOWS_CONSOLE_DOCS`.
-
-PEHint discovers `third_party/sdk-api` and `third_party/console-docs` next to the executable - same folder as `PEHint.exe`. Without these clones, the Imports panel still lists DLLs and symbols, but the API summary area shows a short “no summary” message instead of topic text.
-
-## CLI
-
-Batch triage without the GUI:
-
-```text
-PEHint --scan [--format text|json] [--min-severity high|medium|low|info] [--include-passes] [--lang en|pt] <file.exe> ...
-PEHint --scan --dir <folder> [--recursive] [--watch] [--debounce-ms 500]
-```
-
-Same parse, metrics, and findings engine as the desktop app. See `PEHint --help` for all options.
-
-## References (PE format & Windows)
-
-- [Microsoft PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) — official PE/COFF specification (goes well with what PEHint shows in the tree)
-- [PE Format — win.internals (0xRick)](https://0xrick.github.io/win-internals/pe1/) — approachable overview
-- [Windows data types & structures (`winnt.h`)](https://learn.microsoft.com/en-us/windows/win32/api/winnt/)
-- [DbgHelp API](https://learn.microsoft.com/en-us/windows/win32/api/dbghelp/) — related debugging/symbol APIs
-
-Optional deeper reading: *"An In-Depth Look into the Win32 Portable Executable File Format"* (MSJ articles, often mirrored).
-
-## Developer docs
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, data flow, config
-- [docs/FINDINGS_RULES.md](docs/FINDINGS_RULES.md) — findings rule reference
+### Field Explanations
+![DOS Header Field Explanation](/resources/imgs/screenshots/dos_header_explanation.png)
 
 ## Greetz
 
-Huge thanks to everyone who kicked the tires on PEHint, reported rough edges, and suggested ideas—your testing and feedback shaped what shipped.
+Huge thanks to everyone who kicked the tires on PEHint, reported rough edges, and suggested ideas — your testing and feedback shaped what shipped.
 
 - [P4nd3m1cb0y](https://x.com/P4nd3m1cb0y) / Imports API summary suggestion
 
-
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-**PEHint v0.5.0** — Making PE file analysis accessible and educational with modern C++ and Qt 6.
+MIT License — see [LICENSE](LICENSE) for details.
