@@ -12,16 +12,39 @@ PEHint is a Windows PE file analyzer for malware triage, reverse engineering, an
 
 > **Full documentation is on the [Wiki](https://github.com/moval0x1/PEHint/wiki).**
 
+## What's New
+
+### v0.5.0
+- **PE Compare** — diff two PE files side-by-side: headers, sections (with entropy), version info, PDB, TLS, resources, Authenticode, imports, exports, and findings. Swap A↔B and copy the report to clipboard.
+- **Findings category filter pills** — filter the Findings tab by Hardening / Content / Metadata / Imports without losing the full list.
+- **Hardening passes** — ASLR, DEP, CFG pass/fail items now always appear in the Findings tab (previously hidden when passing).
+- **New findings** — `invalid_signature` (certificate directory present but Authenticode verification failed) and `clr_assembly` (.NET binaries).
+- **TLS callbacks full walk** — all callback addresses listed in the TLS directory, not just the count.
+- **Base relocations full walk** — all relocation blocks and their entries shown in the structure tree.
+- **findings.json v6** — 41 rules, each with an explicit `category` field; fully editable without recompiling.
+
+### v0.4.6
+- Fixed a stack overflow on very large PE files (deep section recursion).
+- Resource preview improvements: better icon rendering and hex fallback for unknown types.
+- Clearer Signed / cert-data labels in the Authenticode panel.
+- Safer crash handler — avoids re-entrancy when the signal fires during Qt shutdown.
+
 ## Screenshots
 
 ### Main Interface
-![PEHint Main Interface](/resources/imgs/screenshots/start_opened_file.png)
+![PEHint Main Interface](/resources/imgs/screenshots/file-opened.png "PEHint Main Interface")
 
-### Imports View
-![Imports Tab](/resources/imgs/screenshots/imports.png)
+### Imports
+![Imports](/resources/imgs/screenshots/imports.png "Imports")
 
-### Field Explanations
-![DOS Header Field Explanation](/resources/imgs/screenshots/dos_header_explanation.png)
+### Resources
+![Resources](/resources/imgs/screenshots/resources.png "Resources")
+
+### Strings
+![Strings](/resources/imgs/screenshots/strings.png "Strings")
+
+### Findings
+![Findings](/resources/imgs/screenshots/findings.png "Findings")
 
 ## Greetz
 

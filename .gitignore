@@ -57,6 +57,7 @@ build/
 build_*/
 out/
 .vs/
+docs/
 .qtcreator/
 .c*
 
