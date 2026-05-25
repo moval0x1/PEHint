@@ -388,7 +388,7 @@ int runPeCliScan(int argc, char *argv[])
     }
     filesToScan = uniqueSortedPaths(filesToScan);
 
-    if (watchPath.isEmpty() && filesToScan.isEmpty()) {
+    if (watchPath.isEmpty() && dirPath.isEmpty() && filesToScan.isEmpty()) {
         QTextStream err(stderr);
         err << "Error: provide one or more PE files, --dir, or --watch.\n";
         printCliHelp();

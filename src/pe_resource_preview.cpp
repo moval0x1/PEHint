@@ -577,7 +577,7 @@ ResourcePreview buildResourcePreview(const QByteArray &fileData,
         preview.title += QStringLiteral(" / ") + item.resourceName;
     }
 
-    if (item.fileOffset == 0 || item.size == 0
+    if (item.size == 0
         || static_cast<quint64>(item.fileOffset) + item.size > static_cast<quint64>(fileData.size())) {
         preview.kind = ResourcePreview::Kind::Empty;
         return preview;

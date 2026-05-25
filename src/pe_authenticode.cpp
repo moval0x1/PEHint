@@ -369,13 +369,20 @@ PEAuthenticodeInfo analyzeAuthenticode(const QByteArray &fileData,
                                          quint32 certTableSize)
 {
     PEAuthenticodeInfo info;
-    if (certTableOffset == 0 || certTableSize < 8) {
+    if (certTableSize < 8) {
         info.trustStatus = AuthenticodeTrustStatus::NotSigned;
         info.statusMessage = LANG("UI/authenticode_no_cert_table");
         return info;
     }
 
     info.present = true;
+
+    if (certTableOffset == 0) {
+        // certTableSize non-zero but offset is zero — malformed cert directory
+        info.trustStatus = AuthenticodeTrustStatus::InvalidSignature;
+        info.statusMessage = LANG("UI/authenticode_no_cert_table");
+        return info;
+    }
     const QByteArray payload = firstPkcs7Payload(fileData, certTableOffset, certTableSize);
     info.publisher = extractPublisherFromPkcs7Payload(payload);
 
