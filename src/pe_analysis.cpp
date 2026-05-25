@@ -12,6 +12,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSet>
+#include <QVector>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -799,6 +801,8 @@ PEContentScan PEAnalysis::computeContentScan(const QByteArray &fileData, const P
         QStringLiteral(R"((?:HKEY_[A-Za-z_]+|HKLM|HKCU|HKCR|HKU|HKCC)\\[ -~\\]{4,})"),
         QRegularExpression::CaseInsensitiveOption);
 
+constexpr quint32 kMaxContentScanSlice = 2u * 1024u * 1024u;
+
     const QList<const IMAGE_SECTION_HEADER *> sections = dataModel.getSections();
     for (const IMAGE_SECTION_HEADER *sec : sections) {
         if (!sec || sec->SizeOfRawData == 0) {
@@ -810,7 +814,8 @@ PEContentScan PEAnalysis::computeContentScan(const QByteArray &fileData, const P
             || rawOff + rawSize > static_cast<quint32>(fileData.size())) {
             continue;
         }
-        const QByteArray slice = fileData.mid(static_cast<int>(rawOff), static_cast<int>(rawSize));
+        const quint32 scanSize = qMin(rawSize, kMaxContentScanSlice);
+        const QByteArray slice = fileData.mid(static_cast<int>(rawOff), static_cast<int>(scanSize));
         collectRegexMatches(slice, rawOff, urlRe, scan.urls, kMaxUrlMatches,
                             [](const QString &url, const QString &, int) {
                                 return isPlausibleHardcodedUrl(url);
@@ -1023,9 +1028,17 @@ QString versionStringForKey(const QByteArray &blob, const QString &key)
         pos += 2;
     }
     pos = (pos + 3) & ~3;
-    if (pos + 6 < blob.size()) {
-        pos += 6;
+
+    if (idx >= 6) {
+        const quint16 valueLen = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 4)))
+                                 | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 3))) << 8);
+        const quint16 type = static_cast<quint16>(static_cast<quint8>(blob.at(idx - 2)))
+                             | (static_cast<quint16>(static_cast<quint8>(blob.at(idx - 1))) << 8);
+        if (type == 0 && valueLen > 0 && pos + static_cast<int>(valueLen) * 2 <= blob.size()) {
+            return QString::fromUtf16(reinterpret_cast<const char16_t *>(blob.constData() + pos), valueLen);
+        }
     }
+
     return readUtf16CString(blob, pos);
 }
 
@@ -1193,73 +1206,100 @@ void walkAllResourceEntries(const QByteArray &data,
                             ResourceWalkState state,
                             QVector<PEResourceItem> &out)
 {
-    if (depth > 8 || dirFileOff + sizeof(IMAGE_RESOURCE_DIRECTORY) > fileSize) {
-        return;
-    }
-    const auto *dir = reinterpret_cast<const IMAGE_RESOURCE_DIRECTORY *>(data.constData() + dirFileOff);
-    const quint32 total =
-        static_cast<quint32>(dir->NumberOfNamedEntries) + static_cast<quint32>(dir->NumberOfIdEntries);
-    quint32 entryOff = dirFileOff + sizeof(IMAGE_RESOURCE_DIRECTORY);
-    for (quint32 i = 0; i < total; ++i) {
-        if (entryOff + sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY) > fileSize) {
-            break;
-        }
-        const auto *entry =
-            reinterpret_cast<const IMAGE_RESOURCE_DIRECTORY_ENTRY *>(data.constData() + entryOff);
-        entryOff += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY);
+    struct Frame {
+        quint32 dirFo;
+        int depth;
+        ResourceWalkState state;
+    };
 
-        ResourceWalkState next = state;
-        if (depth == 0) {
-            if (entry->isNameString()) {
-                next.typeName = readResourceUnicodeName(data, resRootFileOff, entry->u1.Name.NameOffset, fileSize);
-                next.typeId = 0;
-            } else {
-                next.typeId = entry->getName();
-                const QString tag = resourceTypeLabel(next.typeId);
-                next.typeName = tag.isEmpty() ? QString::number(next.typeId)
-                                              : QStringLiteral("%1 (%2)").arg(next.typeId).arg(tag);
-            }
-        } else if (depth == 1) {
-            if (entry->isNameString()) {
-                next.resourceName =
-                    readResourceUnicodeName(data, resRootFileOff, entry->u1.Name.NameOffset, fileSize);
-                next.nameId = 0;
-            } else {
-                next.nameId = entry->getName();
-                next.resourceName = QString::number(next.nameId);
-            }
-        } else if (depth == 2) {
-            next.languageId = entry->getName();
+    QVector<Frame> stack;
+    stack.append({dirFileOff, depth, state});
+    QSet<quint32> visited;
+
+    while (!stack.isEmpty()) {
+        const Frame frame = stack.takeLast();
+        if (frame.depth > 8 || visited.contains(frame.dirFo)) {
+            continue;
+        }
+        visited.insert(frame.dirFo);
+
+        const quint32 dirFo = frame.dirFo;
+        if (dirFo + sizeof(IMAGE_RESOURCE_DIRECTORY) > fileSize) {
+            continue;
         }
 
-        if (entry->isDataDirectory()) {
-            const quint32 nextOff = resRootFileOff + (entry->getOffsetToData() & 0x7FFFFFFFu);
-            walkAllResourceEntries(data, resRootFileOff, nextOff, depth + 1, sizeOfHeaders, sections,
-                                   fileSize, next, out);
-        } else {
-            const quint32 dataEntryOff = resRootFileOff + entry->getOffsetToData();
-            if (dataEntryOff + sizeof(IMAGE_RESOURCE_DATA_ENTRY) > fileSize) {
-                continue;
+        const auto *dir = reinterpret_cast<const IMAGE_RESOURCE_DIRECTORY *>(data.constData() + dirFo);
+        const quint32 maxEntriesInDir =
+            (dirFo + sizeof(IMAGE_RESOURCE_DIRECTORY) < fileSize)
+                ? (fileSize - dirFo - sizeof(IMAGE_RESOURCE_DIRECTORY))
+                      / sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
+                : 0;
+        const quint32 total = qMin(static_cast<quint32>(dir->NumberOfNamedEntries)
+                                       + static_cast<quint32>(dir->NumberOfIdEntries),
+                                   maxEntriesInDir);
+
+        quint32 entryOff = dirFo + sizeof(IMAGE_RESOURCE_DIRECTORY);
+        for (quint32 i = 0; i < total; ++i) {
+            if (entryOff + sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY) > fileSize) {
+                break;
             }
-            const auto *dataEntry =
-                reinterpret_cast<const IMAGE_RESOURCE_DATA_ENTRY *>(data.constData() + dataEntryOff);
-            const quint32 payloadRva = dataEntry->OffsetToData;
-            const quint32 payloadSize = dataEntry->Size;
-            if (payloadSize == 0) {
-                continue;
+            const auto *entry =
+                reinterpret_cast<const IMAGE_RESOURCE_DIRECTORY_ENTRY *>(data.constData() + entryOff);
+            entryOff += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY);
+
+            ResourceWalkState next = frame.state;
+            if (frame.depth == 0) {
+                if (entry->isNameString()) {
+                    next.typeName =
+                        readResourceUnicodeName(data, resRootFileOff, entry->u1.Name.NameOffset, fileSize);
+                    next.typeId = 0;
+                } else {
+                    next.typeId = entry->getName();
+                    const QString tag = resourceTypeLabel(next.typeId);
+                    next.typeName = tag.isEmpty() ? QString::number(next.typeId)
+                                                  : QStringLiteral("%1 (%2)").arg(next.typeId).arg(tag);
+                }
+            } else if (frame.depth == 1) {
+                if (entry->isNameString()) {
+                    next.resourceName =
+                        readResourceUnicodeName(data, resRootFileOff, entry->u1.Name.NameOffset, fileSize);
+                    next.nameId = 0;
+                } else {
+                    next.nameId = entry->getName();
+                    next.resourceName = QString::number(next.nameId);
+                }
+            } else if (frame.depth == 2) {
+                next.languageId = entry->getName();
             }
-            const quint32 raw =
-                rvaToFileOffsetResource(payloadRva, sizeOfHeaders, sections, fileSize);
-            PEResourceItem item;
-            item.typeName = next.typeName;
-            item.typeId = next.typeId;
-            item.resourceName = next.resourceName;
-            item.nameId = next.nameId;
-            item.languageId = next.languageId;
-            item.rva = payloadRva;
-            item.size = payloadSize;
-            item.fileOffset = raw;
-            out.append(item);
+
+            if (entry->isDataDirectory()) {
+                const quint32 nextOff = resRootFileOff + (entry->getOffsetToData() & 0x7FFFFFFFu);
+                stack.append({nextOff, frame.depth + 1, next});
+            } else {
+                const quint32 dataEntryOff = resRootFileOff + entry->getOffsetToData();
+                if (dataEntryOff + sizeof(IMAGE_RESOURCE_DATA_ENTRY) > fileSize) {
+                    continue;
+                }
+                const auto *dataEntry =
+                    reinterpret_cast<const IMAGE_RESOURCE_DATA_ENTRY *>(data.constData() + dataEntryOff);
+                const quint32 payloadRva = dataEntry->OffsetToData;
+                const quint32 payloadSize = dataEntry->Size;
+                if (payloadSize == 0) {
+                    continue;
+                }
+                const quint32 raw =
+                    rvaToFileOffsetResource(payloadRva, sizeOfHeaders, sections, fileSize);
+                PEResourceItem item;
+                item.typeName = next.typeName;
+                item.typeId = next.typeId;
+                item.resourceName = next.resourceName;
+                item.nameId = next.nameId;
+                item.languageId = next.languageId;
+                item.rva = payloadRva;
+                item.size = payloadSize;
+                item.fileOffset = raw;
+                out.append(item);
+            }
         }
     }
 }

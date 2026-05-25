@@ -13,6 +13,7 @@
 #include "pe_analysis.h"
 #include <QRegularExpression>
 #include <QSet>
+#include <QVector>
 #include <functional>
 
 namespace {
@@ -248,18 +249,41 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
     *outRva = 0;
     *outSize = 0;
 
-    std::function<bool(quint32, int, bool)> walk;
-    walk = [&](quint32 dirFo, int depth, bool inManifestBranch) -> bool {
-        if (dirFo + 16 > absEnd || dirFo + 16 > static_cast<quint32>(data.size())) {
-            return false;
+    struct Frame {
+        quint32 dirFo;
+        int depth;
+        bool inManifestBranch;
+    };
+
+    const quint32 fileSize = static_cast<quint32>(data.size());
+    const quint32 regionEnd = qMin(absEnd, fileSize);
+    QVector<Frame> stack;
+    stack.append({rootFo, 0, false});
+    QSet<quint32> visited;
+
+    while (!stack.isEmpty()) {
+        const Frame frame = stack.takeLast();
+        if (frame.depth > 8 || visited.contains(frame.dirFo)) {
+            continue;
         }
+        visited.insert(frame.dirFo);
+
+        const quint32 dirFo = frame.dirFo;
+        if (dirFo + 16 > regionEnd) {
+            continue;
+        }
+
         const uchar *b = reinterpret_cast<const uchar *>(data.constData() + dirFo);
         const quint16 nNamed = readLe16(b + 12);
         const quint16 nId = readLe16(b + 14);
-        const quint32 nEntries = quint32(nNamed) + quint32(nId);
+        const quint32 maxEntriesInDir =
+            (dirFo + 16 < regionEnd) ? (regionEnd - dirFo - 16) / 8 : 0;
+        const quint32 nEntries = qMin(static_cast<quint32>(nNamed) + static_cast<quint32>(nId),
+                                      maxEntriesInDir);
+
         quint32 entryOff = 16;
         for (quint32 i = 0; i < nEntries; ++i) {
-            if (dirFo + entryOff + 8 > absEnd || dirFo + entryOff + 8 > static_cast<quint32>(data.size())) {
+            if (dirFo + entryOff + 8 > regionEnd) {
                 break;
             }
             const quint32 name = readLe32(b + entryOff);
@@ -270,28 +294,20 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
 
             if (otd & 0x80000000u) {
                 const quint32 subFo = rootFo + (otd & 0x7FFFFFFFu);
-                bool branch = inManifestBranch;
-                if (depth == 0) {
-                    if (isNamed) {
-                        continue;
-                    }
-                    if (id != 24u) {
+                bool branch = frame.inManifestBranch;
+                if (frame.depth == 0) {
+                    if (isNamed || id != 24u) {
                         continue;
                     }
                     branch = true;
                 }
-                if (walk(subFo, depth + 1, branch)) {
-                    return true;
-                }
+                stack.append({subFo, frame.depth + 1, branch});
             } else {
-                if (!inManifestBranch) {
-                    continue;
-                }
-                if (depth < 2) {
+                if (!frame.inManifestBranch || frame.depth < 2) {
                     continue;
                 }
                 const quint32 dataFo = rootFo + otd;
-                if (dataFo + 16 > static_cast<quint32>(data.size())) {
+                if (dataFo + 16 > fileSize) {
                     continue;
                 }
                 const uchar *de = reinterpret_cast<const uchar *>(data.constData() + dataFo);
@@ -300,10 +316,8 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
                 return true;
             }
         }
-        return false;
-    };
-
-    return walk(rootFo, 0, false);
+    }
+    return false;
 }
 
 } // namespace
@@ -1197,7 +1211,20 @@ void PEUIPresenter::appendResourceDirectoryDetailTree(QTreeWidgetItem *dirItem, 
     if (fo == 0 || fo + regionSize > static_cast<quint32>(m_parser->m_fileData.size())) {
         return;
     }
-    const quint32 absEnd = fo + regionSize;
+    quint32 absEnd = fo + regionSize;
+    const quint32 fileSize = static_cast<quint32>(m_parser->m_fileData.size());
+    absEnd = qMin(absEnd, fileSize);
+    for (const IMAGE_SECTION_HEADER *sec : m_parser->getDataModel().getSections()) {
+        if (!sec || sec->SizeOfRawData == 0) {
+            continue;
+        }
+        const quint32 rawStart = sec->PointerToRawData;
+        const quint32 rawEnd = rawStart + sec->SizeOfRawData;
+        if (fo >= rawStart && fo < rawEnd) {
+            absEnd = qMin(absEnd, rawEnd);
+            break;
+        }
+    }
 
     QTreeWidgetItem *body = new QTreeWidgetItem(dirItem);
     body->setText(0, QStringLiteral("Parsed directory data"));
@@ -1222,15 +1249,22 @@ void PEUIPresenter::appendResourceDirectoryDetailTree(QTreeWidgetItem *dirItem, 
     addTreeField(body, QStringLiteral("Res NumberOfIdEntries"), QString::number(nId),
                  static_cast<quint32>(offsetof(IMAGE_RESOURCE_DIRECTORY, NumberOfIdEntries)), sizeof(quint16));
 
+    const quint32 regionEnd = qMin(absEnd, static_cast<quint32>(m_parser->m_fileData.size()));
+    const quint32 maxEntryCount = (fo + 16 < regionEnd) ? (regionEnd - fo - 16) / 8 : 0;
+    const quint32 namedLimit = qMin<quint32>(nNamed, maxEntryCount);
+    const quint32 idLimit = qMin<quint32>(nId, maxEntryCount > namedLimit ? maxEntryCount - namedLimit : 0);
+    constexpr quint32 kMaxDisplayTypeIds = 32;
+    const quint32 idShowLimit = qMin(idLimit, kMaxDisplayTypeIds);
+
     quint32 entryOff = 16;
-    for (quint32 i = 0; i < quint32(nNamed); ++i) {
-        if (fo + entryOff + 8 > absEnd) {
+    for (quint32 i = 0; i < namedLimit; ++i) {
+        if (fo + entryOff + 8 > regionEnd) {
             break;
         }
         entryOff += 8;
     }
-    for (quint32 i = 0; i < quint32(nId); ++i) {
-        if (fo + entryOff + 8 > absEnd) {
+    for (quint32 i = 0; i < idShowLimit; ++i) {
+        if (fo + entryOff + 8 > regionEnd) {
             break;
         }
         const quint32 nameId = readLe32(base + entryOff);
@@ -1369,17 +1403,6 @@ void PEUIPresenter::addInsightTreeField(QTreeWidgetItem *parent, const QString &
     }
     if (meaning.isEmpty()) {
         meaning = m_parser->getFieldMeaning(jsonFieldKey, value);
-        if (meaning.isEmpty()) {
-            const QString full = m_parser->getFieldExplanation(jsonFieldKey);
-            if (!full.isEmpty() && !isFieldExplanationPlaceholder(jsonFieldKey, full)) {
-                meaning = full;
-                meaning.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
-                meaning = meaning.simplified();
-                if (meaning.length() > 120) {
-                    meaning = meaning.left(117) + QStringLiteral("...");
-                }
-            }
-        }
     }
     fieldItem->setText(4, meaning);
 }
@@ -1493,18 +1516,21 @@ QTreeWidgetItem *PEUIPresenter::buildFileInsightsOverview()
 
     if (metrics.triageSummaryValid) {
         if (metrics.authenticodePresent) {
-            QString signedValue = LANG("UI/signed_table_yes");
-            if (!metrics.authenticodePublisher.isEmpty()) {
-                QMap<QString, QString> publisherParams;
-                publisherParams.insert(QStringLiteral("publisher"), metrics.authenticodePublisher);
-                signedValue = LanguageManager::getInstance().getString(
-                    QStringLiteral("UI/signed_publisher_format"),
-                    publisherParams,
-                    signedValue);
-            }
-            const QString trustLabel = authenticodeTrustStatusLabel(metrics.authenticodeInfo.trustStatus);
-            if (!trustLabel.isEmpty()) {
-                signedValue += QStringLiteral(" — %1").arg(trustLabel);
+            QString signedValue;
+            if (metrics.authenticodeInfo.trustStatus == AuthenticodeTrustStatus::Valid) {
+                signedValue = LANG("UI/signed_table_yes");
+                if (!metrics.authenticodePublisher.isEmpty()) {
+                    QMap<QString, QString> publisherParams;
+                    publisherParams.insert(QStringLiteral("publisher"), metrics.authenticodePublisher);
+                    signedValue = LanguageManager::getInstance().getString(
+                        QStringLiteral("UI/signed_publisher_format"),
+                        publisherParams,
+                        signedValue);
+                }
+            } else {
+                QMap<QString, QString> certParams;
+                certParams.insert(QStringLiteral("size"), PEUtils::formatFileSize(metrics.certTableSize));
+                signedValue = LANG_PARAMS(QStringLiteral("UI/signed_table_cert_data"), certParams);
             }
             addInsightTreeField(insights, LANG("UI/field_signed"), signedValue,
                                 QStringLiteral("Signed"), 0, 0, false,

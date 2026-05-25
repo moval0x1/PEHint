@@ -50,15 +50,132 @@ void writeLe32At(QByteArray &data, int offset, quint32 value)
     data[offset + 3] = char((value >> 24) & 0xff);
 }
 
+bool looksLikeUtf16LeText(const QByteArray &data)
+{
+    if (data.size() < 4) {
+        return false;
+    }
+    int pairs = 0;
+    int asciiPairs = 0;
+    for (int i = 0; i + 1 < data.size(); i += 2) {
+        const quint8 lo = static_cast<quint8>(data.at(i));
+        const quint8 hi = static_cast<quint8>(data.at(i + 1));
+        if (lo == 0 && hi == 0) {
+            break;
+        }
+        ++pairs;
+        if (hi == 0 && lo >= 32 && lo <= 126) {
+            ++asciiPairs;
+        }
+    }
+    return pairs >= 2 && asciiPairs * 100 / pairs >= 70;
+}
+
 QString decodeResourceText(const QByteArray &data)
 {
     if (data.isEmpty()) {
         return QString();
     }
+    if (looksLikeUtf16LeText(data)) {
+        return QString::fromUtf16(reinterpret_cast<const char16_t *>(data.constData()), data.size() / 2);
+    }
     if (data.size() >= 4 && data.at(1) == '\0' && data.at(0) != '\0' && data.at(2) == '\0') {
         return QString::fromUtf16(reinterpret_cast<const char16_t *>(data.constData()), data.size() / 2);
     }
     return QString::fromUtf8(data);
+}
+
+QString decodeRtStringResource(const QByteArray &data)
+{
+    QStringList lines;
+    int off = 0;
+    while (off + 2 <= data.size()) {
+        const quint16 len = readLe16(data, off);
+        off += 2;
+        if (len == 0) {
+            continue;
+        }
+        if (off + static_cast<int>(len) * 2 > data.size()) {
+            break;
+        }
+        const QString s = QString::fromUtf16(reinterpret_cast<const char16_t *>(data.constData() + off), len);
+        off += static_cast<int>(len) * 2;
+        const QString trimmed = s.trimmed();
+        if (!trimmed.isEmpty()) {
+            lines.append(trimmed);
+        }
+    }
+    return lines.join(QStringLiteral("\n"));
+}
+
+QString extractUtf16LeRuns(const QByteArray &data, int maxChars = 4096)
+{
+    QString out;
+    int i = 0;
+    while (i + 1 < data.size() && out.size() < maxChars) {
+        const quint8 lo = static_cast<quint8>(data.at(i));
+        const quint8 hi = static_cast<quint8>(data.at(i + 1));
+        if (hi != 0 || lo < 32 || lo > 126) {
+            ++i;
+            continue;
+        }
+        QString run;
+        while (i + 1 < data.size() && static_cast<quint8>(data.at(i + 1)) == 0) {
+            const quint8 b = static_cast<quint8>(data.at(i));
+            if (b < 32 || b > 126) {
+                break;
+            }
+            run.append(QLatin1Char(static_cast<char>(b)));
+            i += 2;
+        }
+        if (run.size() >= 4) {
+            if (!out.isEmpty()) {
+                out += QLatin1Char('\n');
+            }
+            out += run;
+        }
+        if (i < data.size() && run.isEmpty()) {
+            ++i;
+        }
+    }
+    return out.left(maxChars);
+}
+
+QString extractAsciiRuns(const QByteArray &data, int maxChars = 4096)
+{
+    QString out;
+    QString run;
+    auto flush = [&]() {
+        if (run.size() >= 4) {
+            if (!out.isEmpty()) {
+                out += QLatin1Char('\n');
+            }
+            out += run;
+            run.clear();
+        } else {
+            run.clear();
+        }
+    };
+    for (int i = 0; i < data.size() && out.size() < maxChars; ++i) {
+        const quint8 b = static_cast<quint8>(data.at(i));
+        if (b >= 32 && b <= 126) {
+            run.append(QLatin1Char(static_cast<char>(b)));
+        } else {
+            flush();
+        }
+    }
+    flush();
+    return out.left(maxChars);
+}
+
+QString extractEmbeddedTextPreview(const QByteArray &data)
+{
+    const QString utf16 = extractUtf16LeRuns(data);
+    const QString ascii = extractAsciiRuns(data);
+    if (!utf16.isEmpty() && !ascii.isEmpty()) {
+        return utf16 + QStringLiteral("\n") + ascii;
+    }
+    return !utf16.isEmpty() ? utf16 : ascii;
 }
 
 QString formatHexPreview(const QByteArray &data, int maxBytes = 512)
@@ -79,6 +196,18 @@ QString formatHexPreview(const QByteArray &data, int maxBytes = 512)
         s += QStringLiteral(" …");
     }
     return s;
+}
+
+QString formatHexAndTextPreview(const QByteArray &data, int maxBytes = 512)
+{
+    QString out = formatHexPreview(data, maxBytes);
+    const int cap = qMin(data.size(), maxBytes);
+    const QString decoded = extractEmbeddedTextPreview(data.mid(0, cap));
+    if (!decoded.isEmpty()) {
+        out += QStringLiteral("\n\n");
+        out += decoded;
+    }
+    return out;
 }
 
 quint32 dibColorTableBytes(const QByteArray &data, quint32 headerSize)
@@ -261,7 +390,11 @@ QString iconSizeLabel(const GrpIconEntry &entry)
     sizeParams[QStringLiteral("width")] = QString::number(w);
     sizeParams[QStringLiteral("height")] = QString::number(h);
     sizeParams[QStringLiteral("bpp")] = QString::number(entry.bitCount);
-    return LANG_PARAMS("UI/resource_size_bpp", sizeParams);
+    const QString fromIni = LanguageManager::getInstance().getIniString(QStringLiteral("UI/resource_size_bpp"));
+    if (!fromIni.isEmpty()) {
+        return LanguageManager::getInstance().getString(QStringLiteral("UI/resource_size_bpp"), sizeParams, fromIni);
+    }
+    return QStringLiteral("%1x%2, %3 bpp").arg(w).arg(h).arg(entry.bitCount);
 }
 
 const PEResourceItem *findLinkedIconResource(const QVector<PEResourceItem> &allItems,
@@ -387,7 +520,12 @@ ResourcePreview buildGroupIconPreview(const QByteArray &fileData,
         QMap<QString, QString> idParams;
         idParams[QStringLiteral("size")] = iconSizeLabel(pair.second);
         idParams[QStringLiteral("id")] = QString::number(pair.second.resourceId);
-        entry.label = LANG_PARAMS("UI/resource_icon_size_id", idParams);
+        const QString iconIdFmt = LanguageManager::getInstance().getIniString(QStringLiteral("UI/resource_icon_size_id"));
+        entry.label = iconIdFmt.isEmpty()
+                          ? QStringLiteral("%1 (id %2)").arg(idParams.value(QStringLiteral("size")),
+                                                           idParams.value(QStringLiteral("id")))
+                          : LanguageManager::getInstance().getString(QStringLiteral("UI/resource_icon_size_id"),
+                                                                     idParams, iconIdFmt);
         preview.images.append(entry);
     }
 
@@ -504,6 +642,18 @@ ResourcePreview buildResourcePreview(const QByteArray &fileData,
         }
     }
 
+    if (item.typeId == 6 || typeUpper.contains(QStringLiteral("RT_STRING"))) {
+        const QString strings = decodeRtStringResource(payload);
+        if (!strings.isEmpty()) {
+            preview.kind = ResourcePreview::Kind::Text;
+            preview.textContent = strings.left(8192);
+            if (strings.size() > 8192) {
+                preview.textContent += QStringLiteral("\n…");
+            }
+            return preview;
+        }
+    }
+
     const QString text = decodeResourceText(payload);
     if (isMostlyPrintableText(text)) {
         preview.kind = ResourcePreview::Kind::Text;
@@ -514,7 +664,17 @@ ResourcePreview buildResourcePreview(const QByteArray &fileData,
         return preview;
     }
 
+    const QString embedded = extractEmbeddedTextPreview(payload);
+    if (!embedded.isEmpty() && isMostlyPrintableText(embedded)) {
+        preview.kind = ResourcePreview::Kind::Text;
+        preview.textContent = embedded.left(8192);
+        if (embedded.size() > 8192) {
+            preview.textContent += QStringLiteral("\n…");
+        }
+        return preview;
+    }
+
     preview.kind = ResourcePreview::Kind::Hex;
-    preview.hexPreview = formatHexPreview(payload);
+    preview.hexPreview = formatHexAndTextPreview(payload);
     return preview;
 }

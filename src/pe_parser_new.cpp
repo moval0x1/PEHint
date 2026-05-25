@@ -15,6 +15,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <QSet>
+#include <QVector>
 #include <QMap>
 #include <QtGlobal>
 #include <QRegularExpression>
@@ -406,14 +407,18 @@ QString PEParserNew::getFileInsightExplanation(const QString &fieldKey) const
         if (metrics.authenticodePresent) {
             QMap<QString, QString> params;
             params.insert(QStringLiteral("size"), PEUtils::formatFileSize(metrics.certTableSize));
-            currentValue = LANG_PARAMS(QStringLiteral("UI/signed_yes"), params);
-            if (!metrics.authenticodePublisher.isEmpty()) {
-                QMap<QString, QString> publisherParams;
-                publisherParams.insert(QStringLiteral("publisher"), metrics.authenticodePublisher);
-                currentValue = LanguageManager::getInstance().getString(
-                    QStringLiteral("UI/signed_publisher_format"),
-                    publisherParams,
-                    currentValue);
+            if (metrics.authenticodeInfo.trustStatus == AuthenticodeTrustStatus::Valid) {
+                currentValue = LANG_PARAMS(QStringLiteral("UI/signed_yes"), params);
+                if (!metrics.authenticodePublisher.isEmpty()) {
+                    QMap<QString, QString> publisherParams;
+                    publisherParams.insert(QStringLiteral("publisher"), metrics.authenticodePublisher);
+                    currentValue = LanguageManager::getInstance().getString(
+                        QStringLiteral("UI/signed_publisher_format"),
+                        publisherParams,
+                        currentValue);
+                }
+            } else {
+                currentValue = LANG_PARAMS(QStringLiteral("UI/signed_cert_data"), params);
             }
         } else {
             currentValue = LANG(QStringLiteral("UI/signed_no"));
@@ -722,18 +727,41 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
     *outRva = 0;
     *outSize = 0;
 
-    std::function<bool(quint32, int, bool)> walk;
-    walk = [&](quint32 dirFo, int depth, bool inManifestBranch) -> bool {
-        if (dirFo + 16 > absEnd || dirFo + 16 > static_cast<quint32>(data.size())) {
-            return false;
+    struct Frame {
+        quint32 dirFo;
+        int depth;
+        bool inManifestBranch;
+    };
+
+    const quint32 fileSize = static_cast<quint32>(data.size());
+    const quint32 regionEnd = qMin(absEnd, fileSize);
+    QVector<Frame> stack;
+    stack.append({rootFo, 0, false});
+    QSet<quint32> visited;
+
+    while (!stack.isEmpty()) {
+        const Frame frame = stack.takeLast();
+        if (frame.depth > 8 || visited.contains(frame.dirFo)) {
+            continue;
         }
+        visited.insert(frame.dirFo);
+
+        const quint32 dirFo = frame.dirFo;
+        if (dirFo + 16 > regionEnd) {
+            continue;
+        }
+
         const uchar *b = reinterpret_cast<const uchar *>(data.constData() + dirFo);
         const quint16 nNamed = readLe16(b + 12);
         const quint16 nId = readLe16(b + 14);
-        const quint32 nEntries = quint32(nNamed) + quint32(nId);
+        const quint32 maxEntriesInDir =
+            (dirFo + 16 < regionEnd) ? (regionEnd - dirFo - 16) / 8 : 0;
+        const quint32 nEntries = qMin(static_cast<quint32>(nNamed) + static_cast<quint32>(nId),
+                                      maxEntriesInDir);
+
         quint32 entryOff = 16;
         for (quint32 i = 0; i < nEntries; ++i) {
-            if (dirFo + entryOff + 8 > absEnd || dirFo + entryOff + 8 > static_cast<quint32>(data.size())) {
+            if (dirFo + entryOff + 8 > regionEnd) {
                 break;
             }
             const quint32 name = readLe32(b + entryOff);
@@ -744,28 +772,20 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
 
             if (otd & 0x80000000u) {
                 const quint32 subFo = rootFo + (otd & 0x7FFFFFFFu);
-                bool branch = inManifestBranch;
-                if (depth == 0) {
-                    if (isNamed) {
-                        continue;
-                    }
-                    if (id != 24u) {
+                bool branch = frame.inManifestBranch;
+                if (frame.depth == 0) {
+                    if (isNamed || id != 24u) {
                         continue;
                     }
                     branch = true;
                 }
-                if (walk(subFo, depth + 1, branch)) {
-                    return true;
-                }
+                stack.append({subFo, frame.depth + 1, branch});
             } else {
-                if (!inManifestBranch) {
-                    continue;
-                }
-                if (depth < 2) {
+                if (!frame.inManifestBranch || frame.depth < 2) {
                     continue;
                 }
                 const quint32 dataFo = rootFo + otd;
-                if (dataFo + 16 > static_cast<quint32>(data.size())) {
+                if (dataFo + 16 > fileSize) {
                     continue;
                 }
                 const uchar *de = reinterpret_cast<const uchar *>(data.constData() + dataFo);
@@ -774,10 +794,8 @@ bool findEmbeddedManifestRva(const QByteArray &data, quint32 rootFo, quint32 abs
                 return true;
             }
         }
-        return false;
-    };
-
-    return walk(rootFo, 0, false);
+    }
+    return false;
 }
 
 QString decodeClrImageFlags(quint32 flags)
@@ -1924,23 +1942,6 @@ QString PEParserNew::getFieldMeaning(const QString &fieldName, const QString &va
         return QString();
     }
 
-    // Fallback: use first line of field explanation (plain text) so Meaning column is populated
-    const QString full = getFieldExplanation(fieldName);
-    if (!full.isEmpty() && !isFieldExplanationPlaceholder(fieldName, full)) {
-        QString plain = full;
-        plain.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QStringLiteral(" "));
-        plain.replace(QStringLiteral("&nbsp;"), QStringLiteral(" "))
-            .replace(QStringLiteral("&amp;"), QStringLiteral("&"))
-            .replace(QStringLiteral("&lt;"), QStringLiteral("<"))
-            .replace(QStringLiteral("&gt;"), QStringLiteral(">"));
-        plain = plain.simplified();
-        if (plain.length() > 120) {
-            plain = plain.left(117) + QStringLiteral("...");
-        }
-        if (!plain.isEmpty()) {
-            return plain;
-        }
-    }
     return QString();
 }
 

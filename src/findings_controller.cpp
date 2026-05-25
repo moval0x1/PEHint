@@ -2,6 +2,7 @@
 
 #include "pe_ui_manager.h"
 #include "pe_parser_new.h"
+#include "pe_authenticode.h"
 #include "pe_ui_presenter.h"
 #include "language_manager.h"
 #include "section_layout_widget.h"
@@ -354,8 +355,14 @@ void FindingsController::populateOverview()
 
         if (fieldKey == QLatin1String("Signed")) {
             const PEFileMetrics metrics = m_parser->getDataModel().getFileMetrics();
-            const QColor bg = metrics.authenticodePresent ? QColor(230, 255, 230) : QColor(255, 243, 224);
-            const QColor fg = metrics.authenticodePresent ? QColor(22, 101, 52) : QColor(146, 64, 14);
+            const bool trustValid =
+                metrics.authenticodeInfo.trustStatus == AuthenticodeTrustStatus::Valid;
+            const QColor bg = trustValid ? QColor(230, 255, 230)
+                                         : (metrics.authenticodePresent ? QColor(255, 243, 224)
+                                                                        : QColor(255, 243, 224));
+            const QColor fg = trustValid ? QColor(22, 101, 52)
+                                         : (metrics.authenticodePresent ? QColor(146, 64, 14)
+                                                                        : QColor(146, 64, 14));
             for (int col = 0; col < 2; ++col) {
                 row->setBackground(col, bg);
                 row->setForeground(col, fg);

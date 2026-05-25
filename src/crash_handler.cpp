@@ -164,8 +164,12 @@ void CrashHandler::setupWindowsCrashHandling()
         if (s_instance && s_instance->m_loggingEnabled) {
             s_instance->logCrashInfo(crashType, details);
         }
-        
-        // Re-throw the exception
+
+        if (code == EXCEPTION_STACK_OVERFLOW) {
+            // Cannot safely throw C++ exceptions when the stack is already exhausted.
+            TerminateProcess(GetCurrentProcess(), static_cast<UINT>(code));
+        }
+
         throw std::runtime_error(crashType.toStdString());
     });
     
