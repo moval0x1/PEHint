@@ -1,4 +1,5 @@
 #include "pe_data_directory_parser.h"
+#include "pe_analysis.h"
 #include "pe_system_dll_ordinal_resolver.h"
 #include "pe_utils.h"
 #include "language_manager.h"
@@ -9,7 +10,155 @@
 
 namespace {
 constexpr int MAX_EXPORT_FUNCTIONS_LIMIT = 10000;
+
+QString dataDirectoryDisplayName(int index)
+{
+    static const char *const kNames[] = {
+        "Export", "Import", "Resource", "Exception", "Security", "Base Relocation", "Debug",
+        "Architecture", "Global Ptr", "TLS", "Load Config", "Bound Import", "IAT",
+        "Delay Import", "CLR", "Reserved"
+    };
+    if (index >= 0 && index < 16) {
+        return QString::fromLatin1(kNames[index]);
+    }
+    return QStringLiteral("Unknown");
 }
+
+void appendDetailMapFields(QVector<PEDataDirectoryField> &fields, const QMap<QString, QString> &details)
+{
+    for (auto it = details.constBegin(); it != details.constEnd(); ++it) {
+        PEDataDirectoryField field;
+        field.label = it.key();
+        field.value = it.value();
+        fields.append(field);
+    }
+}
+
+void storeParsedDirectoryFields(PEDataModel &dataModel, int directoryIndex, const QMap<QString, QString> &details)
+{
+    QVector<PEDataDirectoryField> fields;
+    appendDetailMapFields(fields, details);
+    dataModel.setParsedDirectoryFields(directoryIndex, fields);
+}
+
+void storeResourceDirectoryFields(PEDataModel &dataModel,
+                                  const QStringList &resourceTypes,
+                                  const QMap<QString, QMap<QString, QString>> &resources)
+{
+    QVector<PEDataDirectoryField> fields;
+    if (!resourceTypes.isEmpty()) {
+        fields.append({QStringLiteral("Resource Types"), QString::number(resourceTypes.size())});
+    }
+    for (auto typeIt = resources.constBegin(); typeIt != resources.constEnd(); ++typeIt) {
+        for (auto resIt = typeIt.value().constBegin(); resIt != typeIt.value().constEnd(); ++resIt) {
+            fields.append({typeIt.key() + QStringLiteral(": ") + resIt.key(), resIt.value()});
+        }
+    }
+    dataModel.setParsedDirectoryFields(2, fields);
+}
+
+void appendParsedDirectoryFields(QVector<PEDataDirectoryField> &fields,
+                                 const QVector<PEDataDirectoryField> &parsed)
+{
+    fields += parsed;
+}
+
+void buildDataDirectoryRecords(const IMAGE_DATA_DIRECTORY *dataDirectories, PEDataModel &dataModel)
+{
+    QVector<PEDataDirectoryRecord> records;
+    records.reserve(16);
+
+    for (int i = 0; i < 16; ++i) {
+        PEDataDirectoryRecord record;
+        record.directoryIndex = i;
+        record.name = dataDirectoryDisplayName(i);
+        record.virtualAddress = dataDirectories[i].VirtualAddress;
+        record.size = dataDirectories[i].Size;
+
+        QVector<PEDataDirectoryField> fields;
+        if (record.virtualAddress != 0 || record.size != 0) {
+            PEDataDirectoryField rvaField;
+            rvaField.label = (i == 4) ? QStringLiteral("File Offset") : QStringLiteral("RVA");
+            rvaField.value = PEUtils::formatHex(record.virtualAddress);
+            fields.append(rvaField);
+
+            PEDataDirectoryField sizeField;
+            sizeField.label = QStringLiteral("Size");
+            sizeField.value = QString::number(record.size);
+            fields.append(sizeField);
+        }
+
+        switch (i) {
+        case 0:
+            if (!dataModel.getExportFunctions().isEmpty()) {
+                fields.append({QStringLiteral("Export Functions"),
+                               QString::number(dataModel.getExportFunctions().size())});
+            }
+            break;
+        case 1:
+            if (!dataModel.getImports().isEmpty()) {
+                fields.append({QStringLiteral("Import Modules"),
+                               QString::number(dataModel.getImports().size())});
+            }
+            break;
+        case 2:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(2));
+            if (!dataModel.getResourceEntries().isEmpty()) {
+                fields.append({QStringLiteral("Resource Entries"),
+                               QString::number(dataModel.getResourceEntries().size())});
+            }
+            break;
+        case 4:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(4));
+            break;
+        case 6:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(6));
+            break;
+        case 3:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(3));
+            break;
+        case 5:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(5));
+            break;
+        case 7:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(7));
+            break;
+        case 8:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(8));
+            break;
+        case 9:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(9));
+            break;
+        case 10:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(10));
+            break;
+        case 11:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(11));
+            break;
+        case 12:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(12));
+            break;
+        case 13:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(13));
+            if (!dataModel.getDelayImports().isEmpty()) {
+                fields.append({QStringLiteral("Delay Import Modules"),
+                               QString::number(dataModel.getDelayImports().size())});
+            }
+            break;
+        case 14:
+            appendParsedDirectoryFields(fields, dataModel.parsedDirectoryFields(14));
+            break;
+        default:
+            break;
+        }
+
+        record.fields = fields;
+        records.append(record);
+    }
+
+    dataModel.setDataDirectoryRecords(records);
+}
+} // namespace
 
 #ifndef IMAGE_ORDINAL_FLAG32
 #define IMAGE_ORDINAL_FLAG32 0x80000000
@@ -115,6 +264,8 @@ bool PEDataDirectoryParser::parseDataDirectories(const IMAGE_OPTIONAL_HEADER *op
             }
         }
     }
+
+    buildDataDirectoryRecords(dataDirectories, dataModel);
     
     return true;
 }
@@ -326,8 +477,7 @@ bool PEDataDirectoryParser::parseResourceDirectory(quint32 rva, quint32 size, PE
         entryOffset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY);
     }
     
-    dataModel.setResourceTypes(resourceTypes);
-    dataModel.setResources(resources);
+    storeResourceDirectoryFields(dataModel, resourceTypes, resources);
     
     return true;
 }
@@ -341,6 +491,7 @@ bool PEDataDirectoryParser::parseDebugDirectory(quint32 rva, quint32 size, PEDat
     
     QStringList debugInfo;
     QMap<QString, QString> debugDetails;
+    QVector<PEDebugDirectoryEntry> debugEntries;
     
     // Parse debug directory entries
     int entryCount = size / sizeof(IMAGE_DEBUG_DIRECTORY);
@@ -350,21 +501,66 @@ bool PEDataDirectoryParser::parseDebugDirectory(quint32 rva, quint32 size, PEDat
             const IMAGE_DEBUG_DIRECTORY *debugDir = reinterpret_cast<const IMAGE_DEBUG_DIRECTORY*>(
                 m_fileData.data() + entryOffset
             );
+
+            PEDebugDirectoryEntry entry;
+            entry.type = debugDir->Type;
+            entry.typeName = PEUtils::getDebugTypeName(debugDir->Type);
+            entry.timeDateStamp = debugDir->TimeDateStamp;
+            entry.majorVersion = debugDir->MajorVersion;
+            entry.minorVersion = debugDir->MinorVersion;
+            entry.sizeOfData = debugDir->SizeOfData;
+            entry.addressOfRawData = debugDir->AddressOfRawData;
+            entry.pointerToRawData = debugDir->PointerToRawData;
+            debugEntries.append(entry);
             
-            QString debugType = PEUtils::getDebugTypeName(debugDir->Type);
+            QString debugType = entry.typeName;
             QMap<QString, QString> debugParams;
             debugParams["size"] = QString::number(debugDir->SizeOfData);
             debugParams["rva"] = PEUtils::formatHex(debugDir->AddressOfRawData);
             debugParams["raw"] = PEUtils::formatHex(debugDir->PointerToRawData);
             QString debugDetailsStr = LANG_PARAMS("UI/debug_details_format", debugParams);
+
+            if (debugDir->Type == IMAGE_DEBUG_TYPE_CODEVIEW && debugDir->SizeOfData > 0) {
+                quint32 cvFileOffset = debugDir->PointerToRawData;
+                if (cvFileOffset == 0 && debugDir->AddressOfRawData != 0) {
+                    cvFileOffset = rvaToFileOffset(debugDir->AddressOfRawData, dataModel.getSections());
+                }
+                if (cvFileOffset == 0) {
+                    continue;
+                }
+                const PEPdbInfo pdb = PEAnalysis::parseCodeViewDebugData(
+                    m_fileData, cvFileOffset, debugDir->SizeOfData);
+                if (pdb.present) {
+                    PEPdbInfo merged = pdb;
+                    merged.codeViewFileOffset = cvFileOffset;
+                    merged.codeViewSize = PEAnalysis::codeViewRecordByteSize(
+                        m_fileData, cvFileOffset, debugDir->SizeOfData);
+                    if (merged.codeViewSize == 0) {
+                        merged.codeViewSize = debugDir->SizeOfData;
+                    }
+                    PEPdbInfo existing = dataModel.getPdbInfo();
+                    const bool replace = !existing.present || existing.path.isEmpty()
+                                         || (merged.codeViewFileOffset > 0
+                                             && existing.codeViewFileOffset == 0);
+                    if (replace) {
+                        dataModel.setPdbInfo(merged);
+                    }
+                    QString pdbExtra = QStringLiteral("%1 | %2 | age %3")
+                                           .arg(pdb.format, pdb.path, QString::number(pdb.age));
+                    if (!pdb.guid.isEmpty()) {
+                        pdbExtra += QStringLiteral(" | %1").arg(pdb.guid);
+                    }
+                    debugDetailsStr += QStringLiteral("\n") + pdbExtra;
+                }
+            }
             
             debugInfo.append(debugType);
             debugDetails[debugType] = debugDetailsStr;
         }
     }
     
-    dataModel.setDebugInfo(debugInfo);
-    dataModel.setDebugDetails(debugDetails);
+    storeParsedDirectoryFields(dataModel, 6, debugDetails);
+    dataModel.setDebugDirectoryEntries(debugEntries);
     
     return true;
 }
@@ -372,41 +568,118 @@ bool PEDataDirectoryParser::parseDebugDirectory(quint32 rva, quint32 size, PEDat
 bool PEDataDirectoryParser::parseTLSDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
+
     quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
     if (fileOffset == 0) return false;
 
     const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
     const bool pe32Plus = opt && opt->Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC;
 
-    QStringList tlsInfo;
-    QMap<QString, QString> tlsDetails;
-    QMap<QString, QString> tlsParams;
-
+    // ImageBase is needed to convert TLS callback VAs to RVAs
+    quint64 imageBase = 0;
     if (pe32Plus) {
-        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY64) > static_cast<quint32>(m_fileData.size())) {
-            return false;
-        }
-        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY64 *>(m_fileData.constData() + fileOffset);
-        tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(static_cast<quint64>(tls->AddressOfCallBacks));
-        tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
-        tlsParams[QStringLiteral("start")] = PEUtils::formatHex(static_cast<quint64>(tls->StartAddressOfRawData));
-    } else {
-        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY32) > static_cast<quint32>(m_fileData.size())) {
-            return false;
-        }
-        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY32 *>(m_fileData.constData() + fileOffset);
-        tlsParams[QStringLiteral("rva")] = PEUtils::formatHex(tls->AddressOfCallBacks);
-        tlsParams[QStringLiteral("size")] = QString::number(tls->SizeOfZeroFill);
-        tlsParams[QStringLiteral("start")] = PEUtils::formatHex(tls->StartAddressOfRawData);
+        imageBase = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64 *>(opt)->ImageBase;
+    } else if (opt) {
+        imageBase = opt->ImageBase;
     }
 
-    QString tlsData = LANG_PARAMS("UI/tls_details_format", tlsParams);
-    tlsInfo.append(LANG("UI/data_dir_tls"));
-    tlsDetails[LANG("UI/data_dir_tls")] = tlsData;
+    PETlsDirectoryInfo tlsInfoStruct;
+    tlsInfoStruct.present = true;
 
-    dataModel.setTLSInfo(tlsInfo);
-    dataModel.setTLSDetails(tlsDetails);
+    if (pe32Plus) {
+        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY64) > static_cast<quint32>(m_fileData.size()))
+            return false;
+        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY64 *>(m_fileData.constData() + fileOffset);
+        tlsInfoStruct.startAddressOfRawData = tls->StartAddressOfRawData;
+        tlsInfoStruct.endAddressOfRawData   = tls->EndAddressOfRawData;
+        tlsInfoStruct.addressOfIndex        = tls->AddressOfIndex;
+        tlsInfoStruct.addressOfCallbacks    = tls->AddressOfCallBacks;
+        tlsInfoStruct.sizeOfZeroFill        = tls->SizeOfZeroFill;
+        tlsInfoStruct.characteristics       = tls->Characteristics;
+        if (tls->AddressOfCallBacks != 0) {
+            tlsInfoStruct.callbacksPresent = true;
+            dataModel.setTlsCallbacksPresent(true);
+        }
+    } else {
+        if (fileOffset + sizeof(IMAGE_TLS_DIRECTORY32) > static_cast<quint32>(m_fileData.size()))
+            return false;
+        const auto *tls = reinterpret_cast<const IMAGE_TLS_DIRECTORY32 *>(m_fileData.constData() + fileOffset);
+        tlsInfoStruct.startAddressOfRawData = tls->StartAddressOfRawData;
+        tlsInfoStruct.endAddressOfRawData   = tls->EndAddressOfRawData;
+        tlsInfoStruct.addressOfIndex        = tls->AddressOfIndex;
+        tlsInfoStruct.addressOfCallbacks    = tls->AddressOfCallBacks;
+        tlsInfoStruct.sizeOfZeroFill        = tls->SizeOfZeroFill;
+        tlsInfoStruct.characteristics       = tls->Characteristics;
+        if (tls->AddressOfCallBacks != 0) {
+            tlsInfoStruct.callbacksPresent = true;
+            dataModel.setTlsCallbacksPresent(true);
+        }
+    }
+
+    // Enumerate TLS callback addresses from the null-terminated pointer array.
+    // AddressOfCallBacks is a VA in the loaded image; convert VA→RVA→file offset.
+    if (tlsInfoStruct.callbacksPresent && imageBase != 0
+            && tlsInfoStruct.addressOfCallbacks >= imageBase) {
+        const quint32 cbRVA = static_cast<quint32>(tlsInfoStruct.addressOfCallbacks - imageBase);
+        quint32 cbFO = rvaToFileOffset(cbRVA, dataModel.getSections());
+        const int ptrSize = pe32Plus ? 8 : 4;
+        constexpr int kMaxCallbacks = 64;
+        while (cbFO != 0 && tlsInfoStruct.callbackAddresses.size() < kMaxCallbacks) {
+            if (cbFO + static_cast<quint32>(ptrSize) > static_cast<quint32>(m_fileData.size()))
+                break;
+            quint64 cbVA = 0;
+            if (pe32Plus) {
+                cbVA = *reinterpret_cast<const quint64 *>(m_fileData.constData() + cbFO);
+            } else {
+                cbVA = *reinterpret_cast<const quint32 *>(m_fileData.constData() + cbFO);
+            }
+            if (cbVA == 0)
+                break;
+            tlsInfoStruct.callbackAddresses.append(cbVA);
+            cbFO += static_cast<quint32>(ptrSize);
+        }
+    }
+
+    // Build display fields (ordered vector preserves insertion order)
+    QVector<PEDataDirectoryField> fields;
+    const quint32 rawDataSize = (tlsInfoStruct.endAddressOfRawData >= tlsInfoStruct.startAddressOfRawData)
+        ? static_cast<quint32>(tlsInfoStruct.endAddressOfRawData - tlsInfoStruct.startAddressOfRawData)
+        : 0;
+    fields.append({QStringLiteral("StartAddressOfRawData"),
+                   PEUtils::formatHexWidth(tlsInfoStruct.startAddressOfRawData, pe32Plus ? 16 : 8)});
+    fields.append({QStringLiteral("EndAddressOfRawData"),
+                   QStringLiteral("%1  (%2 bytes)")
+                       .arg(PEUtils::formatHexWidth(tlsInfoStruct.endAddressOfRawData, pe32Plus ? 16 : 8))
+                       .arg(rawDataSize)});
+    fields.append({QStringLiteral("AddressOfIndex"),
+                   PEUtils::formatHexWidth(tlsInfoStruct.addressOfIndex, pe32Plus ? 16 : 8)});
+    fields.append({QStringLiteral("AddressOfCallBacks"),
+                   PEUtils::formatHexWidth(tlsInfoStruct.addressOfCallbacks, pe32Plus ? 16 : 8)});
+    fields.append({QStringLiteral("SizeOfZeroFill"), QString::number(tlsInfoStruct.sizeOfZeroFill)});
+    fields.append({QStringLiteral("Characteristics"),
+                   PEUtils::formatHexWidth(tlsInfoStruct.characteristics, 8)});
+
+    const int cbCount = tlsInfoStruct.callbackAddresses.size();
+    if (!tlsInfoStruct.callbacksPresent) {
+        fields.append({QStringLiteral("Callbacks"), QStringLiteral("none")});
+    } else if (cbCount == 0) {
+        // Pointer present but couldn't resolve (ASLR, stripped, etc.)
+        fields.append({QStringLiteral("Callbacks"),
+                       QStringLiteral("array pointer present — could not resolve from disk image")});
+    } else {
+        fields.append({QStringLiteral("Callbacks"), QString::number(cbCount)});
+        for (int i = 0; i < cbCount; ++i) {
+            const quint64 va  = tlsInfoStruct.callbackAddresses[i];
+            const quint64 rvaVal = (imageBase != 0 && va >= imageBase) ? va - imageBase : va;
+            fields.append({QStringLiteral("Callback[%1]").arg(i),
+                           QStringLiteral("VA: %1   RVA: %2")
+                               .arg(PEUtils::formatHexWidth(va, pe32Plus ? 16 : 8))
+                               .arg(PEUtils::formatHexWidth(rvaVal, 8))});
+        }
+    }
+
+    dataModel.setParsedDirectoryFields(9, fields);
+    dataModel.setTlsDirectoryInfo(tlsInfoStruct);
 
     return true;
 }
@@ -428,6 +701,8 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
     QStringList loadConfigInfo;
     QMap<QString, QString> loadConfigDetails;
     QMap<QString, QString> configParams;
+    PELoadConfigDirectoryInfo loadConfigStruct;
+    loadConfigStruct.present = true;
 
     if (pe32Plus) {
         if (fileOffset + sizeof(IMAGE_LOAD_CONFIG_DIRECTORY64) > static_cast<quint32>(m_fileData.size())) {
@@ -435,6 +710,10 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
         }
         const auto *loadConfigDir =
             reinterpret_cast<const IMAGE_LOAD_CONFIG_DIRECTORY64 *>(m_fileData.constData() + fileOffset);
+        loadConfigStruct.size = loadConfigDir->Size;
+        loadConfigStruct.timeDateStamp = loadConfigDir->TimeDateStamp;
+        loadConfigStruct.majorVersion = loadConfigDir->MajorVersion;
+        loadConfigStruct.minorVersion = loadConfigDir->MinorVersion;
         configParams[QStringLiteral("size")] = QString::number(loadConfigDir->Size);
         configParams[QStringLiteral("time")] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
         configParams[QStringLiteral("version")] =
@@ -445,6 +724,10 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
         }
         const auto *loadConfigDir =
             reinterpret_cast<const IMAGE_LOAD_CONFIG_DIRECTORY32 *>(m_fileData.constData() + fileOffset);
+        loadConfigStruct.size = loadConfigDir->Size;
+        loadConfigStruct.timeDateStamp = loadConfigDir->TimeDateStamp;
+        loadConfigStruct.majorVersion = loadConfigDir->MajorVersion;
+        loadConfigStruct.minorVersion = loadConfigDir->MinorVersion;
         configParams[QStringLiteral("size")] = QString::number(loadConfigDir->Size);
         configParams[QStringLiteral("time")] = PEUtils::formatHex(loadConfigDir->TimeDateStamp);
         configParams[QStringLiteral("version")] =
@@ -455,8 +738,8 @@ bool PEDataDirectoryParser::parseLoadConfigDirectory(quint32 rva, quint32 size, 
     loadConfigInfo.append(LANG("UI/data_dir_load_config"));
     loadConfigDetails[LANG("UI/data_dir_load_config")] = configData;
 
-    dataModel.setLoadConfigInfo(loadConfigInfo);
-    dataModel.setLoadConfigDetails(loadConfigDetails);
+    storeParsedDirectoryFields(dataModel, 10, loadConfigDetails);
+    dataModel.setLoadConfigDirectoryInfo(loadConfigStruct);
 
     return true;
 }
@@ -541,8 +824,7 @@ bool PEDataDirectoryParser::parseExceptionDirectory(quint32 rva, quint32 size, P
     exceptionInfo.append(LANG("UI/data_dir_exception"));
     exceptionDetails[LANG("UI/data_dir_exception")] = exceptionData;
     
-    dataModel.setExceptionInfo(exceptionInfo);
-    dataModel.setExceptionDetails(exceptionDetails);
+    storeParsedDirectoryFields(dataModel, 3, exceptionDetails);
     
     return true;
 }
@@ -579,8 +861,7 @@ bool PEDataDirectoryParser::parseCertificateDirectory(quint32 rva, quint32 size,
                 .arg(size);
     }
     
-    dataModel.setCertificateInfo(certificateInfo);
-    dataModel.setCertificateDetails(certificateDetails);
+    storeParsedDirectoryFields(dataModel, 4, certificateDetails);
     
     return true;
 }
@@ -588,33 +869,74 @@ bool PEDataDirectoryParser::parseCertificateDirectory(quint32 rva, quint32 size,
 bool PEDataDirectoryParser::parseBaseRelocationDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
+
     quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
     if (fileOffset == 0) return false;
-    
-    QStringList relocationInfo;
-    QMap<QString, QString> relocationDetails;
-    
-    // Parse base relocation directory
-    const IMAGE_BASE_RELOCATION *relocDir = reinterpret_cast<const IMAGE_BASE_RELOCATION*>(
-        m_fileData.data() + fileOffset
-    );
-    
-    if (fileOffset + sizeof(IMAGE_BASE_RELOCATION) <= m_fileData.size()) {
-        QString relocData = QString("Virtual Address: 0x%1, Size: %2 bytes")
-                           .arg(PEUtils::formatHex(relocDir->VirtualAddress))
-                           .arg(relocDir->SizeOfBlock);
-        
-        relocationInfo.append(LANG("UI/data_dir_base_relocation"));
-        relocationDetails[LANG("UI/data_dir_base_relocation")] = relocData;
-    } else {
-        relocationInfo.append(LANG("UI/data_dir_base_relocation"));
-        relocationDetails[LANG("UI/data_dir_base_relocation")] = QString("RVA: 0x%1, Size: %2 bytes").arg(PEUtils::formatHex(rva)).arg(size);
+
+    const quint32 fileSize = static_cast<quint32>(m_fileData.size());
+    if (fileOffset >= fileSize || size > fileSize - fileOffset) return false;
+
+    constexpr int kMaxBlocks       = 4096; // safety cap
+    constexpr int kMaxDisplayBlocks = 128; // blocks shown individually in the tree
+
+    int totalBlocks  = 0;
+    int totalEntries = 0;
+
+    // Ordered display fields: summary first, then per-block rows up to the display cap
+    QVector<PEDataDirectoryField> fields;
+    QVector<PEDataDirectoryField> blockFields;
+
+    quint32 pos = fileOffset;
+    const quint32 end = fileOffset + size;
+
+    while (totalBlocks < kMaxBlocks && pos + static_cast<quint32>(sizeof(IMAGE_BASE_RELOCATION)) <= end
+           && pos + static_cast<quint32>(sizeof(IMAGE_BASE_RELOCATION)) <= fileSize) {
+        const auto *block = reinterpret_cast<const IMAGE_BASE_RELOCATION *>(m_fileData.constData() + pos);
+
+        // A block with SizeOfBlock == 0 is the terminator (or a corrupt image — stop either way)
+        if (block->SizeOfBlock < static_cast<quint32>(sizeof(IMAGE_BASE_RELOCATION)))
+            break;
+
+        const quint32 entryBytes = block->SizeOfBlock - static_cast<quint32>(sizeof(IMAGE_BASE_RELOCATION));
+        const int entryCount = static_cast<int>(entryBytes / sizeof(quint16));
+
+        // Count non-padding entries (type 0 = IMAGE_REL_BASED_ABSOLUTE, used only for alignment)
+        int realEntries = 0;
+        if (pos + block->SizeOfBlock <= fileSize) {
+            const quint16 *entries = reinterpret_cast<const quint16 *>(
+                m_fileData.constData() + pos + sizeof(IMAGE_BASE_RELOCATION));
+            for (int i = 0; i < entryCount; ++i) {
+                if ((entries[i] >> 12) != 0)
+                    ++realEntries;
+            }
+        } else {
+            realEntries = entryCount; // can't inspect entries, count all
+        }
+
+        totalEntries += realEntries;
+
+        if (totalBlocks < kMaxDisplayBlocks) {
+            blockFields.append({QStringLiteral("Block[%1] VA 0x%2")
+                                    .arg(totalBlocks)
+                                    .arg(PEUtils::formatHexWidth(block->VirtualAddress, 8)),
+                                QStringLiteral("%1 entries").arg(realEntries)});
+        }
+
+        ++totalBlocks;
+        pos += block->SizeOfBlock;
     }
-    
-    dataModel.setRelocationInfo(relocationInfo);
-    dataModel.setRelocationDetails(relocationDetails);
-    
+
+    // Summary fields go first
+    fields.append({QStringLiteral("Blocks"),        QString::number(totalBlocks)});
+    fields.append({QStringLiteral("Total Entries"), QString::number(totalEntries)});
+    if (totalBlocks > kMaxDisplayBlocks) {
+        fields.append({QStringLiteral("Note"),
+                       QStringLiteral("First %1 of %2 blocks shown").arg(kMaxDisplayBlocks).arg(totalBlocks)});
+    }
+    fields += blockFields;
+
+    dataModel.setParsedDirectoryFields(5, fields);
+
     return true;
 }
 
@@ -636,8 +958,7 @@ bool PEDataDirectoryParser::parseArchitectureDirectory(quint32 rva, quint32 size
     architectureInfo.append(LANG("UI/data_dir_architecture"));
     architectureDetails[LANG("UI/data_dir_architecture")] = archData;
     
-    dataModel.setArchitectureInfo(architectureInfo);
-    dataModel.setArchitectureDetails(architectureDetails);
+    storeParsedDirectoryFields(dataModel, 7, architectureDetails);
     
     return true;
 }
@@ -660,8 +981,7 @@ bool PEDataDirectoryParser::parseGlobalPointerDirectory(quint32 rva, quint32 siz
     globalPtrInfo.append(LANG("UI/data_dir_global_pointer"));
     globalPtrDetails[LANG("UI/data_dir_global_pointer")] = gpData;
     
-    dataModel.setGlobalPointerInfo(globalPtrInfo);
-    dataModel.setGlobalPointerDetails(globalPtrDetails);
+    storeParsedDirectoryFields(dataModel, 8, globalPtrDetails);
     
     return true;
 }
@@ -669,95 +989,210 @@ bool PEDataDirectoryParser::parseGlobalPointerDirectory(quint32 rva, quint32 siz
 bool PEDataDirectoryParser::parseBoundImportDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
-    
-    QStringList boundImportInfo;
-    QMap<QString, QString> boundImportDetails;
-    
-    // Parse bound import directory
-    QString boundData = QString("RVA: 0x%1, Size: %2 bytes")
-                       .arg(PEUtils::formatHex(rva))
-                       .arg(size);
-    
-    boundImportInfo.append(LANG("UI/data_dir_bound_import"));
-    boundImportDetails[LANG("UI/data_dir_bound_import")] = boundData;
-    
-    dataModel.setBoundImportInfo(boundImportInfo);
-    dataModel.setBoundImportDetails(boundImportDetails);
-    
+
+    // The Bound Import directory RVA is a raw file offset (pre-section area),
+    // so use it directly rather than going through rvaToFileOffset.
+    quint32 baseOffset = rva;
+    if (baseOffset + sizeof(IMAGE_BOUND_IMPORT_DESCRIPTOR) > static_cast<quint32>(m_fileData.size())) {
+        baseOffset = rvaToFileOffset(rva, dataModel.getSections());
+        if (baseOffset == 0) {
+            return false;
+        }
+    }
+
+    QMap<QString, QString> fields;
+    QStringList dllNames;
+    int entryCount = 0;
+    const int maxEntries = 512;
+
+    const char *base = m_fileData.constData();
+    quint32 cursor = baseOffset;
+
+    while (entryCount < maxEntries) {
+        if (cursor + sizeof(IMAGE_BOUND_IMPORT_DESCRIPTOR) > static_cast<quint32>(m_fileData.size())) {
+            break;
+        }
+        const auto *desc = reinterpret_cast<const IMAGE_BOUND_IMPORT_DESCRIPTOR *>(base + cursor);
+        if (desc->TimeDateStamp == 0 && desc->OffsetModuleName == 0) {
+            break;
+        }
+
+        const quint32 nameOff = baseOffset + desc->OffsetModuleName;
+        if (nameOff < static_cast<quint32>(m_fileData.size())) {
+            const char *namePtr = base + nameOff;
+            const int remaining = m_fileData.size() - static_cast<int>(nameOff);
+            const QString name = QString::fromLatin1(namePtr, qMin(remaining, 256)).split(QLatin1Char('\0')).first();
+            if (!name.isEmpty()) {
+                dllNames.append(name);
+            }
+        }
+
+        ++entryCount;
+        cursor += sizeof(IMAGE_BOUND_IMPORT_DESCRIPTOR)
+                  + desc->NumberOfModuleForwarderRefs * sizeof(IMAGE_BOUND_FORWARDER_REF);
+    }
+
+    fields[QStringLiteral("Bound modules")] = QString::number(dllNames.size());
+    if (!dllNames.isEmpty()) {
+        fields[QStringLiteral("DLLs")] = dllNames.join(QStringLiteral(", "));
+    }
+    storeParsedDirectoryFields(dataModel, 11, fields);
     return true;
 }
 
 bool PEDataDirectoryParser::parseImportAddressTableDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
-    
-    QStringList iatInfo;
-    QMap<QString, QString> iatDetails;
-    
-    // Parse Import Address Table directory
-    QString iatData = QString("RVA: 0x%1, Size: %2 bytes")
-                     .arg(PEUtils::formatHex(rva))
-                     .arg(size);
-    
-    iatInfo.append(LANG("UI/data_dir_iat"));
-    iatDetails[LANG("UI/data_dir_iat")] = iatData;
-    
-    dataModel.setIATInfo(iatInfo);
-    dataModel.setIATDetails(iatDetails);
-    
+
+    const IMAGE_OPTIONAL_HEADER *opt = dataModel.getOptionalHeader();
+    const bool isPE64 = opt && opt->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+    const int ptrSize = isPE64 ? 8 : 4;
+    const int entryCount = static_cast<int>(size) / ptrSize;
+
+    QMap<QString, QString> fields;
+    fields[QStringLiteral("Entries")] = QString::number(entryCount);
+    fields[QStringLiteral("Entry size")] = QStringLiteral("%1 bytes").arg(ptrSize);
+    storeParsedDirectoryFields(dataModel, 12, fields);
     return true;
 }
 
 bool PEDataDirectoryParser::parseDelayImportDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
-    if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
-    
+    if (rva == 0 || size == 0) {
+        return true;
+    }
+
+    const quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
+    if (fileOffset == 0) {
+        return false;
+    }
+
+    QStringList delayImports;
+    QMap<QString, QList<PEDataModel::ImportFunctionEntry>> delayImportDetails;
+
+    const IMAGE_OPTIONAL_HEADER *optionalHeader = dataModel.getOptionalHeader();
+    const bool isPE64 = optionalHeader && optionalHeader->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+
+    const auto *delayDesc = reinterpret_cast<const IMAGE_DELAYLOAD_DESCRIPTOR *>(m_fileData.constData() + fileOffset);
+
+    int descriptorCount = 0;
+    while (delayDesc->DllNameRVA != 0 && descriptorCount < 1000) {
+        const QString dllName = readStringFromRVA(delayDesc->DllNameRVA, dataModel.getSections());
+        if (!dllName.isEmpty()) {
+            delayImports.append(dllName);
+
+            QList<PEDataModel::ImportFunctionEntry> functions;
+            const quint32 nameTableRVA = delayDesc->ImportNameTableRVA;
+            const quint32 thunkTableRVA = delayDesc->ImportAddressTableRVA;
+            const quint32 nameTableOffset =
+                nameTableRVA != 0 ? rvaToFileOffset(nameTableRVA, dataModel.getSections()) : 0;
+
+            if (nameTableOffset != 0 && nameTableOffset < static_cast<quint32>(m_fileData.size())) {
+                const char *tablePtr = m_fileData.constData() + nameTableOffset;
+                const int entrySize =
+                    isPE64 ? static_cast<int>(sizeof(quint64)) : static_cast<int>(sizeof(quint32));
+
+                for (int index = 0;; ++index) {
+                    const qsizetype nameEntryOffset = index * entrySize;
+                    const qsizetype remaining = m_fileData.size() - static_cast<qsizetype>(nameTableOffset);
+                    if (nameEntryOffset + entrySize > remaining) {
+                        break;
+                    }
+
+                    quint64 rawValue = 0;
+                    std::memcpy(&rawValue, tablePtr + nameEntryOffset, entrySize);
+                    if (rawValue == 0) {
+                        break;
+                    }
+
+                    const quint32 thunkEntryRVA = thunkTableRVA + static_cast<quint32>(index * entrySize);
+                    const quint32 thunkEntryOffset = rvaToFileOffset(thunkEntryRVA, dataModel.getSections());
+
+                    PEDataModel::ImportFunctionEntry entry;
+                    entry.thunkRVA = thunkEntryRVA;
+                    entry.thunkOffset = thunkEntryOffset;
+
+                    const bool importByOrdinal =
+                        (isPE64 && (rawValue & IMAGE_ORDINAL_FLAG64))
+                        || (!isPE64 && (rawValue & IMAGE_ORDINAL_FLAG32));
+                    if (importByOrdinal) {
+                        const quint16 ordinal = static_cast<quint16>(rawValue & 0xFFFF);
+                        entry.importedByOrdinal = true;
+                        entry.ordinal = ordinal;
+                        const QString resolved = resolveImportOrdinalToName(dllName, ordinal, isPE64);
+                        entry.name = resolved.isEmpty() ? QStringLiteral("[ - ]") : resolved;
+                    } else {
+                        const quint32 importByNameRVA = static_cast<quint32>(rawValue & 0xFFFFFFFF);
+                        QString functionName = readStringFromRVA(importByNameRVA + 2, dataModel.getSections());
+                        if (functionName.isEmpty()) {
+                            functionName =
+                                QStringLiteral("0x%1").arg(importByNameRVA, 0, 16).toUpper();
+                        }
+                        entry.name = functionName;
+                    }
+
+                    functions.append(entry);
+                }
+            }
+
+            delayImportDetails[dllName] = functions;
+        }
+
+        ++delayDesc;
+        ++descriptorCount;
+    }
+
+    dataModel.setDelayImports(delayImports);
+    dataModel.setDelayImportFunctions(delayImportDetails);
+
     QStringList delayImportInfo;
-    QMap<QString, QString> delayImportDetails;
-    
-    // Parse delay import directory
-    QString delayData = QString("RVA: 0x%1, Size: %2 bytes")
-                       .arg(PEUtils::formatHex(rva))
-                       .arg(size);
-    
+    QMap<QString, QString> delayImportMeta;
     delayImportInfo.append(LANG("UI/data_dir_delay_import"));
-    delayImportDetails[LANG("UI/data_dir_delay_import")] = delayData;
-    
-    dataModel.setDelayImportInfo(delayImportInfo);
-    dataModel.setDelayImportDetails(delayImportDetails);
-    
+    delayImportMeta[LANG("UI/data_dir_delay_import")] =
+        QStringLiteral("RVA: 0x%1, Size: %2 bytes, Modules: %3")
+            .arg(PEUtils::formatHex(rva), QString::number(size), QString::number(delayImports.size()));
+    storeParsedDirectoryFields(dataModel, 13, delayImportMeta);
+
     return true;
 }
 
 bool PEDataDirectoryParser::parseCOMRuntimeDirectory(quint32 rva, quint32 size, PEDataModel &dataModel)
 {
     if (rva == 0 || size == 0) return true;
-    
-    quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
-    if (fileOffset == 0) return false;
-    
-    QStringList comRuntimeInfo;
-    QMap<QString, QString> comRuntimeDetails;
-    
-    // Parse COM+ Runtime Header directory
-    QString comData = QString("RVA: 0x%1, Size: %2 bytes")
-                     .arg(PEUtils::formatHex(rva))
-                     .arg(size);
-    
-    comRuntimeInfo.append(LANG("UI/data_dir_com_runtime"));
-    comRuntimeDetails[LANG("UI/data_dir_com_runtime")] = comData;
-    
-    dataModel.setCOMRuntimeInfo(comRuntimeInfo);
-    dataModel.setCOMRuntimeDetails(comRuntimeDetails);
-    
+
+    const quint32 fileOffset = rvaToFileOffset(rva, dataModel.getSections());
+    if (fileOffset == 0 || fileOffset + sizeof(IMAGE_COR20_HEADER) > static_cast<quint32>(m_fileData.size())) {
+        return false;
+    }
+
+    const auto *clr = reinterpret_cast<const IMAGE_COR20_HEADER *>(m_fileData.constData() + fileOffset);
+
+    QMap<QString, QString> fields;
+    fields[QStringLiteral("CLR version")] =
+        QStringLiteral("%1.%2").arg(clr->MajorRuntimeVersion).arg(clr->MinorRuntimeVersion);
+
+    QStringList flagList;
+    if (clr->Flags & 0x00000001) flagList.append(QStringLiteral("ILONLY"));
+    if (clr->Flags & 0x00000002) flagList.append(QStringLiteral("32BITREQUIRED"));
+    if (clr->Flags & 0x00000008) flagList.append(QStringLiteral("STRONGNAMESIGNED"));
+    if (clr->Flags & 0x00000010) flagList.append(QStringLiteral("NATIVE_ENTRYPOINT"));
+    if (clr->Flags & 0x00020000) flagList.append(QStringLiteral("32BITPREFERRED"));
+    if (!flagList.isEmpty()) {
+        fields[QStringLiteral("Flags")] = flagList.join(QStringLiteral(", "));
+    }
+
+    if (clr->MetaData.VirtualAddress != 0) {
+        fields[QStringLiteral("Metadata RVA")] = PEUtils::formatHex(clr->MetaData.VirtualAddress);
+        fields[QStringLiteral("Metadata size")] = QString::number(clr->MetaData.Size);
+    }
+    if (clr->EntryPointToken != 0) {
+        fields[QStringLiteral("Entry point token")] = PEUtils::formatHex(clr->EntryPointToken);
+    }
+    if (clr->StrongNameSignature.VirtualAddress != 0) {
+        fields[QStringLiteral("Strong name RVA")] =
+            PEUtils::formatHex(clr->StrongNameSignature.VirtualAddress);
+    }
+
+    storeParsedDirectoryFields(dataModel, 14, fields);
     return true;
 }

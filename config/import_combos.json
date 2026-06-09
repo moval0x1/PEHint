@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "combos": [
+    {
+      "id": "process_injection",
+      "severity": "high",
+      "name": "Process injection chain",
+      "note": "VirtualAllocEx + WriteProcessMemory + CreateRemoteThread — classic cross-process injection",
+      "requires": [
+        "virtualallocex",
+        "writeprocessmemory",
+        "createremotethread"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "native_process_write",
+      "severity": "high",
+      "name": "Native cross-process write + remote thread",
+      "note": "NtWriteVirtualMemory combined with CreateRemoteThread",
+      "requires": [
+        "ntwritevirtualmemory",
+        "createremotethread"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "download_and_execute",
+      "severity": "high",
+      "name": "Download and execute",
+      "note": "URLDownloadToFile plus process creation — common dropper pattern",
+      "requires": [
+        "urlmon_download",
+        { "function": "WinExec", "dll": "kernel32" }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "network_and_hook",
+      "severity": "medium",
+      "name": "Network + global hook",
+      "note": "Socket connect combined with SetWindowsHookEx — C2 or keylogging setup",
+      "requires": [
+        "ws2_connect",
+        "setwindowshookex"
+      ],
+      "enabled": true
+    }
+  ]
+}

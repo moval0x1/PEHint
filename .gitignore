@@ -57,7 +57,9 @@ build/
 build_*/
 out/
 .vs/
+docs/
 .qtcreator/
+.c*
 
 # Local release artifacts (keep source-only in git)
 PEHint_Release_Package*/

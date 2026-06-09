@@ -6,18 +6,29 @@
 #include "pe_utils_test.h"
 #include "pe_dependency_analyzer_test.h"
 #include "pe_string_extractor_test.h"
+#include "pe_golden_test.h"
+
+bool runPeAnalysisSelfTests();
+bool runPeFindingsSelfTests();
+bool runPeCliScanSelfTests();
+bool runPeCliBatchTests();
+bool runPeCliWatchTests();
+bool runPeEpDisasmSelfTests();
+bool runPeAuthenticodeSelfTests();
+bool runPeResourcePreviewSelfTests();
+bool runImportApiHintStoreSelfTests();
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
-    // QTest::qExec returns number of failed test functions; sum (do not use |= — wrong when multiple suites fail)
     int failures = 0;
     auto runSuite = [&failures, argc, argv](const char *name, QObject *suite) {
         const int f = QTest::qExec(suite, argc, argv);
         delete suite;
-        if (f != 0)
+        if (f != 0) {
             std::cerr << "Test suite " << name << " reported " << f << " failed function(s)\n";
+        }
         failures += f;
     };
     runSuite("PEParserTest", new PEParserTest);
@@ -25,7 +36,52 @@ int main(int argc, char *argv[])
     runSuite("PEUtilsTest", new PEUtilsTest);
     runSuite("PEDependencyAnalyzerTest", new PEDependencyAnalyzerTest);
     runSuite("PEStringExtractorTest", new PEStringExtractorTest);
+    runSuite("PEGoldenTest", new PEGoldenTest);
+
+    if (!runPeAnalysisSelfTests()) {
+        std::cerr << "PE analysis self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeFindingsSelfTests()) {
+        std::cerr << "PE findings self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliScanSelfTests()) {
+        std::cerr << "PE CLI self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliBatchTests()) {
+        std::cerr << "PE CLI batch tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeCliWatchTests()) {
+        std::cerr << "PE CLI watch tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeEpDisasmSelfTests()) {
+        std::cerr << "PE EP disasm self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeAuthenticodeSelfTests()) {
+        std::cerr << "PE Authenticode self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runPeResourcePreviewSelfTests()) {
+        std::cerr << "PE resource preview self-tests failed\n";
+        ++failures;
+    }
+
+    if (!runImportApiHintStoreSelfTests()) {
+        std::cerr << "ImportApiHintStore self-tests failed\n";
+        ++failures;
+    }
 
     return failures > 0 ? 1 : 0;
 }
-

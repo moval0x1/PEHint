@@ -1,0 +1,2683 @@
+{
+  "version": 2,
+  "source": "malapi.io",
+  "hints": [
+    {
+      "function": "Accept",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Accept",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "AdjustTokenPrivileges",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/AdjustTokenPrivileges",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "AttachThreadInput",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/AttachThreadInput",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "Bind",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Bind",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "BitBlt",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/BitBlt",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "BringWindowToTop",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/BringWindowToTop",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CallNextHookEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/CallNextHookEx",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "CallWindowProcA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CallWindowProcA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CheckRemoteDebuggerPresent",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/CheckRemoteDebuggerPresent",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "Closesocket",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Closesocket",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "Connect",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Connect",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "ws2_32.dll",
+      "function": "connect",
+      "summary": "Establishes a connection to a specified socket.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-connect"
+    },
+    {
+      "function": "ConnectNamedPipe",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/ConnectNamedPipe",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "ControlService",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/ControlService",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "ControlServiceExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/ControlServiceExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CopyFile2",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CopyFile2",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CopyFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CopyFileA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CopyFileExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CopyFileExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CountClipboardFormats",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/CountClipboardFormats",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "CreateFile2",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreateFile2",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreateFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreateFileA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreateFileMappingA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/CreateFileMappingA",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "CreateMutexA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreateMutexA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreateMutexExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreateMutexExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreatePipe",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreatePipe",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreateProcessA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/CreateProcessA",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "CreateProcessAsUserA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/CreateProcessAsUserA",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "CreateProcessInternal",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/CreateProcessInternal",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "CreateProcessW",
+      "summary": "Creates a new process and its primary thread.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw"
+    },
+    {
+      "function": "CreateProcessWithTokenW",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/CreateProcessWithTokenW",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "CreateRemoteThread",
+      "dll": "kernel32.dll",
+      "summary": "Creates a thread that runs in the virtual address space of another process.",
+      "malapiUrl": "https://malapi.io/winapi/CreateRemoteThread",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread"
+    },
+    {
+      "function": "CreateRemoteThreadEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/CreateRemoteThreadEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "CreateServiceA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/CreateServiceA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "CreateThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/CreateThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "CreateTimerQueueTimer",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/CreateTimerQueueTimer",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "CreateToolhelp32Snapshot",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/CreateToolhelp32Snapshot",
+      "malapiCategories": "Anti-Debugging, Enumeration",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-createtoolhelp32snapshot"
+    },
+    {
+      "function": "CreateWaitableTimer",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/CreateWaitableTimer",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "CreateWindowExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/CreateWindowExA",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "CryptAcquireContextA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptAcquireContextA",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptBinaryToString",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptBinaryToString",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptCreateHash",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptCreateHash",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptDecrypt",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptDecrypt",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptDeriveKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptDeriveKey",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptDestroyHash",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptDestroyHash",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptDestroyKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptDestroyKey",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptEncrypt",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptEncrypt",
+      "malapiCategories": "Ransomware",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-cryptencrypt"
+    },
+    {
+      "function": "CryptGenRandom",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptGenRandom",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptGetHashParam",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptGetHashParam",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptHashData",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptHashData",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptProtectData",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptProtectData",
+      "malapiCategories": "Evasion, Ransomware"
+    },
+    {
+      "function": "CryptReleaseContext",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptReleaseContext",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptSetKeyParam",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptSetKeyParam",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "CryptStringToBinary",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/CryptStringToBinary",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "dll": "crypt32.dll",
+      "function": "CryptUnprotectData",
+      "summary": "Decrypts and verifies data protected by CryptProtectData (DPAPI).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptunprotectdata"
+    },
+    {
+      "function": "DebugActiveProcessStop",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/DebugActiveProcessStop",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "DecryptFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/DecryptFileA",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "DeleteFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/DeleteFileA",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "DeleteService",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/DeleteService",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "DeviceIoControl",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/DeviceIoControl",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "DnsQuery_A",
+      "dll": "dnsapi.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/DnsQuery_A",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "DnsQueryEx",
+      "dll": "dnsapi.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/DnsQueryEx",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "DrawTextExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/DrawTextExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "DuplicateToken",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/DuplicateToken",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "EncryptFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/EncryptFileA",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "EnumDesktopWindows",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumDesktopWindows",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumDeviceDrivers",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumDeviceDrivers",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumProcesses",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumProcesses",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumProcessModules",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumProcessModules",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumProcessModulesEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumProcessModulesEx",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumResourceTypesA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumResourceTypesA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumResourceTypesExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumResourceTypesExA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "EnumSystemLocalesA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation, evasion of security controls (+1 more).",
+      "malapiUrl": "https://malapi.io/winapi/EnumSystemLocalesA",
+      "malapiCategories": "Enumeration, Evasion, Injection, Ransomware"
+    },
+    {
+      "function": "EnumWindows",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/EnumWindows",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "ExitWindowsEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/ExitWindowsEx",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "FindClose",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/FindClose",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "FindFirstFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/FindFirstFileA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "FindFirstUrlCacheEntryA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/FindFirstUrlCacheEntryA",
+      "malapiCategories": "Enumeration, Internet"
+    },
+    {
+      "function": "FindNextFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/FindNextFileA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "FindNextUrlCacheEntryA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/FindNextUrlCacheEntryA",
+      "malapiCategories": "Enumeration, Internet"
+    },
+    {
+      "function": "FindResourceA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/FindResourceA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "FindResourceExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/FindResourceExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "FindWindowA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/FindWindowA",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "FindWindowExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/FindWindowExA",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "FlushEfsCache",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for encryption and destructive file operations.",
+      "malapiUrl": "https://malapi.io/winapi/FlushEfsCache",
+      "malapiCategories": "Ransomware"
+    },
+    {
+      "function": "FtpPutFileA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/FtpPutFileA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "GetAdaptersInfo",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetAdaptersInfo",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetAsyncKeyState",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetAsyncKeyState",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetClipboardData",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetClipboardData",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetComputerNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetComputerNameA",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetCurrentHwProfileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetCurrentHwProfileA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetCurrentProcess",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetCurrentProcess",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetCurrentProcessId",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetCurrentProcessId",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetCurrentThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetCurrentThread",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetCurrentThreadId",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetCurrentThreadId",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetDC",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetDC",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetDCEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetDCEx",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetDesktopWindow",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetDesktopWindow",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "GetDriveTypeA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, encryption and destructive file operations, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetDriveTypeA",
+      "malapiCategories": "Enumeration, Helper, Ransomware"
+    },
+    {
+      "function": "GetFileAttributesA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetFileAttributesA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetFileTime",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetFileTime",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetForegroundWindow",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture), anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetForegroundWindow",
+      "malapiCategories": "Anti-Debugging, Spying"
+    },
+    {
+      "function": "Gethostbyname",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Gethostbyname",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "Gethostname",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Gethostname",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "GetIpNetTable",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetIpNetTable",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "GetKeyboardState",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetKeyboardState",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetKeynameTextA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetKeynameTextA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetKeyState",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetKeyState",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetLogicalDrives",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, encryption and destructive file operations, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetLogicalDrives",
+      "malapiCategories": "Enumeration, Helper, Ransomware"
+    },
+    {
+      "function": "GetLogicalProcessorInformation",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetLogicalProcessorInformation",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetLogicalProcessorInformationEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetLogicalProcessorInformationEx",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetMessageA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetModuleBaseNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetModuleBaseNameA",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "GetModuleFileNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetModuleFileNameA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "GetModuleFileNameExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetModuleFileNameExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "GetModuleHandleA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/GetModuleHandleA",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "GetNativeSystemInfo",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetNativeSystemInfo",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetProcAddress",
+      "dll": "kernel32.dll",
+      "summary": "Retrieves the address of an exported function or variable from a loaded DLL.",
+      "malapiUrl": "https://malapi.io/winapi/GetProcAddress",
+      "malapiCategories": "Evasion, Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress"
+    },
+    {
+      "function": "GetProcessHeap",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/GetProcessHeap",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "GetProcessHeaps",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/GetProcessHeaps",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "GetProcessId",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetProcessId",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetProcessIdOfThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetProcessIdOfThread",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetRawInputData",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetRawInputData",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetSystemDefaultLangId",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetSystemDefaultLangId",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetSystemDirectoryA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetSystemDirectoryA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetSystemTime",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetSystemTime",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetSystemTimeAsFileTime",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetSystemTimeAsFileTime",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetTempFileNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetTempFileNameA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "GetTempPathA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/GetTempPathA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "GetThreadContext",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/GetThreadContext",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "GetThreadId",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetThreadId",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetThreadInformation",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetThreadInformation",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetThreadLocale",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetThreadLocale",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetTickCount",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetTickCount",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "GetTickCount64",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetTickCount64",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "GetUserNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/GetUserNameA",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "GetVersionExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetVersionExA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GetWindowDC",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/GetWindowDC",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "GetWindowsDirectoryA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/GetWindowsDirectoryA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "GlobalAlloc",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/GlobalAlloc",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "HeapAlloc",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/HeapAlloc",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "HeapCreate",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/HeapCreate",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "HeapReAlloc",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/HeapReAlloc",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "HttpAddRequestHeaders",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/HttpAddRequestHeaders",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "HttpOpenRequestA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/HttpOpenRequestA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "HttpSendRequestA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/HttpSendRequestA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "HttpSendRequestExA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/HttpSendRequestExA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "IcmpSendEcho",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/IcmpSendEcho",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "ImpersonateLoggedOnUser",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/ImpersonateLoggedOnUser",
+      "malapiCategories": "Evasion, Helper"
+    },
+    {
+      "function": "Inet_addr",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Inet_addr",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetCloseHandle",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetCloseHandle",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetConnectA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetConnectA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetOpenA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetOpenA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetOpenUrlA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetOpenUrlA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "wininet.dll",
+      "function": "InternetOpenUrlW",
+      "summary": "Opens a resource specified by a complete FTP, HTTP, or HTTPS URL.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/wininet/nf-wininet-internetopenurlw"
+    },
+    {
+      "function": "InternetReadFile",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetReadFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetReadFileExA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetReadFileExA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetSetOptionA",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetSetOptionA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "InternetWriteFile",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/InternetWriteFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "ioctlsocket",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/ioctlsocket",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "IsDebuggerPresent",
+      "dll": "kernel32.dll",
+      "summary": "Determines whether the calling process is being debugged by a user-mode debugger.",
+      "malapiUrl": "https://malapi.io/winapi/IsDebuggerPresent",
+      "malapiCategories": "Anti-Debugging",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent"
+    },
+    {
+      "function": "IsWoW64Process",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/IsWoW64Process",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "KeInsertQueueApc",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/KeInsertQueueApc",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "LdrLoadDll",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/LdrLoadDll",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "Listen",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Listen",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "LoadLibraryA",
+      "dll": "kernel32.dll",
+      "summary": "Maps the specified module into the address space of the calling process.",
+      "malapiUrl": "https://malapi.io/winapi/LoadLibraryA",
+      "malapiCategories": "Evasion, Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya"
+    },
+    {
+      "function": "LoadLibraryExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/LoadLibraryExA",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "dll": "kernel32.dll",
+      "function": "LoadLibraryW",
+      "summary": "Maps the specified module into the address space of the calling process (Unicode name).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw"
+    },
+    {
+      "function": "LoadResource",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/LoadResource",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "LocalAlloc",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/LocalAlloc",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "LockResource",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/LockResource",
+      "malapiCategories": "Evasion, Helper"
+    },
+    {
+      "function": "LookupAccountNameA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/LookupAccountNameA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "LookupPrivilegeValueA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/LookupPrivilegeValueA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "lstrcatA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/lstrcatA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "MapViewOfFile",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/MapViewOfFile",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "MapViewOfFile2",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/MapViewOfFile2",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "MapViewOfFile3",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/MapViewOfFile3",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "MapViewOfFileEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/MapViewOfFileEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "MapVirtualKeyA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/MapVirtualKeyA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "MapVirtualKeyExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/MapVirtualKeyExA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "Module32First",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/Module32First",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "Module32Next",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/Module32Next",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "MoveFileA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/MoveFileA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "MoveFileExA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/MoveFileExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NetShareAdd",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NetShareAdd",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NetShareCheck",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/NetShareCheck",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "NetShareEnum",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/NetShareEnum",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "NetShareGetInfo",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/NetShareGetInfo",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "NetShareSetInfo",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NetShareSetInfo",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtAdjustPrivilegesToken",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtAdjustPrivilegesToken",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtAllocateVirtualMemory",
+      "dll": "ntdll.dll",
+      "summary": "Native API to reserve or commit virtual memory in a process.",
+      "malapiUrl": "https://malapi.io/winapi/NtAllocateVirtualMemory",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntallocatevirtualmemory"
+    },
+    {
+      "function": "NtClose",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtClose",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtContinue",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtContinue",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateFile",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateFile",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtCreateProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateProcess",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateProcessEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateProcessEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateSection",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateSection",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateThreadEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateThreadEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtCreateUserProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtCreateUserProcess",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtDelayExecution",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/NtDelayExecution",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "NtDeleteKey",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtDeleteKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtDeleteValueKey",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtDeleteValueKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtDuplicateObject",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtDuplicateObject",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtMakeTemporaryObject",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtMakeTemporaryObject",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtMapViewOfSection",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtMapViewOfSection",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtOpenProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtOpenProcess",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtOpenThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtOpenThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtProtectVirtualMemory",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtProtectVirtualMemory",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtQueryDirectoryFile",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueryDirectoryFile",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "NtQueryInformationProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueryInformationProcess",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "NtQuerySystemEnvironmentValueEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/NtQuerySystemEnvironmentValueEx",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "NtQueryTimer",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueryTimer",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtQueueApcThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueueApcThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtQueueApcThreadEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueueApcThreadEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtQueueApcThreadEx2",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtQueueApcThreadEx2",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtReadVirtualMemory",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtReadVirtualMemory",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtReadVirtualMemoryEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtReadVirtualMemoryEx",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtResumeProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtResumeProcess",
+      "malapiCategories": "Helper, Injection"
+    },
+    {
+      "function": "NtResumeThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtResumeThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtSetContextThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtSetContextThread",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtSetInformationProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtSetInformationProcess",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtSetInformationThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtSetInformationThread",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtSetSystemEnvironmentValueEx",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtSetSystemEnvironmentValueEx",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtSetValueKey",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtSetValueKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtShutdownSystem",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtShutdownSystem",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtSuspendProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtSuspendProcess",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtTerminateProcess",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtTerminateProcess",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtTerminateThread",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/NtTerminateThread",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "NtUnmapViewOfSection",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtUnmapViewOfSection",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "NtWaitForMultipleObjects",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/NtWaitForMultipleObjects",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "NtWaitForSingleObject",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/NtWaitForSingleObject",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "NtWriteVirtualMemory",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/NtWriteVirtualMemory",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntwritevirtualmemory"
+    },
+    {
+      "function": "OpenClipboard",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/OpenClipboard",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "OpenFileMappingA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/OpenFileMappingA",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "OpenProcess",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/OpenProcess",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "OpenProcessToken",
+      "dll": "advapi32.dll",
+      "summary": "Opens the access token associated with a process.",
+      "malapiUrl": "https://malapi.io/winapi/OpenProcessToken",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken"
+    },
+    {
+      "function": "OpenSCManagerA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/OpenSCManagerA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "OpenServiceA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/OpenServiceA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "OpenThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/OpenThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "OutputDebugStringA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/OutputDebugStringA",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "PathFileExistsA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/PathFileExistsA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "PeekMessageA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/PeekMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "PeekNamedPipe",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/PeekNamedPipe",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "PostMessageA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/PostMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "PostThreadMessageA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/PostThreadMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "Process32First",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Process32First",
+      "malapiCategories": "Enumeration, Injection"
+    },
+    {
+      "function": "Process32Next",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Process32Next",
+      "malapiCategories": "Enumeration, Injection"
+    },
+    {
+      "function": "QueryPerformanceCounter",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/QueryPerformanceCounter",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "QueryPerformanceFrequency",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/QueryPerformanceFrequency",
+      "malapiCategories": "Anti-Debugging"
+    },
+    {
+      "function": "QueueUserAPC",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/QueueUserAPC",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "ReadFile",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/ReadFile",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "ReadProcessMemory",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/ReadProcessMemory",
+      "malapiCategories": "Enumeration, Injection"
+    },
+    {
+      "function": "Recv",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Recv",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "RegCloseKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegCloseKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegConnectRegistryA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegConnectRegistryA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegCopyTreeA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegCopyTreeA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegCreateKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegCreateKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegCreateKeyExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegCreateKeyExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "dll": "advapi32.dll",
+      "function": "RegCreateKeyExW",
+      "summary": "Creates the specified registry key. If the key already exists, the function opens it.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regcreatekeyexw"
+    },
+    {
+      "function": "RegCreateKeyTransactedA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegCreateKeyTransactedA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteKeyExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteKeyExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteKeyTransactedA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteKeyTransactedA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteKeyValueA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteKeyValueA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteTreeA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteTreeA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegDeleteValueA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegDeleteValueA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegEnumKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegEnumKeyA",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "RegEnumKeyExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegEnumKeyExA",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "RegEnumValueA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegEnumValueA",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "RegFlushKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegFlushKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegGetKeySecurity",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegGetKeySecurity",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegGetValueA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegGetValueA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegisterHotKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/RegisterHotKey",
+      "malapiCategories": "Evasion, Spying"
+    },
+    {
+      "function": "RegisterRawInputDevices",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/RegisterRawInputDevices",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "RegLoadKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegLoadKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegLoadMUIStringA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegLoadMUIStringA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOpenCurrentUser",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOpenCurrentUser",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOpenKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOpenKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOpenKeyExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOpenKeyExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOpenKeyTransactedA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOpenKeyTransactedA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOpenUserClassesRoot",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOpenUserClassesRoot",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegOverridePredefKey",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegOverridePredefKey",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegQueryInfoKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/RegQueryInfoKeyA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "RegQueryMultipleValuesA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/RegQueryMultipleValuesA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "RegQueryValueExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/RegQueryValueExA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "RegReplaceKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegReplaceKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegRestoreKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegRestoreKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegSaveKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegSaveKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegSaveKeyExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegSaveKeyExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegSetKeySecurity",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegSetKeySecurity",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegSetKeyValueA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegSetKeyValueA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "RegSetValueExA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegSetValueExA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "dll": "advapi32.dll",
+      "function": "RegSetValueExW",
+      "summary": "Sets the data and type of a specified value under a registry key.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regsetvalueexw"
+    },
+    {
+      "function": "RegUnLoadKeyA",
+      "dll": "advapi32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RegUnLoadKeyA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "ResumeThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/ResumeThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "RtlCopyMemory",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/RtlCopyMemory",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "RtlCreateHeap",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/RtlCreateHeap",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "RtlGetVersion",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/RtlGetVersion",
+      "malapiCategories": "Anti-Debugging, Enumeration"
+    },
+    {
+      "function": "RtlMoveMemory",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/RtlMoveMemory",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "RtlSetProcessIsCritical",
+      "dll": "ntdll.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/RtlSetProcessIsCritical",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SearchPathA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/SearchPathA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "Select",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/Select",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "Send",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Send",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "ws2_32.dll",
+      "function": "send",
+      "summary": "Sends data on a connected socket.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send"
+    },
+    {
+      "function": "SendMessageA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SendMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "SendMessageCallbackA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SendMessageCallbackA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "SendMessageTimeoutA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SendMessageTimeoutA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "SendNotifyMessageA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SendNotifyMessageA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "SetClipboardData",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetClipboardData",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetCurrentDirectory",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetCurrentDirectory",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetEnvironmentVariableA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/SetEnvironmentVariableA",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "SetFileAttributesA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/SetFileAttributesA",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "SetFileTime",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/SetFileTime",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "SetFocus",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetFocus",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetForegroundWindow",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetForegroundWindow",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetProcessDEPPolicy",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/SetProcessDEPPolicy",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "SetPropA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/SetPropA",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "SetThreadContext",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/SetThreadContext",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "SetThreadPriority",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetThreadPriority",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetThreadToken",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetThreadToken",
+      "malapiCategories": "Evasion, Helper"
+    },
+    {
+      "function": "SetTimer",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/SetTimer",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "SetWaitableTimer",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/SetWaitableTimer",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "SetWindowLongA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetWindowLongA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetWindowLongPtrA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SetWindowLongPtrA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SetWindowsHookExA",
+      "dll": "user32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SetWindowsHookExA",
+      "malapiCategories": "Spying"
+    },
+    {
+      "dll": "user32.dll",
+      "function": "SetWindowsHookExW",
+      "summary": "Installs an application-defined hook procedure into a hook chain.",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowshookexw"
+    },
+    {
+      "function": "SetWinEventHook",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/SetWinEventHook",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "ShellExecuteA",
+      "dll": "shell32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/ShellExecuteA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "ShellExecuteExA",
+      "dll": "shell32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/ShellExecuteExA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "shell32.dll",
+      "function": "ShellExecuteW",
+      "summary": "Performs an operation on a specified file (open, print, explore, etc.).",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew"
+    },
+    {
+      "function": "ShowWindow",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/ShowWindow",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "SizeOfResource",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/SizeOfResource",
+      "malapiCategories": "Evasion, Helper"
+    },
+    {
+      "function": "Sleep",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/Sleep",
+      "malapiCategories": "Anti-Debugging, Evasion"
+    },
+    {
+      "function": "SleepEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls, anti-debug and anti-analysis.",
+      "malapiUrl": "https://malapi.io/winapi/SleepEx",
+      "malapiCategories": "Anti-Debugging, Evasion"
+    },
+    {
+      "function": "Socket",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/Socket",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "StartServiceA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/StartServiceA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "StartServiceCtrlDispatcherA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/StartServiceCtrlDispatcherA",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "StretchBlt",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/StretchBlt",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "SuspendThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/SuspendThread",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "TerminateProcess",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/TerminateProcess",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "TerminateThread",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/TerminateThread",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "Thread32First",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Thread32First",
+      "malapiCategories": "Enumeration, Injection"
+    },
+    {
+      "function": "Thread32Next",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Thread32Next",
+      "malapiCategories": "Enumeration, Injection"
+    },
+    {
+      "function": "TimeGetTime",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/TimeGetTime",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "timeSetEvent",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/timeSetEvent",
+      "malapiCategories": "Evasion"
+    },
+    {
+      "function": "Toolhelp32ReadProcessMemory",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Toolhelp32ReadProcessMemory",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "UnhookWindowsHookEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for user activity monitoring (keylogging, screen capture).",
+      "malapiUrl": "https://malapi.io/winapi/UnhookWindowsHookEx",
+      "malapiCategories": "Spying"
+    },
+    {
+      "function": "UnmapViewOfFile",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/UnmapViewOfFile",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "URLDownloadToCacheFile",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/URLDownloadToCacheFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "URLDownloadToFile",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/URLDownloadToFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "urlmon.dll",
+      "function": "URLDownloadToFileA",
+      "summary": "Downloads bits from the internet and saves them to a file (ANSI variant).",
+      "malapiUrl": "https://malapi.io/winapi/URLDownloadToFile",
+      "malapiCategories": "Internet"
+    },
+    {
+      "dll": "urlmon.dll",
+      "function": "URLDownloadToFileW",
+      "summary": "Downloads bits from the internet and saves them to a file.",
+      "learnUrl": "https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/ms775123(v=vs.85)"
+    },
+    {
+      "function": "URLOpenBlockingStream",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/URLOpenBlockingStream",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "URLOpenStream",
+      "dll": "wininet.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/URLOpenStream",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "UuidFromStringA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/UuidFromStringA",
+      "malapiCategories": "Evasion, Helper, Injection"
+    },
+    {
+      "function": "VirtualAlloc",
+      "dll": "kernel32.dll",
+      "summary": "Reserves or commits a region of pages in the virtual address space of the calling process.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAlloc",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc"
+    },
+    {
+      "function": "VirtualAlloc2",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAlloc2",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "VirtualAlloc2FromApp",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAlloc2FromApp",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "VirtualAllocEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAllocEx",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualallocex"
+    },
+    {
+      "function": "VirtualAllocExNuma",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAllocExNuma",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "VirtualAllocFromApp",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualAllocFromApp",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "VirtualProtect",
+      "dll": "kernel32.dll",
+      "summary": "Changes the protection on a region of committed pages in the virtual address space of the calling process.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualProtect",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect"
+    },
+    {
+      "function": "VirtualProtectEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualProtectEx",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotectex"
+    },
+    {
+      "function": "VirtualProtectFromApp",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualProtectFromApp",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "VirtualQueryEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/VirtualQueryEx",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "WaitForMultipleObjects",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/WaitForMultipleObjects",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "WaitForMultipleObjectsEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/WaitForMultipleObjectsEx",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "WaitForSingleObject",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/WaitForSingleObject",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "WaitForSingleObjectEx",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation, evasion of security controls.",
+      "malapiUrl": "https://malapi.io/winapi/WaitForSingleObjectEx",
+      "malapiCategories": "Evasion, Injection"
+    },
+    {
+      "function": "WinExec",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/WinExec",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "WNetAddConnection2A",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/WNetAddConnection2A",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "WNetAddConnectionA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/WNetAddConnectionA",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "WNetCloseEnum",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration.",
+      "malapiUrl": "https://malapi.io/winapi/WNetCloseEnum",
+      "malapiCategories": "Enumeration"
+    },
+    {
+      "function": "WNetEnumResourceA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for system and environment enumeration, supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/WNetEnumResourceA",
+      "malapiCategories": "Enumeration, Helper"
+    },
+    {
+      "function": "WNetOpenEnumA",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration), supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/WNetOpenEnumA",
+      "malapiCategories": "Helper, Internet"
+    },
+    {
+      "function": "Wow64SetThreadContext",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for process injection and memory manipulation.",
+      "malapiUrl": "https://malapi.io/winapi/Wow64SetThreadContext",
+      "malapiCategories": "Injection"
+    },
+    {
+      "function": "WriteFile",
+      "dll": "kernel32.dll",
+      "summary": "MalAPI.io flags this API for supporting APIs often abused by malware.",
+      "malapiUrl": "https://malapi.io/winapi/WriteFile",
+      "malapiCategories": "Helper"
+    },
+    {
+      "function": "WriteProcessMemory",
+      "dll": "kernel32.dll",
+      "summary": "Writes data to an area of memory in a specified process. Common in debuggers and injection tooling.",
+      "malapiUrl": "https://malapi.io/winapi/WriteProcessMemory",
+      "malapiCategories": "Injection",
+      "learnUrl": "https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-writeprocessmemory"
+    },
+    {
+      "function": "WSACleanup",
+      "dll": "ws2_32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/WSACleanup",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "WSAIoctl",
+      "dll": "ws2_32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/WSAIoctl",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "WSASocketA",
+      "dll": "ws2_32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/WSASocketA",
+      "malapiCategories": "Internet"
+    },
+    {
+      "function": "WSAStartup",
+      "dll": "ws2_32.dll",
+      "summary": "MalAPI.io flags this API for network connectivity (C2, downloads, exfiltration).",
+      "malapiUrl": "https://malapi.io/winapi/WSAStartup",
+      "malapiCategories": "Internet"
+    }
+  ]
+}

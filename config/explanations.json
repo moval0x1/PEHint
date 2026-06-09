@@ -1199,6 +1199,54 @@
       "purpose": "This field indicates how many bytes the Reserved Directory occupies. Combined with the RVA field, it defines the complete memory range where the directory data is located.",
       "note": "If both RVA and Size are 0, the directory is not used in this PE file. The size is typically fixed for each directory type, but can vary for some directories like Resources.",
       "security_notes": "Unusual sizes might indicate data injection or manipulation."
+    },
+    "File Insights": {
+      "title": "File Insights",
+      "description": "Summary of overlay data, Shannon entropy, and debug symbol path (PDB) extracted after parsing. Useful for quick malware triage before diving into individual headers.",
+      "purpose": "Highlight anomalies that are not single PE header fields",
+      "security_notes": "High file or section entropy, large overlays, and missing or mismatched PDB paths are common indicators of packing, tampering, or release vs. debug builds."
+    },
+    "Overlay": {
+      "title": "Overlay",
+      "description": "Extra bytes stored after the last section's raw data on disk. The PE loader does not map this region; it is still part of the file image.",
+      "purpose": "Carry appended payloads (installers, certificates, resources, or malicious data)",
+      "security_notes": "Non-trivial overlays are worth inspecting in the hex view. Packers and droppers often hide data here."
+    },
+    "File Entropy": {
+      "title": "File Entropy",
+      "description": "Shannon entropy of the entire file (0–8 bits per byte). Random-looking byte distributions score higher.",
+      "purpose": "Estimate how compressed or encrypted the file looks",
+      "security_notes": "Very high entropy on code sections or the whole file may indicate packing or encryption."
+    },
+    "PDB Path": {
+      "title": "PDB Path",
+      "description": "Path to the program database file from the CodeView debug directory (RSDS or NB10 record), when present.",
+      "purpose": "Link the binary to symbol files for debugging",
+      "security_notes": "Paths may reveal build machine directories. Absence in a 'release' binary is normal; presence in malware can aid attribution."
+    },
+    "PDB Raw": {
+      "title": "PDB Raw (CodeView)",
+      "description": "Hex preview of the CodeView debug record (RSDS or NB10 header plus embedded PDB path). The hex highlight covers exactly this record, not the full debug directory size.",
+      "purpose": "Inspect signature, GUID, age, and path bytes in the file image",
+      "security_notes": "Malformed or oversized debug directory entries are sometimes used to confuse parsers; compare Size in the tree with the highlighted span."
+    },
+    "PDB GUID": {
+      "title": "PDB GUID",
+      "description": "Unique identifier (GUID) of the PDB file in an RSDS CodeView record. Used with the age field to locate the correct symbol file on a symbol server.",
+      "purpose": "Match this binary build to a specific PDB on disk or a symbol server",
+      "security_notes": "Combined with PDB path, can help correlate samples built on the same machine or toolchain."
+    },
+    "PDB Age": {
+      "title": "PDB Age",
+      "description": "Incremental build counter (age) from the CodeView record, together with the GUID. The format suffix (RSDS or NB10) indicates which CodeView variant is used.",
+      "purpose": "Disambiguate PDB files when the same name exists for multiple builds",
+      "security_notes": "Unusual or zero ages are uncommon in production builds but are not inherently malicious."
+    },
+    "Section Entropy": {
+      "title": "Section Entropy",
+      "description": "Shannon entropy computed over this section's raw bytes on disk (0–8 bits per byte).",
+      "purpose": "Spot packed, compressed, or encrypted section content",
+      "security_notes": "Very high entropy in .text or .data may indicate packing; compare with neighboring sections."
     }
   },
   "security_highlights": {

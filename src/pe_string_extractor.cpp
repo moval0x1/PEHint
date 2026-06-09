@@ -4,8 +4,11 @@
  */
 
 #include "pe_string_extractor.h"
+#include "pe_analysis.h"
+#include "pe_utils.h"
 #include "pe_structures.h"
 #include <QFile>
+#include <QRegularExpression>
 
 static bool isPrintableAscii(quint8 c) {
     return c >= 0x20 && c < 0x7F;
@@ -124,4 +127,57 @@ StringExtractionResult PEStringExtractor::extractFromFile(const QString &filePat
     QByteArray data = file.readAll();
     file.close();
     return extractFromData(data, minLength);
+}
+
+namespace {
+
+bool stringContainsUrl(const QString &value)
+{
+    const QString lower = value.toLower();
+    if (lower.contains(QStringLiteral("http://")) || lower.contains(QStringLiteral("https://"))) {
+        return true;
+    }
+    static const QRegularExpression wwwRe(
+        QStringLiteral(R"(\bwww\.[A-Za-z0-9][A-Za-z0-9.-]+\.[A-Za-z]{2,})"),
+        QRegularExpression::CaseInsensitiveOption);
+    return wwwRe.match(value).hasMatch();
+}
+
+bool stringContainsRegistryPath(const QString &value)
+{
+    const QString upper = value.toUpper();
+    if (upper.contains(QStringLiteral("HKEY_"))) {
+        return true;
+    }
+    if (upper.startsWith(QStringLiteral("HKLM")) || upper.startsWith(QStringLiteral("HKCU"))
+        || upper.startsWith(QStringLiteral("HKCR")) || upper.startsWith(QStringLiteral("HKU"))
+        || upper.startsWith(QStringLiteral("HKCC"))) {
+        return true;
+    }
+    if (value.contains(QStringLiteral("\\Software\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\CurrentVersion\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\Registry\\"), Qt::CaseInsensitive)
+        || value.contains(QStringLiteral("\\System\\CurrentControlSet\\"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return false;
+}
+
+} // namespace
+
+bool PEStringExtractor::matchesContentFilter(const QString &value, const QString &filterKey)
+{
+    if (filterKey == QStringLiteral("url")) {
+        return stringContainsUrl(value);
+    }
+    if (filterKey == QStringLiteral("ip")) {
+        return PEUtils::stringContainsPlausibleHardcodedIpv4(value);
+    }
+    if (filterKey == QStringLiteral("registry")) {
+        return stringContainsRegistryPath(value);
+    }
+    if (filterKey == QStringLiteral("command")) {
+        return PEAnalysis::matchesSuspiciousCommand(value);
+    }
+    return true;
 }

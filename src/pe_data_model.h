@@ -2,9 +2,25 @@
 #define PE_DATA_MODEL_H
 
 #include "pe_structures.h"
+#include "pe_analysis.h"
+#include "pe_data_directory_types.h"
 #include <QString>
 #include <QList>
 #include <QMap>
+#include <QVector>
+
+struct PEDataDirectoryField {
+    QString label;
+    QString value;
+};
+
+struct PEDataDirectoryRecord {
+    int directoryIndex = 0;
+    QString name;
+    quint32 virtualAddress = 0;
+    quint32 size = 0;
+    QVector<PEDataDirectoryField> fields;
+};
 
 class PEDataModel
 {
@@ -56,82 +72,47 @@ public:
     const QList<ExportFunctionEntry>& getExportFunctions() const;
     
     // Resources
-    void setResourceTypes(const QStringList &types);
-    void setResources(const QMap<QString, QMap<QString, QString>> &resources);
-    QStringList getResourceTypes() const;
-    QMap<QString, QMap<QString, QString>> getResources() const;
-    
-    // Debug info
-    void setDebugInfo(const QStringList &info);
-    void setDebugDetails(const QMap<QString, QString> &details);
-    QStringList getDebugInfo() const;
-    QMap<QString, QString> getDebugDetails() const;
-    
-    // TLS info
-    void setTLSInfo(const QStringList &info);
-    void setTLSDetails(const QMap<QString, QString> &details);
-    QStringList getTLSInfo() const;
-    QMap<QString, QString> getTLSDetails() const;
-    
-    // Load Configuration info
-    void setLoadConfigInfo(const QStringList &info);
-    void setLoadConfigDetails(const QMap<QString, QString> &details);
-    QStringList getLoadConfigInfo() const;
-    QMap<QString, QString> getLoadConfigDetails() const;
-    
-    // Exception info
-    void setExceptionInfo(const QStringList &info);
-    void setExceptionDetails(const QMap<QString, QString> &details);
-    QStringList getExceptionInfo() const;
-    QMap<QString, QString> getExceptionDetails() const;
-    
-    // Certificate info
-    void setCertificateInfo(const QStringList &info);
-    void setCertificateDetails(const QMap<QString, QString> &details);
-    QStringList getCertificateInfo() const;
-    QMap<QString, QString> getCertificateDetails() const;
-    
-    // Relocation info
-    void setRelocationInfo(const QStringList &info);
-    void setRelocationDetails(const QMap<QString, QString> &details);
-    QStringList getRelocationInfo() const;
-    QMap<QString, QString> getRelocationDetails() const;
-    
-    // Architecture info
-    void setArchitectureInfo(const QStringList &info);
-    void setArchitectureDetails(const QMap<QString, QString> &details);
-    QStringList getArchitectureInfo() const;
-    QMap<QString, QString> getArchitectureDetails() const;
-    
-    // Global Pointer info
-    void setGlobalPointerInfo(const QStringList &info);
-    void setGlobalPointerDetails(const QMap<QString, QString> &details);
-    QStringList getGlobalPointerInfo() const;
-    QMap<QString, QString> getGlobalPointerDetails() const;
-    
-    // Bound Import info
-    void setBoundImportInfo(const QStringList &info);
-    void setBoundImportDetails(const QMap<QString, QString> &details);
-    QStringList getBoundImportInfo() const;
-    QMap<QString, QString> getBoundImportDetails() const;
-    
-    // IAT info
-    void setIATInfo(const QStringList &info);
-    void setIATDetails(const QMap<QString, QString> &details);
-    QStringList getIATInfo() const;
-    QMap<QString, QString> getIATDetails() const;
-    
-    // Delay Import info
-    void setDelayImportInfo(const QStringList &info);
-    void setDelayImportDetails(const QMap<QString, QString> &details);
-    QStringList getDelayImportInfo() const;
-    QMap<QString, QString> getDelayImportDetails() const;
-    
-    // COM+ Runtime info
-    void setCOMRuntimeInfo(const QStringList &info);
-    void setCOMRuntimeDetails(const QMap<QString, QString> &details);
-    QStringList getCOMRuntimeInfo() const;
-    QMap<QString, QString> getCOMRuntimeDetails() const;
+    void setResourceEntries(const QVector<PEResourceItem> &entries);
+    const QVector<PEResourceItem> &getResourceEntries() const;
+
+    /** Parsed detail rows for data directories (indices 0–15). */
+    void setParsedDirectoryFields(int directoryIndex, const QVector<PEDataDirectoryField> &fields);
+    const QVector<PEDataDirectoryField> &parsedDirectoryFields(int directoryIndex) const;
+
+    void setDebugDirectoryEntries(const QVector<PEDebugDirectoryEntry> &entries);
+    const QVector<PEDebugDirectoryEntry> &debugDirectoryEntries() const;
+    void setTlsDirectoryInfo(const PETlsDirectoryInfo &info);
+    const PETlsDirectoryInfo &tlsDirectoryInfo() const;
+    void setLoadConfigDirectoryInfo(const PELoadConfigDirectoryInfo &info);
+    const PELoadConfigDirectoryInfo &loadConfigDirectoryInfo() const;
+    // File analysis (overlay, entropy, PDB) — filled after parse via PEAnalysis
+    void setOverlayInfo(const PEOverlayInfo &info);
+    PEOverlayInfo getOverlayInfo() const;
+    void setEntropySummary(const PEEntropySummary &summary);
+    PEEntropySummary getEntropySummary() const;
+    void setPdbInfo(const PEPdbInfo &info);
+    PEPdbInfo getPdbInfo() const;
+    void setVersionInfo(const PEVersionInfo &info);
+    PEVersionInfo getVersionInfo() const;
+
+    void setAnalysisMetadata(const PEAnalysisMetadata &metadata);
+    PEAnalysisMetadata getAnalysisMetadata() const;
+    void setFileMetrics(const PEFileMetrics &metrics);
+    PEFileMetrics getFileMetrics() const;
+    void setContentScan(const PEContentScan &scan);
+    PEContentScan getContentScan() const;
+    void setTlsCallbacksPresent(bool present);
+
+    void setDelayImports(const QStringList &imports);
+    void setDelayImportFunctions(const QMap<QString, QList<ImportFunctionEntry>> &details);
+    QStringList getDelayImports() const;
+    const QMap<QString, QList<ImportFunctionEntry>> &getDelayImportFunctions() const;
+
+    /** Shannon entropy for a section name from the last analysis, or -1 if unknown. */
+    double sectionEntropy(const QString &sectionName) const;
+
+    void setDataDirectoryRecords(const QVector<PEDataDirectoryRecord> &records);
+    const QVector<PEDataDirectoryRecord> &getDataDirectoryRecords() const;
     
     // Validation
     bool isValid() const;
@@ -160,56 +141,21 @@ private:
     QList<ExportFunctionEntry> m_exportFunctions;
     
     // Resources
-    QStringList m_resourceTypes;
-    QMap<QString, QMap<QString, QString>> m_resources;
-    
-    // Debug info
-    QStringList m_debugInfo;
-    QMap<QString, QString> m_debugDetails;
-    
-    // TLS info
-    QStringList m_tlsInfo;
-    QMap<QString, QString> m_tlsDetails;
-    
-    // Load Configuration info
-    QStringList m_loadConfigInfo;
-    QMap<QString, QString> m_loadConfigDetails;
-    
-    // Exception info
-    QStringList m_exceptionInfo;
-    QMap<QString, QString> m_exceptionDetails;
-    
-    // Certificate info
-    QStringList m_certificateInfo;
-    QMap<QString, QString> m_certificateDetails;
-    
-    // Relocation info
-    QStringList m_relocationInfo;
-    QMap<QString, QString> m_relocationDetails;
-    
-    // Architecture info
-    QStringList m_architectureInfo;
-    QMap<QString, QString> m_architectureDetails;
-    
-    // Global Pointer info
-    QStringList m_globalPointerInfo;
-    QMap<QString, QString> m_globalPointerDetails;
-    
-    // Bound Import info
-    QStringList m_boundImportInfo;
-    QMap<QString, QString> m_boundImportDetails;
-    
-    // IAT info
-    QStringList m_iatInfo;
-    QMap<QString, QString> m_iatDetails;
-    
-    // Delay Import info
-    QStringList m_delayImportInfo;
-    QMap<QString, QString> m_delayImportDetails;
-    
-    // COM+ Runtime info
-    QStringList m_comRuntimeInfo;
-    QMap<QString, QString> m_comRuntimeDetails;
+    QVector<PEResourceItem> m_resourceEntries;
+    QVector<PEDataDirectoryField> m_parsedDirectoryFields[16];
+    QVector<PEDebugDirectoryEntry> m_debugDirectoryEntries;
+    PETlsDirectoryInfo m_tlsDirectoryInfo;
+    PELoadConfigDirectoryInfo m_loadConfigDirectoryInfo;
+    PEOverlayInfo m_overlayInfo;
+    PEEntropySummary m_entropySummary;
+    PEPdbInfo m_pdbInfo;
+    PEVersionInfo m_versionInfo;
+    PEAnalysisMetadata m_analysisMetadata;
+    PEFileMetrics m_fileMetrics;
+    PEContentScan m_contentScan;
+    QStringList m_delayImports;
+    QMap<QString, QList<ImportFunctionEntry>> m_delayImportFunctionDetails;
+    QVector<PEDataDirectoryRecord> m_dataDirectoryRecords;
 };
 
 #endif // PE_DATA_MODEL_H

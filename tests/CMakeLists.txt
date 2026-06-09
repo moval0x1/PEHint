@@ -3,16 +3,66 @@
 # Find Qt6 Test component
 find_package(Qt6 6.10.2 REQUIRED COMPONENTS Test)
 
-# Test executable
-# Use CMAKE_CURRENT_SOURCE_DIR since this CMakeLists.txt is in tests/ subdirectory
+# Test executable — list every Q_OBJECT header in add_executable so AUTOMOC generates moc_*.cpp
+# (pe_parser_new.cpp added only via target_sources was missing moc for PEParserNew signals).
 add_executable(PEHintTests
     unit/pe_parser_test.cpp
+    unit/pe_parser_test.h
     unit/pe_data_model_test.cpp
+    unit/pe_data_model_test.h
     unit/pe_utils_test.cpp
+    unit/pe_utils_test.h
     unit/pe_dependency_analyzer_test.cpp
+    unit/pe_dependency_analyzer_test.h
     unit/pe_string_extractor_test.cpp
+    unit/pe_string_extractor_test.h
+    unit/pe_golden_test.cpp
+    unit/pe_golden_test.h
+    helpers/minimal_pe_builder.cpp
+    helpers/minimal_pe_builder.h
     unit/test_main.cpp
+    unit/pe_analysis_self_test.cpp
+    unit/pe_cli_scan_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.h
+    ${CMAKE_SOURCE_DIR}/src/pe_tree_insight_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_tree_insight_helpers.h
+    ${CMAKE_SOURCE_DIR}/src/pe_file_insights.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_file_insights.h
+    ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_ui_presenter.h
+    ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_import_export_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/language_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/language_manager.h
+    ${CMAKE_SOURCE_DIR}/src/pe_error_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_analysis.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_authenticode.cpp
+    ${CMAKE_SOURCE_DIR}/src/import_api_hint_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_cli_scan.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_findings.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_findings.h
+    ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_ep_disasm.h
+    unit/pe_findings_self_test.cpp
+    unit/pe_ep_disasm_self_test.cpp
+    unit/pe_authenticode_self_test.cpp
+    unit/pe_resource_preview_self_test.cpp
+    unit/pe_import_api_hint_store_self_test.cpp
+    unit/pe_cli_batch_test.cpp
+    unit/pe_cli_watch_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_resource_preview.cpp
+    ${CMAKE_SOURCE_DIR}/src/pe_resource_preview.h
+    ${CMAKE_SOURCE_DIR}/src/sdk_api_markdown_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/sdk_api_markdown_reader.h
 )
+
+set_target_properties(PEHintTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFINES ON)
 
 # Link Qt6 Test library
 target_link_libraries(PEHintTests PRIVATE
@@ -22,24 +72,15 @@ target_link_libraries(PEHintTests PRIVATE
     Qt6::Widgets
 )
 
+if(WIN32)
+    target_link_libraries(PEHintTests PRIVATE crypt32 wintrust)
+endif()
+
 # Include directories
 target_include_directories(PEHintTests PRIVATE 
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}
-)
-
-# Link against PEHint source files (for testing internal functions)
-target_sources(PEHintTests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/pe_parser_new.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_data_model.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_data_directory_parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_system_dll_ordinal_resolver.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_import_export_parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/language_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_error_handler.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_dependency_analyzer.cpp
-    ${CMAKE_SOURCE_DIR}/src/pe_string_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/tests
 )
 
 # One POST_BUILD block: multiple TARGET POST_BUILD commands can overwrite each other on some generators.

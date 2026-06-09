@@ -53,6 +53,9 @@ public:
      * @return List of extracted strings; empty list on read error
      */
     static StringExtractionResult extractFromFile(const QString &filePath, int minLength = 4);
+
+    /** Content triage filters for the Strings tab (url / ip / registry / command). */
+    static bool matchesContentFilter(const QString &value, const QString &filterKey);
 };
 
 #endif // PE_STRING_EXTRACTOR_H

@@ -4,6 +4,8 @@
 #include <QString>
 #include <QDateTime>
 #include <QDebug>
+#include <QMap>
+#include <QRegularExpression>
 #include <cstddef>
 
 QString PEUtils::formatHexInternal(quint64 value, int width)
@@ -442,6 +444,46 @@ quint32 PEUtils::calculateRichHeaderSize(const QByteArray &fileData, quint32 ric
     return 16 + (count * sizeof(IMAGE_RICH_ENTRY)) + 8;
 }
 
+quint32 PEUtils::optionalHeaderChecksumFileOffset(const IMAGE_DOS_HEADER &dosHeader,
+                                                    const IMAGE_FILE_HEADER &fileHeader)
+{
+    const quint32 peOffset = dosHeader.e_lfanew;
+    const quint32 optionalOffset = peOffset + sizeof(quint32) + sizeof(IMAGE_FILE_HEADER);
+    return optionalOffset + static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER32, CheckSum));
+}
+
+quint32 PEUtils::computePeImageChecksum(const QByteArray &fileData, quint32 checksumFieldOffset)
+{
+    if (fileData.isEmpty()) {
+        return 0;
+    }
+
+    quint32 sum = 0;
+    const int size = fileData.size();
+    const auto *data = reinterpret_cast<const quint8 *>(fileData.constData());
+
+    int i = 0;
+    while (i < size) {
+        if (checksumFieldOffset != 0 && i == static_cast<int>(checksumFieldOffset)) {
+            i += 4;
+            continue;
+        }
+        quint32 word = 0;
+        if (i + 1 < size) {
+            word = static_cast<quint32>(data[i]) | (static_cast<quint32>(data[i + 1]) << 8);
+            i += 2;
+        } else {
+            word = data[i];
+            i += 1;
+        }
+        sum += word;
+        sum = (sum & 0xFFFFu) + (sum >> 16);
+    }
+    sum = (sum & 0xFFFFu) + (sum >> 16);
+    sum += static_cast<quint32>(size);
+    return sum;
+}
+
 bool PEUtils::hasRichHeader(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader)
 {
     quint32 richOffset;
@@ -687,6 +729,95 @@ QString PEUtils::getRichHeaderInfo(const QByteArray &fileData, const IMAGE_DOS_H
     return info;
 }
 
+namespace {
+
+QString msvcEraFromRichBuild(quint16 build)
+{
+    if (build >= 30133) {
+        return QStringLiteral("2022");
+    }
+    if (build >= 27412) {
+        return QStringLiteral("2019");
+    }
+    if (build >= 24215) {
+        return QStringLiteral("2017");
+    }
+    if (build >= 23000) {
+        return QStringLiteral("2015");
+    }
+    if (build >= 21000) {
+        return QStringLiteral("2013");
+    }
+    if (build >= 16000) {
+        return QStringLiteral("2010");
+    }
+    if (build >= 14000) {
+        return QStringLiteral("2008");
+    }
+    return QString();
+}
+
+const IMAGE_RICH_ENTRY *pickToolchainEntry(const QList<IMAGE_RICH_ENTRY> &entries)
+{
+    static const quint16 kPreferredIds[] = {
+        0x010C, 0x0109, 0x0106, 0x0103,
+        0x010B, 0x0108, 0x0105, 0x0102,
+        0x010A, 0x0107, 0x0104, 0x0101,
+    };
+
+    for (quint16 id : kPreferredIds) {
+        const IMAGE_RICH_ENTRY *best = nullptr;
+        for (const IMAGE_RICH_ENTRY &entry : entries) {
+            if (entry.ProductId != id) {
+                continue;
+            }
+            if (!best || entry.ProductVersion > best->ProductVersion) {
+                best = &entry;
+            }
+        }
+        if (best) {
+            return best;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+QString PEUtils::summarizeRichToolchain(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader)
+{
+    quint32 richOffset = 0;
+    if (!findRichHeaderOffset(fileData, dosHeader, richOffset)) {
+        return QString();
+    }
+
+    IMAGE_RICH_HEADER richHeader;
+    if (!parseRichHeader(fileData, richOffset, richHeader)) {
+        return QString();
+    }
+
+    const QList<IMAGE_RICH_ENTRY> entries = parseRichEntries(fileData, richOffset, richHeader.RichCount);
+    const IMAGE_RICH_ENTRY *tool = pickToolchainEntry(entries);
+    if (!tool) {
+        return LANG(QStringLiteral("UI/toolchain_rich_unknown"));
+    }
+
+    const quint8 major = static_cast<quint8>(tool->ProductVersion >> 8);
+    const quint8 minor = static_cast<quint8>(tool->ProductVersion & 0xFF);
+    const QString era = msvcEraFromRichBuild(tool->ProductVersion);
+    const QString versionPart = QStringLiteral("%1.%2").arg(major).arg(minor);
+
+    if (!era.isEmpty()) {
+        QMap<QString, QString> params;
+        params.insert(QStringLiteral("year"), era);
+        params.insert(QStringLiteral("version"), versionPart);
+        return LANG_PARAMS(QStringLiteral("UI/toolchain_msvc_summary"), params);
+    }
+    QMap<QString, QString> params;
+    params.insert(QStringLiteral("version"), versionPart);
+    return LANG_PARAMS(QStringLiteral("UI/toolchain_msvc_version_only"), params);
+}
+
 QString PEUtils::getArchitectureString(quint16 machine, quint16 magic)
 {
     QString arch = getMachineType(machine);
@@ -847,4 +978,168 @@ bool PEUtils::hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPT
 {
     Q_UNUSED(fileData); // Legacy parameter, not used in new implementation
     return hasStrongNameSignature(optionalHeader);
+}
+
+namespace {
+
+bool ipv4OctetsFromString(const QString &ip, int out[4])
+{
+    const QStringList parts = ip.split(QLatin1Char('.'));
+    if (parts.size() != 4) {
+        return false;
+    }
+    bool ok = false;
+    for (int i = 0; i < 4; ++i) {
+        out[i] = parts.at(i).toInt(&ok);
+        if (!ok || out[i] < 0 || out[i] > 255) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool looksLikeVersionQuadruple(int o1, int o2, int o3, int o4)
+{
+    if (o2 == 0 && o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o3 == 0 && o4 == 0) {
+        return true;
+    }
+    if (o1 <= 30 && o2 <= 30 && o3 <= 30 && o4 <= 30) {
+        return true;
+    }
+    return false;
+}
+
+bool isLikelyNetworkIpv4(int o1, int o2, int o3, int o4)
+{
+    if (o1 >= 100 || o2 >= 100 || o3 >= 100 || o4 >= 100) {
+        return true;
+    }
+    if (o1 == o2 && o2 == o3 && o3 == o4 && o1 > 0) {
+        return true;
+    }
+    if (o1 == 10 && (o2 > 0 || o3 > 0 || o4 > 0)) {
+        return true;
+    }
+    if (o1 == 127 && o4 > 0) {
+        return true;
+    }
+    if (o1 == 172 && o2 >= 16 && o2 <= 31) {
+        return true;
+    }
+    if (o1 == 192 && o2 == 168) {
+        return true;
+    }
+    return false;
+}
+
+bool isEmbeddedInLongDottedChain(const QString &text, int matchStart, int matchLength)
+{
+    if (matchStart < 0 || matchLength <= 0 || matchStart >= text.size()) {
+        return false;
+    }
+    int start = matchStart;
+    int end = matchStart + matchLength;
+    while (start > 0) {
+        const QChar c = text.at(start - 1);
+        if (c.isDigit() || c == QLatin1Char('.')) {
+            --start;
+        } else {
+            break;
+        }
+    }
+    while (end < text.size()) {
+        const QChar c = text.at(end);
+        if (c.isDigit() || c == QLatin1Char('.')) {
+            ++end;
+        } else {
+            break;
+        }
+    }
+    return text.mid(start, end - start).count(QLatin1Char('.')) > 3;
+}
+
+bool hasMetadataContextAroundMatch(const QString &fullText, int matchStart, int matchLength)
+{
+    const QString before =
+        fullText.mid(qMax(0, matchStart - 48), qMin(48, matchStart)).toLower();
+    const QString after =
+        fullText.mid(matchStart + matchLength, 48).toLower();
+    const QString window = before + after;
+    static const char *const kMarkers[] = {
+        "version", "version=", "version=v", "assemblyidentity", "processorarchitecture",
+        "publickeytoken", "netframework", "frameworkdisplayname", "mscorlib", "mscoree",
+        "corlib", "runtime", "targetframework", "productversion", "fileversion",
+        "sha1", "sha2", "sha256", "sha-256", "sha-1", "sha2-256", "md5", "oid", "digest",
+        "algorithm", "encryption", "rsassa", "pkcs", "x509", "certificate"
+    };
+    for (const char *marker : kMarkers) {
+        if (window.contains(QString::fromLatin1(marker))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool PEUtils::isPlausibleHardcodedIpv4(const QString &ip, const QString &fullText, int matchStart)
+{
+    int octets[4] = {0, 0, 0, 0};
+    if (!ipv4OctetsFromString(ip, octets)) {
+        return false;
+    }
+    if (ip == QStringLiteral("0.0.0.0") || ip == QStringLiteral("255.255.255.255")) {
+        return false;
+    }
+
+    if (looksLikeVersionQuadruple(octets[0], octets[1], octets[2], octets[3])
+        && !isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (!isLikelyNetworkIpv4(octets[0], octets[1], octets[2], octets[3])) {
+        return false;
+    }
+
+    if (!fullText.isEmpty() && matchStart >= 0) {
+        if (isEmbeddedInLongDottedChain(fullText, matchStart, ip.size())) {
+            return false;
+        }
+
+        if (matchStart > 0 && matchStart + ip.size() < fullText.size()) {
+            const QChar before = fullText.at(matchStart - 1);
+            const QChar after = fullText.at(matchStart + ip.size());
+            if ((before == QChar('\'') || before == QChar('"'))
+                && (after == QChar('\'') || after == QChar('"') || after == QChar('\\'))) {
+                return false;
+            }
+            if (before.isDigit() || (after.isDigit() && after != QChar('.'))) {
+                return false;
+            }
+        }
+
+        if (hasMetadataContextAroundMatch(fullText, matchStart, ip.size())) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool PEUtils::stringContainsPlausibleHardcodedIpv4(const QString &value)
+{
+    static const QRegularExpression ipRe(
+        QStringLiteral(R"(\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b)"));
+    QRegularExpressionMatchIterator it = ipRe.globalMatch(value);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const QString ip = match.captured(0);
+        if (isPlausibleHardcodedIpv4(ip, value, match.capturedStart(0))) {
+            return true;
+        }
+    }
+    return false;
 }

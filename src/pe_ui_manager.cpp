@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file pe_ui_manager.cpp
  * @brief Implementation of UIManager class for PEHint
  * 
@@ -17,9 +17,12 @@
 #include "mainwindow.h"
 #include "hexviewer.h"
 #include "language_manager.h"
+#include "section_layout_widget.h"
 #include <QApplication>
 #include <QIcon>
+#include <QHeaderView>
 #include <QSplitter>
+#include <QTextBrowser>
 
 /**
  * @brief Constructor for UIManager
@@ -46,17 +49,31 @@ UIManager::UIManager(MainWindow *parent)
     , m_peTree(nullptr)
     , m_fieldExplanationTitleLabel(nullptr)
     , m_fieldExplanationText(nullptr)
-    , m_contextMenu(nullptr)
     , m_analysisTabWidget(nullptr)
     , m_importModulesTree(nullptr)
     , m_importFunctionsTree(nullptr)
     , m_importHintTitleLabel(nullptr)
     , m_importHintText(nullptr)
+    , m_delayImportModulesTree(nullptr)
+    , m_delayImportFunctionsTree(nullptr)
     , m_exportsTree(nullptr)
+    , m_resourcesTree(nullptr)
+    , m_resourcesPreviewText(nullptr)
+    , m_resourcesPreviewImage(nullptr)
     , m_dependenciesTree(nullptr)
+    , m_dependenciesDepthLabel(nullptr)
+    , m_dependenciesDepthSpin(nullptr)
     , m_dependenciesExpandAllButton(nullptr)
     , m_dependenciesCollapseAllButton(nullptr)
     , m_stringsTree(nullptr)
+    , m_findingsTree(nullptr)
+    , m_findingsSummaryLabel(nullptr)
+    , m_findingsOverviewTree(nullptr)
+    , m_findingsInsightTitleLabel(nullptr)
+    , m_findingsInsightText(nullptr)
+    , m_findingsSeverityCombo(nullptr)
+    , m_findingsCategoryGroup(nullptr)
+    , m_sectionLayoutWidget(nullptr)
     , m_stringsFilterEdit(nullptr)
     , m_stringsTypeCombo(nullptr)
     , m_stringsMinLengthSpin(nullptr)
@@ -456,7 +473,7 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
                        "font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; }"));
     m_importHintText->setPlainText(LanguageManager::getInstance().getString(
         QStringLiteral("UI/imports_hint_placeholder"),
-        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative only—not live Microsoft data).")));
+        QStringLiteral("Select an imported function. PEHint shows curated summaries; richer entries may include signature, parameters, and return value (informative onlyâ€”not live Microsoft data).")));
     importHintLayout->addWidget(m_importHintTitleLabel);
     importHintLayout->addWidget(m_importHintText, 1);
 
@@ -474,6 +491,49 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
 
     importsLayout->addWidget(importsOuter);
     m_analysisTabWidget->addTab(importsTab, LANG("UI/tab_imports"));
+
+    // --------------------------------------------------------------------
+    // Delay Imports tab
+    // --------------------------------------------------------------------
+    QWidget *delayImportsTab = new QWidget();
+    QVBoxLayout *delayImportsLayout = new QVBoxLayout(delayImportsTab);
+    delayImportsLayout->setContentsMargins(0, 0, 0, 0);
+    delayImportsLayout->setSpacing(4);
+
+    QSplitter *delayImportsOuter = new QSplitter(Qt::Horizontal);
+    delayImportsOuter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    delayImportsOuter->setChildrenCollapsible(false);
+    delayImportsOuter->setHandleWidth(5);
+
+    m_delayImportModulesTree = new QTreeWidget();
+    m_delayImportModulesTree->setAlternatingRowColors(true);
+    m_delayImportModulesTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_delayImportModulesTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_delayImportModulesTree->setHeaderLabels({LANG("UI/imports_header_module"), LANG("UI/imports_header_count")});
+    m_delayImportModulesTree->setColumnWidth(0, 250);
+    m_delayImportModulesTree->setColumnWidth(1, 120);
+
+    m_delayImportFunctionsTree = new QTreeWidget();
+    m_delayImportFunctionsTree->setAlternatingRowColors(true);
+    m_delayImportFunctionsTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_delayImportFunctionsTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_delayImportFunctionsTree->setHeaderLabels({
+        LANG("UI/imports_functions_header_name"),
+        LANG("UI/imports_functions_header_offset"),
+        LANG("UI/imports_functions_header_ordinal")
+    });
+    m_delayImportFunctionsTree->setColumnWidth(0, 260);
+    m_delayImportFunctionsTree->setColumnWidth(1, 140);
+    m_delayImportFunctionsTree->setColumnWidth(2, 100);
+
+    delayImportsOuter->addWidget(m_delayImportModulesTree);
+    delayImportsOuter->addWidget(m_delayImportFunctionsTree);
+    delayImportsOuter->setStretchFactor(0, 1);
+    delayImportsOuter->setStretchFactor(1, 3);
+    delayImportsOuter->setSizes({280, 720});
+
+    delayImportsLayout->addWidget(delayImportsOuter);
+    m_analysisTabWidget->addTab(delayImportsTab, LANG("UI/tab_delay_imports"));
 
     // --------------------------------------------------------------------
     // Exports tab
@@ -499,6 +559,57 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_analysisTabWidget->addTab(exportsTab, LANG("UI/tab_exports"));
 
     // --------------------------------------------------------------------
+    // Resources tab
+    // --------------------------------------------------------------------
+    QWidget *resourcesTab = new QWidget();
+    QVBoxLayout *resourcesLayout = new QVBoxLayout(resourcesTab);
+    resourcesLayout->setContentsMargins(0, 0, 0, 0);
+    resourcesLayout->setSpacing(4);
+
+    m_resourcesTree = new QTreeWidget();
+    m_resourcesTree->setAlternatingRowColors(true);
+    m_resourcesTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_resourcesTree->setRootIsDecorated(false);
+    m_resourcesTree->setHeaderLabels({
+        LANG("UI/resources_header_type"),
+        LANG("UI/resources_header_name"),
+        LANG("UI/resources_header_language"),
+        LANG("UI/resources_header_size"),
+        LANG("UI/resources_header_offset")
+    });
+    m_resourcesTree->setColumnWidth(0, 180);
+    m_resourcesTree->setColumnWidth(1, 160);
+    m_resourcesTree->setColumnWidth(2, 90);
+    m_resourcesTree->setColumnWidth(3, 90);
+    m_resourcesTree->setColumnWidth(4, 110);
+
+    m_resourcesPreviewText = new QTextBrowser();
+    m_resourcesPreviewText->setReadOnly(true);
+    m_resourcesPreviewText->setOpenExternalLinks(false);
+    m_resourcesPreviewText->setMinimumHeight(120);
+    m_resourcesPreviewText->setPlaceholderText(LANG("UI/resources_preview_placeholder"));
+
+    m_resourcesPreviewImage = new QLabel();
+    m_resourcesPreviewImage->setAlignment(Qt::AlignCenter);
+    m_resourcesPreviewImage->setMinimumHeight(120);
+    m_resourcesPreviewImage->setStyleSheet(QStringLiteral("background:#fafafa;border:1px solid #e5e7eb;"));
+    m_resourcesPreviewImage->setVisible(false);
+
+    QSplitter *resourcesSplitter = new QSplitter(Qt::Horizontal);
+    resourcesSplitter->addWidget(m_resourcesTree);
+    QWidget *previewPane = new QWidget();
+    QVBoxLayout *previewLayout = new QVBoxLayout(previewPane);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+    previewLayout->addWidget(m_resourcesPreviewImage, 0);
+    previewLayout->addWidget(m_resourcesPreviewText, 1);
+    resourcesSplitter->addWidget(previewPane);
+    resourcesSplitter->setStretchFactor(0, 3);
+    resourcesSplitter->setStretchFactor(1, 2);
+
+    resourcesLayout->addWidget(resourcesSplitter);
+    m_analysisTabWidget->addTab(resourcesTab, LANG("UI/tab_resources"));
+
+    // --------------------------------------------------------------------
     // Dependencies tab
     // --------------------------------------------------------------------
     QWidget *dependenciesTab = new QWidget();
@@ -507,6 +618,15 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
 
     QHBoxLayout *dependenciesToolbarLayout = new QHBoxLayout();
     dependenciesToolbarLayout->setContentsMargins(0, 0, 0, 4);
+    m_dependenciesDepthLabel = new QLabel(LANG("UI/deps_depth_label"));
+    m_dependenciesDepthSpin = new QSpinBox();
+    m_dependenciesDepthSpin->setRange(0, 64);
+    m_dependenciesDepthSpin->setSpecialValueText(LANG("UI/deps_depth_unlimited"));
+    m_dependenciesDepthSpin->setValue(8);
+    m_dependenciesDepthSpin->setMaximumWidth(120);
+    m_dependenciesDepthSpin->setToolTip(LANG("UI/deps_depth_tooltip"));
+    dependenciesToolbarLayout->addWidget(m_dependenciesDepthLabel);
+    dependenciesToolbarLayout->addWidget(m_dependenciesDepthSpin);
     dependenciesToolbarLayout->addStretch();
     m_dependenciesExpandAllButton = new QPushButton(LANG("UI/context_expand_all"));
     m_dependenciesExpandAllButton->setObjectName(QStringLiteral("dependenciesExpandAllButton"));
@@ -556,7 +676,11 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_all"), QStringLiteral("all"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ascii"), QStringLiteral("ascii"));
     m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_unicode"), QStringLiteral("unicode"));
-    m_stringsTypeCombo->setMaximumWidth(120);
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_url"), QStringLiteral("url"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_ip"), QStringLiteral("ip"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_registry"), QStringLiteral("registry"));
+    m_stringsTypeCombo->addItem(LANG("UI/strings_filter_type_command"), QStringLiteral("command"));
+    m_stringsTypeCombo->setMaximumWidth(150);
     m_stringsMinLengthSpin = new QSpinBox();
     m_stringsMinLengthSpin->setRange(2, 64);
     m_stringsMinLengthSpin->setValue(4);
@@ -594,6 +718,155 @@ void UIManager::setupTreeSection(QVBoxLayout *mainLayout)
     m_stringsTree->setColumnWidth(3, 420);
     stringsLayout->addWidget(m_stringsTree);
     m_analysisTabWidget->addTab(stringsTab, LANG("UI/tab_strings"));
+
+    // --------------------------------------------------------------------
+    // Findings tab (triage: file summary + heuristic checklist)
+    // --------------------------------------------------------------------
+    QWidget *findingsTab = new QWidget();
+    QVBoxLayout *findingsLayout = new QVBoxLayout(findingsTab);
+    findingsLayout->setContentsMargins(0, 0, 0, 0);
+    findingsLayout->setSpacing(4);
+
+    QWidget *overviewRow = new QWidget();
+    QHBoxLayout *overviewRowLayout = new QHBoxLayout(overviewRow);
+    overviewRowLayout->setContentsMargins(0, 0, 0, 0);
+    overviewRowLayout->setSpacing(10);
+
+    QWidget *overviewLeft = new QWidget();
+    QVBoxLayout *overviewLeftLayout = new QVBoxLayout(overviewLeft);
+    overviewLeftLayout->setContentsMargins(0, 0, 0, 0);
+    overviewLeftLayout->setSpacing(2);
+
+    overviewLeft->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+
+    QLabel *overviewTitle = new QLabel(LANG("findings/overview_title"));
+    overviewTitle->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; padding: 2px 0;"));
+    overviewLeftLayout->addWidget(overviewTitle);
+
+    m_findingsOverviewTree = new QTreeWidget();
+    m_findingsOverviewTree->setAlternatingRowColors(true);
+    m_findingsOverviewTree->setRootIsDecorated(false);
+    m_findingsOverviewTree->setHeaderLabels({
+        LANG("UI/tree_header_field"),
+        LANG("UI/tree_header_value")
+    });
+    m_findingsOverviewTree->setColumnWidth(0, 120);
+    m_findingsOverviewTree->header()->setStretchLastSection(false);
+    m_findingsOverviewTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_findingsOverviewTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_findingsOverviewTree->setUniformRowHeights(true);
+    m_findingsOverviewTree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_findingsOverviewTree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_findingsOverviewTree->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_findingsOverviewTree->setStyleSheet(
+        QStringLiteral("QTreeWidget { font-size: 11px; } QHeaderView::section { font-size: 11px; padding: 2px 4px; }"));
+    m_findingsOverviewTree->setCursor(Qt::PointingHandCursor);
+    overviewLeftLayout->addWidget(m_findingsOverviewTree);
+
+    QWidget *overviewRight = new QWidget();
+    QVBoxLayout *overviewRightLayout = new QVBoxLayout(overviewRight);
+    overviewRightLayout->setContentsMargins(0, 0, 0, 0);
+    overviewRightLayout->setSpacing(2);
+
+    m_findingsInsightTitleLabel = new QLabel(LANG("findings/insight_title"));
+    m_findingsInsightTitleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; padding: 2px 0;"));
+    overviewRightLayout->addWidget(m_findingsInsightTitleLabel);
+
+    m_findingsInsightText = new QTextBrowser();
+    m_findingsInsightText->setReadOnly(true);
+    m_findingsInsightText->setOpenExternalLinks(true);
+    m_findingsInsightText->setMinimumHeight(72);
+    m_findingsInsightText->setMaximumHeight(132);
+    m_findingsInsightText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_findingsInsightText->setStyleSheet(
+        QStringLiteral("QTextBrowser { font-family: 'Segoe UI', Arial; font-size: 11px; padding: 6px; "
+                       "background: #fafafa; border: 1px solid #e8e8e8; border-radius: 4px; }"));
+    m_findingsInsightText->setPlaceholderText(LANG("findings/insight_placeholder"));
+    overviewRightLayout->addWidget(m_findingsInsightText);
+
+    overviewRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    overviewRowLayout->addWidget(overviewLeft, 0);
+    overviewRowLayout->addWidget(overviewRight, 1);
+    findingsLayout->addWidget(overviewRow, 0);
+
+    m_sectionLayoutWidget = new SectionLayoutWidget();
+    m_sectionLayoutWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    findingsLayout->addWidget(m_sectionLayoutWidget, 0);
+
+    // Category pill buttons
+    {
+        static const struct { const char *langKey; const char *catKey; } kCats[] = {
+            {"findings/filter_category_all", "all"},
+            {"findings/category_hardening",  "hardening"},
+            {"findings/category_content",    "content"},
+            {"findings/category_metadata",   "metadata"},
+            {"findings/category_imports",    "imports"},
+        };
+        static const char *const kPillStyle =
+            "QPushButton { border: 1px solid #bbb; border-radius: 10px; padding: 2px 10px; "
+            "font-size: 11px; background: #f5f5f5; } "
+            "QPushButton:checked { background: #2563eb; color: white; border-color: #1d4ed8; } "
+            "QPushButton:hover:!checked { background: #e5e5e5; }";
+
+        QHBoxLayout *catLayout = new QHBoxLayout();
+        catLayout->setContentsMargins(0, 4, 0, 2);
+        catLayout->setSpacing(5);
+
+        m_findingsCategoryGroup = new QButtonGroup(findingsTab);
+        m_findingsCategoryGroup->setExclusive(true);
+
+        for (auto &cat : kCats) {
+            QPushButton *btn = new QPushButton(LANG(cat.langKey));
+            btn->setCheckable(true);
+            btn->setProperty("category", QString::fromLatin1(cat.catKey));
+            btn->setStyleSheet(QLatin1String(kPillStyle));
+            btn->setCursor(Qt::PointingHandCursor);
+            if (QLatin1String(cat.catKey) == QLatin1String("all")) {
+                btn->setChecked(true);
+            }
+            m_findingsCategoryGroup->addButton(btn);
+            catLayout->addWidget(btn);
+        }
+        catLayout->addStretch();
+        findingsLayout->addLayout(catLayout);
+    }
+
+    QHBoxLayout *findingsFilterLayout = new QHBoxLayout();
+    findingsFilterLayout->setContentsMargins(0, 2, 0, 4);
+    m_findingsSeverityCombo = new QComboBox();
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_all"), QStringLiteral("all"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_high"), QStringLiteral("high"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_medium"), QStringLiteral("medium"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_low"), QStringLiteral("low"));
+    m_findingsSeverityCombo->addItem(LANG("findings/filter_severity_info"), QStringLiteral("info"));
+    m_findingsSeverityCombo->setMaximumWidth(140);
+    findingsFilterLayout->addWidget(m_findingsSeverityCombo);
+    findingsFilterLayout->addStretch();
+    findingsLayout->addLayout(findingsFilterLayout);
+
+    m_findingsSummaryLabel = new QLabel(LANG("findings/summary_none"));
+    m_findingsSummaryLabel->setWordWrap(true);
+    m_findingsSummaryLabel->setStyleSheet(
+        QStringLiteral("QLabel { color: #444; font-size: 11px; padding: 4px 2px; }"));
+    findingsLayout->addWidget(m_findingsSummaryLabel);
+
+    m_findingsTree = new QTreeWidget();
+    m_findingsTree->setAlternatingRowColors(true);
+    m_findingsTree->setRootIsDecorated(true);
+    m_findingsTree->setHeaderLabels({
+        LANG("findings/header_severity"),
+        LANG("findings/header_title"),
+        LANG("findings/header_detail")
+    });
+    m_findingsTree->setColumnWidth(0, 88);
+    m_findingsTree->setColumnWidth(1, 220);
+    m_findingsTree->setColumnWidth(2, 480);
+    m_findingsTree->setStyleSheet(
+        QStringLiteral("QTreeWidget { font-size: 11px; } QHeaderView::section { font-size: 11px; padding: 2px 4px; }"));
+    m_findingsTree->setCursor(Qt::PointingHandCursor);
+    findingsLayout->addWidget(m_findingsTree, 1);
+
+    m_analysisTabWidget->addTab(findingsTab, LANG("UI/tab_findings"));
 
     // --------------------------------------------------------------------
 
@@ -685,6 +958,10 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     if (m_importFunctionsTree) {
         connect(m_importFunctionsTree, &QTreeWidget::currentItemChanged, mainWindow, &MainWindow::onImportFunctionSelected);
     }
+    if (m_delayImportModulesTree) {
+        connect(m_delayImportModulesTree, &QTreeWidget::currentItemChanged, mainWindow,
+                &MainWindow::onDelayImportModuleSelected);
+    }
     // Use currentItemChanged to avoid duplicate work with itemClicked.
     // It also covers keyboard navigation and mouse selection.
     connect(m_peTree, &QTreeWidget::currentItemChanged, mainWindow,
@@ -722,109 +999,27 @@ void UIManager::setupConnections(MainWindow *mainWindow)
     }
 
     // Lazily populate heavy tabs in MainWindow.
+    if (m_findingsTree) {
+        connect(m_findingsTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onFindingsItemClicked);
+    }
+    if (m_findingsOverviewTree) {
+        connect(m_findingsOverviewTree, &QTreeWidget::itemClicked, mainWindow,
+                &MainWindow::onOverviewItemClicked);
+    }
+    if (m_findingsSeverityCombo) {
+        connect(m_findingsSeverityCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), mainWindow,
+                &MainWindow::onFindingsFilterChanged);
+    }
+    if (m_findingsCategoryGroup) {
+        connect(m_findingsCategoryGroup, &QButtonGroup::idClicked, mainWindow,
+                [mainWindow](int) { mainWindow->onFindingsFilterChanged(); });
+    }
+    if (m_resourcesTree) {
+        connect(m_resourcesTree, &QTreeWidget::itemClicked, mainWindow, &MainWindow::onResourcesItemClicked);
+    }
+
     if (m_analysisTabWidget) {
         connect(m_analysisTabWidget, &QTabWidget::currentChanged, mainWindow, &MainWindow::onAnalysisTabChanged);
     }
 }
 
-/**
- * @brief Sets up application menus (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for menu setup
- * 
- * REFACTORING NOTE: Currently, menus are still handled by MainWindow
- * because they're application-level concerns, not just UI components.
- * This method is a placeholder for future menu management if needed.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic menu creation based on application state
- * - Context-sensitive menu items
- * - Menu customization options
- */
-void UIManager::setupMenus(MainWindow *mainWindow)
-{
-    // Menu setup will be handled by MainWindow
-    // This method is a placeholder for future menu management
-}
-
-/**
- * @brief Sets up toolbar (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for toolbar setup
- * 
- * REFACTORING NOTE: Toolbar setup is minimal and could be moved here
- * if we implement more sophisticated toolbar management.
- * 
- * FUTURE ENHANCEMENTS:
- * - Customizable toolbar with user-defined actions
- * - Toolbar state persistence
- * - Context-sensitive toolbar items
- */
-void UIManager::setupToolbar(MainWindow *mainWindow)
-{
-    // Toolbar setup will be handled by MainWindow
-    // This method is a placeholder for future toolbar management
-}
-
-/**
- * @brief Sets up status bar (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for status bar setup
- * 
- * REFACTORING NOTE: Status bar setup is simple enough that it doesn't
- * need abstraction. This method is a placeholder for future use.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic status bar content
- * - Status bar customization options
- * - Progress indicators in status bar
- */
-void UIManager::setupStatusBar(MainWindow *mainWindow)
-{
-    // Status bar setup will be handled by MainWindow
-    // This method is a placeholder for future status bar management
-}
-
-/**
- * @brief Sets up context menu for the main window
- * @param mainWindow Pointer to MainWindow for context menu setup
- * 
- * This method creates a basic context menu with common actions.
- * It could be enhanced in the future to support dynamic menu content
- * based on the current state or selected items.
- * 
- * REFACTORING BENEFIT: Context menu setup is now centralized and
- * easy to modify without affecting other parts of the application.
- * 
- * FUTURE ENHANCEMENTS:
- * - Dynamic menu items based on selected content
- * - Context-sensitive actions
- * - User-customizable context menus
- */
-void UIManager::setupContextMenu(MainWindow *mainWindow)
-{
-    m_contextMenu = new QMenu(mainWindow);
-    QAction *copyAct = m_contextMenu->addAction(LANG("UI/context_copy"), mainWindow, &MainWindow::onCopyToClipboard);
-    copyAct->setIcon(QIcon(QStringLiteral(":/images/imgs/copy.png")));
-    m_contextMenu->addSeparator();
-    QAction *expandAct = m_contextMenu->addAction(LANG("UI/context_expand_all"), mainWindow, &MainWindow::onExpandAll);
-    expandAct->setIcon(QIcon(QStringLiteral(":/images/imgs/expand.png")));
-    QAction *collapseAct = m_contextMenu->addAction(LANG("UI/context_collapse_all"), mainWindow, &MainWindow::onCollapseAll);
-    collapseAct->setIcon(QIcon(QStringLiteral(":/images/imgs/collapse.png")));
-}
-
-/**
- * @brief Sets up hex viewer component (placeholder for future use)
- * @param mainWindow Pointer to MainWindow for hex viewer setup
- * 
- * REFACTORING NOTE: Hex viewer setup is currently handled in setupMainUI()
- * because it's part of the main UI layout. This method is a placeholder
- * for future hex viewer configuration if needed.
- * 
- * FUTURE ENHANCEMENTS:
- * - Hex viewer configuration options
- * - Custom hex viewer themes
- * - Advanced hex viewer features
- */
-void UIManager::setupHexViewer(MainWindow *mainWindow)
-{
-    // Hex viewer setup will be handled by MainWindow
-    // This method is a placeholder for future hex viewer configuration
-}

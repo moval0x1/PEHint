@@ -47,6 +47,8 @@
 #include <QVector>
 #include <limits>
 
+class PEUIPresenter;
+
 /**
  * @brief New modular PE Parser that follows SOLID principles
  * 
@@ -75,6 +77,8 @@
 class PEParserNew : public QObject
 {
     Q_OBJECT
+
+    friend class PEUIPresenter;
 
 public:
     /** English key matching explanations.json (and getFieldOffset map). When set on column 0, used instead of translated display text. */
@@ -160,15 +164,6 @@ public:
     QString getFilePath() const;
     
     /**
-     * @brief Gets a human-readable representation of the file size
-     * @return Formatted file size string (e.g., "1.5 MB")
-     * 
-     * This method converts the raw file size to a user-friendly format
-     * for display in the UI.
-     */
-    QString getFileSizeString() const;
-    
-    /**
      * @brief Gets the raw file size in bytes
      * @return File size in bytes
      */
@@ -202,14 +197,12 @@ public:
      */
     const QByteArray& getFileData() const;
     
-    // Field explanation and offset methods (for UI compatibility)
-    // REFACTORING: These methods provide backward compatibility with the old UI
-    // They will be enhanced in future iterations to use the new data model
+    // Field explanation and offset methods (JSON-driven explanations + i18n)
     
     /**
      * @brief Gets explanation text for a specific PE field
      * @param fieldName Name of the field to get explanation for
-     * @return HTML-formatted explanation text (JSON-driven + i18n; falls back to generic placeholder)
+     * @return HTML-formatted explanation text (JSON-driven + i18n; generic fallback when no entry exists)
      */
     QString getFieldExplanation(const QString &fieldName);
 
@@ -222,6 +215,11 @@ public:
      * @return Pair containing (offset, size) in bytes from parsed PE layout
      */
     QPair<quint32, quint32> getFieldOffset(const QString &fieldName);
+
+    /**
+     * @brief Converts RVA to on-disk file offset using section headers.
+     */
+    quint32 rvaToFileOffset(quint32 rva);
     
     /**
      * @brief Sets the language for field explanations (coordinates with LanguageManager / JSON assets)
@@ -241,20 +239,25 @@ public:
      */
     QString getFieldMeaning(const QString &fieldName, const QString &value);
     
-    // Tree building method (for UI compatibility)
-    
     /**
-     * @brief Builds a tree structure for UI display
+     * @brief Builds the Structure tab tree via PEUIPresenter
      * @return List of tree items representing the PE structure
-     * 
-     * REFACTORING NOTE: This method currently returns an empty list.
-     * Future implementation will build the tree from the new PEDataModel,
-     * providing a comprehensive view of the PE structure.
      */
     QList<QTreeWidgetItem*> getPEStructureTree();
+    /** Rich HTML for the Findings file-summary panel (value + tips when absent). */
+    QString getFileInsightExplanation(const QString &fieldKey) const;
+    /** Whether clicking this insight row should highlight bytes in the hex view. */
+    bool fileInsightHasHexTarget(const QString &fieldKey) const;
+    /** Structure-tree field to select for context when the insight has no dedicated node. */
+    static QString relatedStructureFieldForInsight(const QString &fieldKey);
     QStringList getImportModules() const { return m_dataModel.getImports(); }
     const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getImportFunctionDetails() const { return m_dataModel.getImportFunctions(); }
+    QStringList getDelayImportModules() const { return m_dataModel.getDelayImports(); }
+    const QMap<QString, QList<PEDataModel::ImportFunctionEntry>>& getDelayImportFunctionDetails() const {
+        return m_dataModel.getDelayImportFunctions();
+    }
     const QList<PEDataModel::ExportFunctionEntry>& getExportFunctions() const { return m_dataModel.getExportFunctions(); }
+    const QVector<PEResourceItem> &getResourceEntries() const { return m_dataModel.getResourceEntries(); }
     
     // Async parsing support - For handling large files without blocking UI
     
@@ -315,8 +318,6 @@ private slots:
      * This slot is called when background parsing completes, ensuring
      * proper signal emission and state management.
      */
-    void onAsyncParsingComplete();
-    
     // Private methods - Core parsing logic implementation
     
 private:
@@ -382,16 +383,6 @@ private:
     bool validateHeaders();
     
     /**
-     * @brief Converts RVA (Relative Virtual Address) to file offset
-     * @param rva Relative Virtual Address to convert
-     * @return File offset in bytes, or 0 if conversion fails
-     * 
-     * This method implements the RVA-to-file-offset conversion algorithm
-     * as specified in the Microsoft PE Format documentation.
-     */
-    quint32 rvaToFileOffset(quint32 rva);
-    
-    /**
      * @brief Finds a configuration file in multiple possible locations
      * @param fileName Name of the configuration file to find
      * @return Full path to the found configuration file, or empty string if not found
@@ -403,62 +394,6 @@ private:
      * 4. Source directory (for development builds)
      */
     QString findConfigFile(const QString &fileName) const;
-    
-    // Tree building methods - For UI compatibility
-    
-    /**
-     * @brief Adds DOS header fields to a tree item
-     * @param parent Parent tree item
-     * @param dosHeader DOS header structure
-     */
-    void addDOSHeaderFields(QTreeWidgetItem *parent, const IMAGE_DOS_HEADER *dosHeader);
-
-    
-    /**
-     * @brief Adds PE header fields to a tree item
-     * @param parent Parent tree item
-     * @param fileHeader File header structure
-     */
-    void addPEHeaderFields(QTreeWidgetItem *parent, const IMAGE_FILE_HEADER *fileHeader);
-    
-    /**
-     * @brief Adds optional header fields to a tree item
-     * @param parent Parent tree item
-     * @param optionalHeader Optional header structure
-     */
-    void addOptionalHeaderFields(QTreeWidgetItem *parent, const IMAGE_OPTIONAL_HEADER *optionalHeader);
-    
-    /**
-     * @brief Adds section fields to a tree item
-     * @param parent Parent tree item
-     */
-    void addSectionFields(QTreeWidgetItem *parent);
-    
-    /**
-     * @brief Adds data directory fields to a tree item
-     * @param parent Parent tree item
-     */
-    void addDataDirectoryFields(QTreeWidgetItem *parent);
-    void addRichHeaderFields(QTreeWidgetItem *parent, quint32 richOffset);
-
-    void appendExceptionDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    /** Security directory: @p filePointer is optional-header VirtualAddress (a file offset, not an RVA). */
-    void appendCertificateDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 filePointer, quint32 regionSize);
-    void appendTLSDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendLoadConfigDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendResourceDirectoryDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    void appendComDescriptorDetailTree(QTreeWidgetItem *dirItem, quint32 rva, quint32 regionSize);
-    
-    /**
-     * @brief Adds a field to a tree item
-     * @param parent Parent tree item
-     * @param name Field name
-     * @param value Field value
-     * @param offset Field offset
-     * @param size Field size
-     */
-    void addTreeField(QTreeWidgetItem *parent, const QString &name, const QString &value, quint32 offset, quint32 size,
-                      const QString &jsonFieldKey = QString());
 
     /** Rebuilds m_fieldOffsetLookup once per loaded image (getFieldOffset is hot on tree selection). */
     void ensureFieldOffsetLookup();

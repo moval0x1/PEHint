@@ -1,0 +1,409 @@
+{
+  "version": 6,
+  "rules": [
+    {
+      "id": "missing_aslr",
+      "check": "missing_aslr",
+      "severity": "medium",
+      "category": "hardening",
+      "titleKey": "findings/missing_aslr_title",
+      "detailKey": "findings/missing_aslr_detail",
+      "treeField": "DllCharacteristics",
+      "enabled": true
+    },
+    {
+      "id": "missing_dep",
+      "check": "missing_dep",
+      "severity": "medium",
+      "category": "hardening",
+      "titleKey": "findings/missing_dep_title",
+      "detailKey": "findings/missing_dep_detail",
+      "treeField": "DllCharacteristics",
+      "enabled": true
+    },
+    {
+      "id": "missing_cfg",
+      "check": "missing_cfg",
+      "severity": "low",
+      "category": "hardening",
+      "titleKey": "findings/missing_cfg_title",
+      "detailKey": "findings/missing_cfg_detail",
+      "treeField": "DllCharacteristics",
+      "enabled": true
+    },
+    {
+      "id": "relocations_stripped_aslr",
+      "check": "relocations_stripped_aslr",
+      "severity": "medium",
+      "category": "hardening",
+      "titleKey": "findings/relocations_stripped_aslr_title",
+      "detailKey": "findings/relocations_stripped_aslr_detail",
+      "treeField": "Characteristics",
+      "enabled": true
+    },
+    {
+      "id": "rwx_section",
+      "check": "rwx_section",
+      "severity": "high",
+      "category": "hardening",
+      "titleKey": "findings/rwx_section_title",
+      "detailKey": "findings/rwx_section_detail",
+      "enabled": true
+    },
+    {
+      "id": "writable_code_section",
+      "check": "writable_code_section",
+      "severity": "high",
+      "category": "hardening",
+      "titleKey": "findings/writable_code_section_title",
+      "detailKey": "findings/writable_code_section_detail",
+      "enabled": true
+    },
+    {
+      "id": "executable_data_section",
+      "check": "executable_data_section",
+      "severity": "high",
+      "category": "hardening",
+      "titleKey": "findings/executable_data_section_title",
+      "detailKey": "findings/executable_data_section_detail",
+      "enabled": true
+    },
+    {
+      "id": "no_imports",
+      "check": "no_imports",
+      "severity": "medium",
+      "category": "imports",
+      "titleKey": "findings/no_imports_title",
+      "detailKey": "findings/no_imports_detail",
+      "treeField": "Data Directories",
+      "enabled": true
+    },
+    {
+      "id": "few_imports",
+      "check": "few_imports",
+      "severity": "low",
+      "category": "imports",
+      "titleKey": "findings/few_imports_title",
+      "detailKey": "findings/few_imports_detail",
+      "treeField": "Data Directories",
+      "maxImports": 3,
+      "enabled": true
+    },
+    {
+      "id": "gui_few_imports",
+      "check": "gui_few_imports",
+      "severity": "low",
+      "category": "imports",
+      "titleKey": "findings/gui_few_imports_title",
+      "detailKey": "findings/gui_few_imports_detail",
+      "treeField": "Subsystem",
+      "maxImports": 5,
+      "enabled": true
+    },
+    {
+      "id": "high_ordinal_imports",
+      "check": "high_ordinal_imports",
+      "severity": "low",
+      "category": "imports",
+      "titleKey": "findings/high_ordinal_imports_title",
+      "detailKey": "findings/high_ordinal_imports_detail",
+      "threshold": 0.75,
+      "minCount": 5,
+      "enabled": true
+    },
+    {
+      "id": "dll_no_exports",
+      "check": "dll_no_exports",
+      "severity": "medium",
+      "category": "imports",
+      "titleKey": "findings/dll_no_exports_title",
+      "detailKey": "findings/dll_no_exports_detail",
+      "treeField": "Data Directories",
+      "enabled": true
+    },
+    {
+      "id": "delay_import_present",
+      "check": "delay_import_present",
+      "severity": "medium",
+      "category": "imports",
+      "titleKey": "findings/delay_import_present_title",
+      "detailKey": "findings/delay_import_present_detail",
+      "treeField": "Delay Import Directory",
+      "enabled": true
+    },
+    {
+      "id": "flagged_import",
+      "check": "flagged_import",
+      "severity": "medium",
+      "category": "imports",
+      "titleKey": "findings/flagged_import_title",
+      "detailKey": "findings/flagged_import_detail",
+      "enabled": true
+    },
+    {
+      "id": "import_combo",
+      "check": "import_combo",
+      "severity": "high",
+      "category": "imports",
+      "titleKey": "findings/import_combo_title",
+      "detailKey": "findings/import_combo_detail",
+      "enabled": true
+    },
+    {
+      "id": "duplicate_exports",
+      "check": "duplicate_exports",
+      "severity": "low",
+      "category": "imports",
+      "titleKey": "findings/duplicate_exports_title",
+      "detailKey": "findings/duplicate_exports_detail",
+      "treeField": "Data Directories",
+      "enabled": true
+    },
+    {
+      "id": "overlay_present",
+      "check": "overlay_present",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/overlay_present_title",
+      "detailKey": "findings/overlay_present_detail",
+      "treeField": "Overlay",
+      "enabled": true
+    },
+    {
+      "id": "high_file_entropy",
+      "check": "high_file_entropy",
+      "severity": "high",
+      "category": "content",
+      "titleKey": "findings/high_file_entropy_title",
+      "detailKey": "findings/high_file_entropy_detail",
+      "treeField": "File Entropy",
+      "threshold": 7.0,
+      "enabled": true
+    },
+    {
+      "id": "high_section_entropy",
+      "check": "high_section_entropy",
+      "severity": "high",
+      "category": "content",
+      "titleKey": "findings/high_section_entropy_title",
+      "detailKey": "findings/high_section_entropy_detail",
+      "threshold": 7.2,
+      "enabled": true
+    },
+    {
+      "id": "suspicious_ep",
+      "check": "suspicious_ep",
+      "severity": "high",
+      "category": "content",
+      "titleKey": "findings/suspicious_ep_title",
+      "detailKey": "findings/suspicious_ep_detail",
+      "treeField": "AddressOfEntryPoint",
+      "enabled": true
+    },
+    {
+      "id": "section_raw_gt_virtual",
+      "check": "section_raw_gt_virtual",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/section_raw_gt_virtual_title",
+      "detailKey": "findings/section_raw_gt_virtual_detail",
+      "threshold": 1.25,
+      "enabled": true
+    },
+    {
+      "id": "tls_callbacks_present",
+      "check": "tls_callbacks_present",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/tls_callbacks_present_title",
+      "detailKey": "findings/tls_callbacks_present_detail",
+      "treeField": "TLS Directory",
+      "enabled": true
+    },
+    {
+      "id": "packer_section_name",
+      "check": "packer_section_name",
+      "severity": "low",
+      "category": "content",
+      "titleKey": "findings/packer_section_name_title",
+      "detailKey": "findings/packer_section_name_detail",
+      "enabled": true
+    },
+    {
+      "id": "hardcoded_url",
+      "check": "hardcoded_url",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/hardcoded_url_title",
+      "detailKey": "findings/hardcoded_url_detail",
+      "enabled": true
+    },
+    {
+      "id": "hardcoded_ip",
+      "check": "hardcoded_ip",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/hardcoded_ip_title",
+      "detailKey": "findings/hardcoded_ip_detail",
+      "enabled": true
+    },
+    {
+      "id": "hardcoded_registry",
+      "check": "hardcoded_registry",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/hardcoded_registry_title",
+      "detailKey": "findings/hardcoded_registry_detail",
+      "enabled": true
+    },
+    {
+      "id": "suspicious_command",
+      "check": "suspicious_command",
+      "severity": "medium",
+      "category": "content",
+      "titleKey": "findings/suspicious_command_title",
+      "detailKey": "findings/suspicious_command_detail",
+      "enabled": true
+    },
+    {
+      "id": "nonstandard_dos_stub",
+      "check": "nonstandard_dos_stub",
+      "severity": "low",
+      "category": "content",
+      "titleKey": "findings/nonstandard_dos_stub_title",
+      "detailKey": "findings/nonstandard_dos_stub_detail",
+      "treeField": "DOS_STUB",
+      "enabled": true
+    },
+    {
+      "id": "zero_timestamp",
+      "check": "zero_timestamp",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/zero_timestamp_title",
+      "detailKey": "findings/zero_timestamp_detail",
+      "treeField": "TimeDateStamp",
+      "enabled": true
+    },
+    {
+      "id": "old_timestamp",
+      "check": "old_timestamp",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/old_timestamp_title",
+      "detailKey": "findings/old_timestamp_detail",
+      "treeField": "TimeDateStamp",
+      "enabled": true
+    },
+    {
+      "id": "future_timestamp",
+      "check": "future_timestamp",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/future_timestamp_title",
+      "detailKey": "findings/future_timestamp_detail",
+      "treeField": "TimeDateStamp",
+      "enabled": true
+    },
+    {
+      "id": "checksum_zero",
+      "check": "checksum_zero",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/checksum_zero_title",
+      "detailKey": "findings/checksum_zero_detail",
+      "treeField": "CheckSum",
+      "enabled": true
+    },
+    {
+      "id": "checksum_mismatch",
+      "check": "checksum_mismatch",
+      "severity": "medium",
+      "category": "metadata",
+      "titleKey": "findings/checksum_mismatch_title",
+      "detailKey": "findings/checksum_mismatch_detail",
+      "treeField": "CheckSum",
+      "enabled": true
+    },
+    {
+      "id": "no_rich_header",
+      "check": "no_rich_header",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/no_rich_header_title",
+      "detailKey": "findings/no_rich_header_detail",
+      "treeField": "Rich Header",
+      "enabled": true
+    },
+    {
+      "id": "pdb_present",
+      "check": "pdb_present",
+      "severity": "info",
+      "category": "metadata",
+      "titleKey": "findings/pdb_present_title",
+      "detailKey": "findings/pdb_present_detail",
+      "treeField": "PDB Path",
+      "enabled": true
+    },
+    {
+      "id": "debug_info_stripped",
+      "check": "debug_info_stripped",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/debug_info_stripped_title",
+      "detailKey": "findings/debug_info_stripped_detail",
+      "treeField": "Characteristics",
+      "enabled": true
+    },
+    {
+      "id": "unsigned_executable",
+      "check": "unsigned_executable",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/unsigned_executable_title",
+      "detailKey": "findings/unsigned_executable_detail",
+      "treeField": "Certificate Directory",
+      "enabled": true
+    },
+    {
+      "id": "version_info_missing",
+      "check": "version_info_missing",
+      "severity": "low",
+      "category": "metadata",
+      "titleKey": "findings/version_info_missing_title",
+      "detailKey": "findings/version_info_missing_detail",
+      "treeField": "File Version",
+      "enabled": true
+    },
+    {
+      "id": "manifest_require_admin",
+      "check": "manifest_require_admin",
+      "severity": "medium",
+      "category": "metadata",
+      "titleKey": "findings/manifest_require_admin_title",
+      "detailKey": "findings/manifest_require_admin_detail",
+      "treeField": "Manifest UAC",
+      "enabled": true
+    },
+    {
+      "id": "invalid_signature",
+      "check": "invalid_signature",
+      "severity": "high",
+      "category": "metadata",
+      "titleKey": "findings/invalid_signature_title",
+      "detailKey": "findings/invalid_signature_detail",
+      "treeField": "Certificate Directory",
+      "enabled": true
+    },
+    {
+      "id": "clr_assembly",
+      "check": "clr_assembly",
+      "severity": "info",
+      "category": "metadata",
+      "titleKey": "findings/clr_assembly_title",
+      "detailKey": "findings/clr_assembly_detail",
+      "treeField": "CLR Runtime Header",
+      "enabled": true
+    }
+  ]
+}

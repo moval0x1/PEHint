@@ -55,8 +55,12 @@ void PEUtilsTest::testDataDirectoryOffsetCalculation()
     quint32 dataDirOffset = PEUtils::calculateDataDirectoryOffset(
         optionalHeaderStart, optionalHeaderSize, dataDirIndex);
     
-    // Data directories start at offset 96 in optional header (standard)
-    quint32 expected = optionalHeaderStart + 96 + (dataDirIndex * sizeof(IMAGE_DATA_DIRECTORY));
+    const quint32 tableOffsetInOptional =
+        (optionalHeaderSize >= static_cast<quint32>(sizeof(IMAGE_OPTIONAL_HEADER64)))
+            ? static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER64, DataDirectory))
+            : static_cast<quint32>(offsetof(IMAGE_OPTIONAL_HEADER32, DataDirectory));
+    const quint32 expected = optionalHeaderStart + tableOffsetInOptional
+        + static_cast<quint32>(dataDirIndex) * static_cast<quint32>(sizeof(IMAGE_DATA_DIRECTORY));
     QCOMPARE(dataDirOffset, expected);
 }
 

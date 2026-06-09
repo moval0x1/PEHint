@@ -46,7 +46,12 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QSplitter>
+#include <QLabel>
+#include <QButtonGroup>
 #include "hexviewer.h"
+
+class SectionLayoutWidget;
 
 class MainWindow;
 
@@ -96,11 +101,26 @@ public:
     QTreeWidget *m_importFunctionsTree; ///< Displays functions for selected import module
     QLabel *m_importHintTitleLabel;     ///< Heading above import API summary text
     QTextBrowser *m_importHintText;   ///< Microsoft Learn–style HTML summary for selected import
+    QTreeWidget *m_delayImportModulesTree; ///< Delay-import module list
+    QTreeWidget *m_delayImportFunctionsTree; ///< Functions for selected delay-import module
     QTreeWidget *m_exportsTree;       ///< Displays export functions list
+    QTreeWidget *m_resourcesTree;     ///< Enumerated PE resources (type, name, language, size)
+    QTextBrowser *m_resourcesPreviewText; ///< Text/XML/hex preview for selected resource
+    QLabel *m_resourcesPreviewImage;    ///< Icon/bitmap preview for selected resource
     QTreeWidget *m_dependenciesTree;  ///< Displays DLL dependencies and resolve status
+    QLabel *m_dependenciesDepthLabel; ///< "Depth:" label for dependency recursion spin
+    QSpinBox *m_dependenciesDepthSpin; ///< Transitive dependency depth (0 = unlimited)
     QPushButton *m_dependenciesExpandAllButton;   ///< Expand all rows in the dependencies tree
     QPushButton *m_dependenciesCollapseAllButton;   ///< Collapse all rows in the dependencies tree
     QTreeWidget *m_stringsTree;       ///< Displays extracted strings (offset, type, value)
+    QTreeWidget *m_findingsTree;      ///< Heuristic findings checklist (Phase 2)
+    QLabel *m_findingsSummaryLabel;   ///< Count / empty state above findings tree
+    QTreeWidget *m_findingsOverviewTree; ///< File summary (overlay, entropy, PDB, version)
+    QLabel *m_findingsInsightTitleLabel; ///< Heading above Findings detail panel
+    QTextBrowser *m_findingsInsightText;   ///< File summary / finding detail (stays on Findings tab)
+    QComboBox *m_findingsSeverityCombo;  ///< Filter findings by severity
+    QButtonGroup *m_findingsCategoryGroup; ///< Exclusive category filter pill buttons
+    SectionLayoutWidget *m_sectionLayoutWidget; ///< Compact RVA section map (Findings tab)
     QLineEdit *m_stringsFilterEdit;   ///< Filter strings by substring
     QComboBox *m_stringsTypeCombo;    ///< Filter by type: All / ASCII / Unicode
     QSpinBox *m_stringsMinLengthSpin; ///< Minimum extracted string length
@@ -110,7 +130,6 @@ public:
     QTreeWidget *m_peTree;         ///< Displays PE structure hierarchy
     QLabel *m_fieldExplanationTitleLabel; ///< "Field explanations" heading above the detail text
     QTextEdit *m_fieldExplanationText; ///< Shows field explanations
-    QMenu *m_contextMenu;           ///< Right-click context menu
     HexViewer *m_hexViewer;        ///< Hex viewer for binary data display
     
     // Setup methods - These replace the UI setup logic that was in MainWindow
@@ -141,54 +160,6 @@ public:
      * component individually. Now it just calls this method once.
      */
     void setupConnections(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up application menus (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for menu setup
-     * 
-     * REFACTORING NOTE: Currently, menus are still handled by MainWindow
-     * because they're application-level concerns. This method is a placeholder
-     * for future menu management if needed.
-     */
-    void setupMenus(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up toolbar (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for toolbar setup
-     * 
-     * REFACTORING NOTE: Toolbar setup is minimal and could be moved here
-     * if we implement more sophisticated toolbar management.
-     */
-    void setupToolbar(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up status bar (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for status bar setup
-     * 
-     * REFACTORING NOTE: Status bar setup is simple enough that it doesn't
-     * need abstraction. This method is a placeholder for future use.
-     */
-    void setupStatusBar(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up context menu for the main window
-     * @param mainWindow Pointer to MainWindow for context menu setup
-     * 
-     * This method creates a basic context menu with common actions.
-     * It could be enhanced in the future to support dynamic menu content
-     * based on the current state or selected items.
-     */
-    void setupContextMenu(MainWindow *mainWindow);
-    
-    /**
-     * @brief Sets up hex viewer component (placeholder for future use)
-     * @param mainWindow Pointer to MainWindow for hex viewer setup
-     * 
-     * REFACTORING NOTE: Hex viewer setup is currently handled in setupMainUI()
-     * because it's part of the main UI layout. This method is a placeholder
-     * for future hex viewer configuration if needed.
-     */
-    void setupHexViewer(MainWindow *mainWindow);
     
 private:
     MainWindow *m_mainWindow; ///< Reference to the parent MainWindow

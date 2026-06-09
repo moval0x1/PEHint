@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "patterns": [
+    {
+      "id": "powershell",
+      "match": "powershell",
+      "note": "PowerShell interpreter or script invocation"
+    },
+    {
+      "id": "powershell_exe",
+      "match": "powershell.exe",
+      "note": "PowerShell executable path"
+    },
+    {
+      "id": "cmd_exe",
+      "match": "cmd.exe",
+      "note": "Windows command processor"
+    },
+    {
+      "id": "cmd_c",
+      "match": "cmd /c",
+      "note": "Command shell one-liner"
+    },
+    {
+      "id": "wscript",
+      "match": "wscript.exe",
+      "note": "Windows Script Host (GUI)"
+    },
+    {
+      "id": "cscript",
+      "match": "cscript.exe",
+      "note": "Windows Script Host (console)"
+    },
+    {
+      "id": "mshta",
+      "match": "mshta.exe",
+      "note": "HTML Application host"
+    },
+    {
+      "id": "rundll32",
+      "match": "rundll32.exe",
+      "note": "DLL entry-point launcher"
+    },
+    {
+      "id": "reg_exe",
+      "match": "reg.exe",
+      "note": "Registry command-line tool"
+    },
+    {
+      "id": "schtasks",
+      "match": "schtasks",
+      "note": "Scheduled task utility"
+    },
+    {
+      "id": "bitsadmin",
+      "match": "bitsadmin",
+      "note": "Background Intelligent Transfer Service CLI"
+    },
+    {
+      "id": "certutil",
+      "match": "certutil",
+      "note": "Certificate utility (often abused for download/decode)"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "virtualallocex",
+      "function": "VirtualAllocEx",
+      "dll": "kernel32",
+      "severity": "high",
+      "note": "remote process memory allocation"
+    },
+    {
+      "id": "writeprocessmemory",
+      "function": "WriteProcessMemory",
+      "dll": "kernel32",
+      "severity": "high",
+      "note": "cross-process memory write"
+    },
+    {
+      "id": "createremotethread",
+      "function": "CreateRemoteThread",
+      "dll": "kernel32",
+      "severity": "high",
+      "note": "remote thread creation"
+    },
+    {
+      "id": "ntwritevirtualmemory",
+      "function": "NtWriteVirtualMemory",
+      "dll": "ntdll",
+      "severity": "high",
+      "note": "native cross-process write"
+    },
+    {
+      "id": "urlmon_download",
+      "function": "URLDownloadToFileW",
+      "dll": "urlmon",
+      "severity": "medium",
+      "note": "downloads a file from a URL"
+    },
+    {
+      "id": "urlmon_download_a",
+      "function": "URLDownloadToFileA",
+      "dll": "urlmon",
+      "severity": "medium",
+      "note": "downloads a file from a URL"
+    },
+    {
+      "id": "wininet_openurl",
+      "function": "InternetOpenUrlW",
+      "dll": "wininet",
+      "severity": "low",
+      "note": "HTTP/HTTPS client access"
+    },
+    {
+      "id": "ws2_connect",
+      "function": "connect",
+      "dll": "ws2_32",
+      "severity": "low",
+      "note": "network socket connect"
+    },
+    {
+      "id": "setwindowshookex",
+      "function": "SetWindowsHookExW",
+      "dll": "user32",
+      "severity": "medium",
+      "note": "global hook installation"
+    },
+    {
+      "id": "createtoolhelp32snapshot",
+      "function": "CreateToolhelp32Snapshot",
+      "dll": "kernel32",
+      "severity": "low",
+      "note": "process/module enumeration"
+    },
+    {
+      "id": "isdebuggerpresent",
+      "function": "IsDebuggerPresent",
+      "dll": "kernel32",
+      "severity": "low",
+      "note": "anti-debug check"
+    },
+    {
+      "id": "cryptencrypt",
+      "function": "CryptEncrypt",
+      "dll": "advapi32",
+      "severity": "low",
+      "note": "legacy CryptoAPI encryption"
+    }
+  ]
+}

@@ -139,6 +139,14 @@ set(PROJECT_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h
+    src/mainwindow_chrome.cpp
+    src/mainwindow_chrome.h
+    src/analysis_display_controller.cpp
+    src/analysis_display_controller.h
+    src/pe_tree_insight_helpers.cpp
+    src/pe_tree_insight_helpers.h
+    src/pe_file_insights.cpp
+    src/pe_file_insights.h
     src/hexviewer.cpp
     src/hexviewer.h
     src/virtual_hex_widget.cpp
@@ -146,6 +154,44 @@ set(PROJECT_SOURCES
     src/pe_structures.h
     src/pe_utils.cpp
     src/pe_utils.h
+    src/pe_analysis.cpp
+    src/pe_analysis.h
+    src/pe_authenticode.cpp
+    src/pe_authenticode.h
+    src/pe_compare.cpp
+    src/pe_compare.h
+    src/pe_compare_dialog.cpp
+    src/pe_compare_dialog.h
+    src/pe_resource_preview.cpp
+    src/pe_resource_preview.h
+    src/import_api_hint_store.cpp
+    src/import_api_hint_store.h
+    src/pe_findings.cpp
+    src/pe_findings.h
+    src/findings_controller.cpp
+    src/findings_controller.h
+    src/resources_controller.cpp
+    src/resources_controller.h
+    src/dependencies_controller.cpp
+    src/dependencies_controller.h
+    src/imports_controller.cpp
+    src/imports_controller.h
+    src/strings_controller.cpp
+    src/strings_controller.h
+    src/exports_controller.cpp
+    src/exports_controller.h
+    src/structure_tree_controller.cpp
+    src/structure_tree_controller.h
+    src/pe_report_builder.cpp
+    src/pe_report_builder.h
+    src/pe_field_hex.h
+    src/pe_cli_scan.cpp
+    src/pe_cli_scan.h
+    src/section_layout_widget.cpp
+    src/section_layout_widget.h
+    src/pe_ep_disasm.cpp
+    src/pe_ep_disasm.h
+    src/pe_ui_presenter.cpp
     src/pe_data_model.cpp
     src/pe_data_model.h
     src/pe_data_directory_parser.cpp
@@ -197,7 +243,7 @@ target_link_libraries(PEHint PRIVATE
 
 # Link Windows-specific libraries
 if(WIN32)
-    target_link_libraries(PEHint PRIVATE dbghelp)
+    target_link_libraries(PEHint PRIVATE dbghelp crypt32 wintrust)
 endif()
 
 # Include directories

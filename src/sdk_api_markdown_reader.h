@@ -16,11 +16,13 @@ struct ImportApiHint {
     QString returns;
     QString remarks;
     QString learnUrl;
+    QString malapiUrl;
+    QStringList malapiCategories; ///< e.g. {"Injection", "Evasion"} — populated from bundled hints only
 
     bool hasContent() const
     {
         return !summary.isEmpty() || !signature.isEmpty() || !parameters.isEmpty() || !returns.isEmpty()
-            || !remarks.isEmpty() || !learnUrl.isEmpty();
+            || !remarks.isEmpty() || !learnUrl.isEmpty() || !malapiUrl.isEmpty();
     }
 };
 

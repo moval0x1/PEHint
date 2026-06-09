@@ -60,6 +60,9 @@ public:
     static quint32 calculateRichHeaderOffset(const IMAGE_DOS_HEADER &dosHeader);
     static quint32 calculateRichHeaderSize(const QByteArray &fileData, quint32 richHeaderOffset);
     static bool findRichHeaderOffset(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader, quint32 &richOffset);
+    static quint32 optionalHeaderChecksumFileOffset(const IMAGE_DOS_HEADER &dosHeader,
+                                                      const IMAGE_FILE_HEADER &fileHeader);
+    static quint32 computePeImageChecksum(const QByteArray &fileData, quint32 checksumFieldOffset);
     
     // ============================================================================
     // STRUCTURE DETECTION UTILITIES
@@ -82,6 +85,8 @@ public:
     static bool parseRichHeader(const QByteArray &fileData, quint32 offset, IMAGE_RICH_HEADER &richHeader);
     static QList<IMAGE_RICH_ENTRY> parseRichEntries(const QByteArray &fileData, quint32 offset, quint32 count);
     static QString getRichHeaderInfo(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader);
+    /** Short toolchain label for triage (e.g. "MSVC 2019 (14.29)"). */
+    static QString summarizeRichToolchain(const QByteArray &fileData, const IMAGE_DOS_HEADER &dosHeader);
     
     // ============================================================================
     // ARCHITECTURE DETECTION
@@ -144,7 +149,12 @@ public:
     static bool hasAuthenticode(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER64 &optionalHeader);
     static bool hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER32 &optionalHeader);
     static bool hasStrongNameSignature(const QByteArray &fileData, const IMAGE_OPTIONAL_HEADER64 &optionalHeader);
-    
+
+    /** Reject OID/version dotted chains misread as IPv4 (e.g. 2.5.4.102.5 in SHA-256 strings). */
+    static bool isPlausibleHardcodedIpv4(const QString &ip, const QString &fullText = QString(),
+                                         int matchStart = -1);
+    static bool stringContainsPlausibleHardcodedIpv4(const QString &value);
+
 private:
     PEUtils() = delete; // Static class, prevent instantiation
     
